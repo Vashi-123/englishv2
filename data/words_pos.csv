@@ -1,0 +1,3510 @@
+id,word,pos,cefr
+1,a bit,adv.,A2
+2,a couple,det.; pron.,B1
+3,a few,det.; pron.,A2
+4,a little,det.; pron.,A2
+5,a lot,det.; pron.,A1
+6,"a, an",indefinite article,A1
+7,a.m.,abbr.,A1
+8,abandon,v.,B2
+9,abandoned,adj.,B2
+10,ability,n.,B1
+11,able,adj.,A2
+12,about,adv.; prep.,A1
+13,above,prep.; adv.,A1
+14,abroad,adv.,B1
+15,absence,n.,B2
+16,absent,adj.,B1
+17,absolute,adj.,B2
+18,absolutely,adv.,B1
+19,absorb,v.,B2
+20,abuse,n.; v.,B2
+21,academic,adj.,B2
+22,accent,n.,B1
+23,accept,v.,B1
+24,acceptable,adj.,B1
+25,access,n.,B1
+26,accident,n.,A2
+27,accidental,adj.,B2
+28,accidentally,adv.,B2
+29,accommodation,n.,B1
+30,accompany,v.,B1
+31,according to,prep.,B1
+32,account,n.; v.,B1
+33,accurate,adj.,B1
+34,accurately,adv.,B1
+35,accuse,v.,B2
+36,achieve,v.,B1
+37,achievement,n.,B1
+38,acid,n.,B2
+39,acknowledge,v.,C1
+40,acquire,v.,B2
+41,across,adv.; prep.,A2
+42,act,n.; v.,B1
+43,action,n.,B1
+44,active,adj.,B1
+45,actively,adv.,B2
+46,activity,n.,A2
+47,"actor, actress",n.,A2
+48,actual,adj.,B2
+49,actually,adv.,A2
+50,ad,,B1
+51,adapt,v.,B2
+52,add,v.,A2
+53,addition,n.,B2
+54,additional,adj.,B2
+55,address,n.; v.,A1
+56,adequate,adj.,B2
+57,adequately,adv.,B2
+58,adjust,v.,B2
+59,admiration,n.,B2
+60,admire,v.,B1
+61,admit,v.,B1
+62,adopt,v.,B2
+63,adult,n.; adj.,A1
+64,advance,n.; v.,B2
+65,advanced,adj.,A2
+66,advantage,n.,B1
+67,adventure,n.,A2
+68,advertise,v.,B1
+69,advertisement,n.,A2
+70,advertising,n.,B2
+71,advice,n.,A2
+72,advise,v.,B1
+73,affair,n.,B2
+74,affect,v.,B2
+75,affection,n.,B2
+76,afford,v.,B1
+77,afraid,adj.,A2
+78,after,prep.; conj.; adv.,A1
+79,afternoon,n.,A1
+80,afterwards,adv.,A2
+81,again,adv.,A1
+82,against,prep.,A2
+83,age,n.,A1
+84,aged,adj.,A2
+85,agency,n.,B1
+86,agent,n.,B2
+87,aggressive,adj.,B2
+88,ago,adv.,A2
+89,agree,v.,A2
+90,agreement,n.,B2
+91,ahead,adv.,B1
+92,aid,n.; v.,C1
+93,aim,n.; v.,B1
+94,air,n.,A2
+95,aircraft,n.,B2
+96,airport,n.,A2
+97,alarm,n.; v.,B1
+98,alarmed,adj.,C1
+99,alarming,adj.,C1
+100,alcohol,n.,A2
+101,alcoholic,adj.; n.,B1
+102,alive,adj.,B1
+103,all,det.; pron.; adv.,A1
+104,all right,adj.; adv.; exclamation,A1
+105,allied,adj.,C2
+106,allow,v.,B1
+107,ally,n.; v.,C1
+108,almost,adv.,A2
+109,alone,adj.; adv.,A2
+110,along,prep.; adv.,A2
+111,alongside,prep.; adv.,C1
+112,aloud,adv.,B1
+113,alphabet,n.,B1
+114,alphabetical,adj.,B2
+115,alphabetically,adv.,B2
+116,already,adv.,A2
+117,also,adv.,A1
+118,alter,v.,B2
+119,alternative,n.; adj.,B2
+120,alternatively,adv.,B2
+121,although,conj.,B1
+122,altogether,adv.,B1
+123,always,adv.,A1
+124,amaze,v.,B1
+125,amazed,adj.,B1
+126,amazing,adj.,A2
+127,ambition,n.,B1
+128,ambulance,n.,A2
+129,among,prep.,A2
+130,amount,n.; v.,B1
+131,amuse,v.,B2
+132,amused,adj.,B2
+133,amusing,adj.,B1
+134,analyse,v.,B2
+135,analysis,n.,B2
+136,ancient,adj.,B1
+137,and,conj.,A1
+138,anger,n.,B2
+139,angle,n.,C1
+140,angrily,adv.,B1
+141,angry,adj.,A2
+142,animal,n.,A1
+143,ankle,n.,B1
+144,anniversary,n.,B1
+145,announce,v.,B1
+146,annoy,v.,B1
+147,annoyed,adj.,B1
+148,annoying,adj.,B1
+149,annual,adj.,B1
+150,annually,adv.,B2
+151,another,det.; pron.,A2
+152,answer,n.; v.,A1
+153,anti-,prefix,B2
+154,anticipate,v.,C1
+155,anxiety,n.,B2
+156,anxious,adj.,B1
+157,anxiously,adv.,B2
+158,any,det.; pron.; adv.,A1
+159,anyone,pron.,A2
+160,anything,pron.,A1
+161,anyway,adv.,A2
+162,anywhere,adv.,A2
+163,apart,adv.,B1
+164,apart from,,B1
+165,apart from,prep.,B1
+166,apartment,n.,A2
+167,apologize,v.,B1
+168,apparent,adj.,B2
+169,apparently,adv.,B2
+170,appeal,n.; v.,B2
+171,appear,v.,B1
+172,appearance,n.,B1
+173,apple,n.,A1
+174,application,n.,B1
+175,apply,v.,B1
+176,appoint,v.,C1
+177,appointment,n.,A2
+178,appreciate,v.,B2
+179,approach,v.; n.,B1
+180,appropriate,adj.,B2
+181,approval,n.,B2
+182,approve,v.,B1
+183,approving,adj.,B1
+184,approximate,adj.,B2
+185,approximately,adv.,B1
+186,April,n.; abbr. Apr.,A1
+187,area,n.,A2
+188,argue,v.,B1
+189,argument,n.,B1
+190,arise,v.,C1
+191,arm,n.; v.,A1
+192,armed,adj.,B2
+193,arms,n.,B2
+194,army,n.,B1
+195,around,adv.; prep.,A2
+196,arrange,v.,B1
+197,arrangement,n.,B1
+198,arrest,v.; n.,B1
+199,arrival,n.,B1
+200,arrive,v.,A2
+201,arrow,n.,B2
+202,art,n.,A2
+203,article,n.,B1
+204,artificial,adj.,B2
+205,artificially,adv.,B2
+206,artist,n.,A2
+207,artistic,adj.,B2
+208,as,prep.; adv.; conj.,A1
+209,as soon as,,A2
+210,as well,,A1
+211,ashamed,adj.,B1
+212,aside,adv.,B2
+213,aside from,,B2
+214,ask,v.,A1
+215,asleep,adj.,B1
+216,aspect,n.,B2
+217,assist,v.,B2
+218,assistance,n.,B2
+219,assistant,n.; adj.,B1
+220,associate,v.,C1
+221,associated with,,B2
+222,association,n.,B2
+223,assume,v.,B2
+224,assure,v.,B2
+225,at,prep.,A1
+226,at first,,B1
+227,at least,,B1
+228,atmosphere,n.,B1
+229,atom,n.,B2
+230,attach,v.,B1
+231,attached,adj.,B2
+232,attack,n.; v.,B1
+233,attempt,n.; v.,B1
+234,attempted,adj.,B1
+235,attend,v.,B1
+236,attention,n.,B1
+237,attitude,n.,B1
+238,attorney,n.,C1
+239,attract,v.,B1
+240,attraction,n.,B1
+241,attractive,adj.,A2
+242,audience,n.,B1
+243,August,n.; abbr. Aug.,A1
+244,aunt,n.,A2
+245,author,n.,B1
+246,authority,n.,B2
+247,automatic,adj.,B2
+248,automatically,adv.,B2
+249,autumn,n.,A2
+250,available,adj.,A2
+251,average,adj.; n.,B1
+252,avoid,v.,B1
+253,awake,adj.,B1
+254,award,n.; v.,B2
+255,aware,adj.,B2
+256,away,adv.,A2
+257,awful,adj.,B1
+258,awfully,adv.,B2
+259,awkward,adj.,B2
+260,awkwardly,adv.,B2
+261,baby,n.,A1
+262,back,n.; adj.; adv.; v.,A1
+263,background,n.,B1
+264,backward,adj.,C2
+265,backwards,adv.,B1
+266,bacteria,n.,C1
+267,bad,adj.,A1
+268,badly,adv.,A2
+269,bad-tempered,adj.,B2
+270,bag,n.,A1
+271,baggage,n.,B1
+272,bake,v.,A2
+273,balance,n.; v.,B2
+274,ball,n.,A1
+275,ban,v.; n.,B2
+276,band,n.,A1
+277,bandage,n.; v.,B1
+278,bank,n.,A1
+279,bar,n.,A1
+280,bargain,n.,B2
+281,barrier,n.,B2
+282,base,n.; v.,B2
+283,based on,,B1
+284,basic,adj.,B1
+285,basically,adv.,B2
+286,basis,n.,B2
+287,bath,n.,A1
+288,bathroom,n.,A1
+289,battery,n.,A2
+290,battle,n.,B1
+291,bay,n.,B1
+292,"be, auxiliary",v.; v.,A1
+293,be called,,A1
+294,be going to,,A2
+295,be sick,,B1
+296,beach,n.,A1
+297,beak,n.,C1
+298,bear,v.,B2
+299,beard,n.,A1
+300,beat,n.; v.,B1
+301,beautiful,adj.,A1
+302,beautifully,adv.,B1
+303,beauty,n.,B1
+304,because,conj.,A1
+305,because of,prep.,B1
+306,become,v.,A2
+307,bed,n.,A1
+308,bedroom,n.,A1
+309,beef,n.,B1
+310,beer,n.,A1
+311,before,prep.; conj.; adv.,A1
+312,begin,v.,A1
+313,beginning,n.,A2
+314,"behalf: on behalf of sb, on sb’s behalf",n.,B2
+315,behave,v.,B1
+316,behaviour,n.,B1
+317,behind,prep.; adv.,A1
+318,belief,n.,B2
+319,believe,v.,A2
+320,bell,n.,B1
+321,belong,v.,B2
+322,below,prep.; adv.,A1
+323,belt,n.,A2
+324,bend,v.; n.,B2
+325,beneath,prep.; adv.,B2
+326,benefit,n.; v.,B1
+327,bent,adj.,B2
+328,beside,prep.,A2
+329,bet,v.; n.,C1
+330,"better, best, good, well",,A1
+331,betting,n.,C2
+332,between,prep.; adv.,A1
+333,beyond,prep.; adv.,B2
+334,bicycle,n.,A2
+335,bid,v.; n.,C1
+336,big,adj.,A1
+337,bill,n.,A2
+338,bin,n.,B1
+339,biology,n.,A2
+340,bird,n.,A1
+341,birth,n.,B1
+342,birthday,n.,A1
+343,biscuit,n.,A1
+344,bit,n.,A2
+345,bite,v.; n.,B1
+346,bitter,adj.,B1
+347,bitterly,adv.,B1
+348,black,adj.; n.,A1
+349,blade,n.,B2
+350,blame,v.; n.,B1
+351,blank,adj.; n.,B1
+352,blankly,adv.,B1
+353,blind,adj.,B1
+354,block,n.; v.,B1
+355,"blonde,, blond",adj.; n.; adj.,A2
+356,blood,n.,A2
+357,blow,v.; n.,B1
+358,blue,adj.; n.,A1
+359,board,n.; v.,A1
+360,boat,n.,A1
+361,body,n.,A1
+362,boil,v.,A2
+363,bomb,n.; v.,B1
+364,bone,n.,B1
+365,book,n.; v.,A1
+366,boot,n.,A2
+367,border,n.,B1
+368,bore,v.,B2
+369,bored,adj.,A1
+370,boring,adj.,A1
+371,born: be born,v.,A2
+372,borrow,v.,A2
+373,boss,n.,A2
+374,both,det.; pron.,A1
+375,bother,v.,A2
+376,bottle,n.,A2
+377,bottom,n.; adj.,A1
+378,bound: bound to,adj.,B2
+379,bowl,n.,A2
+380,box,n.,A1
+381,boy,n.,A1
+382,boyfriend,n.,A2
+383,brain,n.,A2
+384,branch,n.,B1
+385,brand,n.,B2
+386,brave,adj.,B1
+387,bread,n.,A1
+388,break,v.; n.,A2
+389,breakfast,n.,A1
+390,breast,n.,B1
+391,breath,n.,B1
+392,breathe,v.,B1
+393,breathing,n.,B1
+394,breed,v.; n.,B2
+395,brick,n.,B2
+396,bridge,n.,A2
+397,brief,adj.,B1
+398,briefly,adv.,B1
+399,bright,adj.,A2
+400,brightly,adv.,B2
+401,brilliant,adj.,A2
+402,bring,v.,A2
+403,broad,adj.,B1
+404,broadcast,v.; n.,B2
+405,broadly,adv.,C1
+406,broken,adj.,A2
+407,"broken, break",,A2
+408,brother,n.,A1
+409,brown,adj.; n.,A1
+410,brush,n.; v.,A2
+411,bubble,n.,C1
+412,budget,n.,B2
+413,build,v.,A2
+414,building,n.,A2
+415,bullet,n.,B2
+416,bunch,n.,B1
+417,burn,v.,B1
+418,burnt,adj.,B2
+419,burst,v.,B2
+420,bury,v.,B1
+421,bus,n.,A1
+422,bush,n.,B2
+423,business,n.,A1
+424,"businessman, businesswoman",n.,A2
+425,busy,adj.,A2
+426,but,conj.,A1
+427,butter,n.,A1
+428,button,n.,B1
+429,buy,v.,A1
+430,buyer,n.,B1
+431,by,prep.; adv.,A2
+432,by accident,,B1
+433,by means of,,C1
+434,bye,exclamation,A1
+435,c,abbr. cent,A2
+436,cabinet,n.,B2
+437,cable,n.,B1
+438,cake,n.,A1
+439,calculate,v.,B2
+440,calculation,n.,B2
+441,call,v.; n.,A2
+442,calm,adj.; v.; n.,B1
+443,calmly,adv.,B2
+444,camera,n.,A1
+445,camp,n.; v.,B1
+446,campaign,n.,C1
+447,camping,n.,A2
+448,can,modal; v.; n.,A1
+449,cancel,v.,B1
+450,cancer,n.,B1
+451,candidate,n.,B1
+452,candy,n.,A2
+453,cannot,,A1
+454,cap,n.,A2
+455,capable,adj.,B2
+456,capacity,n.,B2
+457,capital,n.; adj.,A2
+458,captain,n.,B1
+459,capture,v.; n.,B2
+460,car,n.,A1
+461,card,n.,A2
+462,cardboard,n.,B2
+463,care,n.; v.,B1
+464,care for,,B2
+465,career,n.,B1
+466,careful,adj.,A2
+467,carefully,adv.,A2
+468,careless,adj.,B1
+469,carelessly,adv.,B2
+470,carpet,n.,A2
+471,carrot,n.,A2
+472,carry,v.,A1
+473,case,n.,A2
+474,cash,n.,A2
+475,cast,v.; n.,B2
+476,castle,n.,A2
+477,cat,n.,A1
+478,catch,v.,A1
+479,category,n.,B2
+480,cause,n.; v.,B2
+481,CD,n.,A1
+482,cease,v.,B2
+483,ceiling,n.,A2
+484,celebrate,v.,B1
+485,celebration,n.,B1
+486,cell,n.,B2
+487,cellphone,n.,A1
+488,cent,"n.; abbr. c, ct",A2
+489,centimetre,n.; abbr. cm,A2
+490,central,adj.,B1
+491,centre,n.,A2
+492,century,n.,A2
+493,ceremony,n.,B1
+494,certain,adj.; pron.,B1
+495,certainly,adv.,A2
+496,certificate,n.,B1
+497,chain,n.; v.,A2
+498,chair,n.,A1
+499,"chairman, chairwoman",n.,B2
+500,challenge,n.; v.,B1
+501,chamber,n.,B2
+502,chance,n.,B1
+503,change,v.; n.,A1
+504,channel,n.,A2
+505,chapter,n.,B1
+506,character,n.,B1
+507,characteristic,adj.; n.,B2
+508,charge,n.; v.,B1
+509,charity,n.,B1
+510,chart,n.; v.,B2
+511,chase,v.; n.,B2
+512,chat,v.; n.,A2
+513,cheap,adj.,A1
+514,cheaply,adv.,A2
+515,cheat,v.; n.,B2
+516,check,v.; n.,A2
+517,cheek,n.,B1
+518,cheerful,adj.,B1
+519,cheerfully,adv.,B2
+520,cheese,n.,A1
+521,chemical,adj.; n.,B2
+522,chemist,n.,A2
+523,chemist’s,n.,A2
+524,chemistry,n.,A2
+525,cheque,n.,A2
+526,chest,n.,B2
+527,chew,v.,B2
+528,chicken,n.,A2
+529,chief,adj.; n.,B2
+530,child,n.,A1
+531,chin,n.,B1
+532,chip,n.,A1
+533,chocolate,n.,A1
+534,choice,n.,B1
+535,choose,v.,A1
+536,chop,v.,B2
+537,church,n.,A2
+538,cigarette,n.,A2
+539,cinema,n.,A1
+540,circle,n.; v.,A2
+541,circumstance,n.,B2
+542,citizen,n.,B2
+543,city,n.,A1
+544,civil,adj.,C1
+545,claim,v.; n.,B2
+546,clap,v.; n.,B1
+547,class,n.,A1
+548,classic,adj.; n.,B2
+549,classroom,n.,A1
+550,clean,adj.; v.,A1
+551,clear,adj.; v.,A2
+552,clearly,adv.,A2
+553,clerk,n.,B1
+554,clever,adj.,A1
+555,click,v.; n.,A2
+556,client,n.,B2
+557,climate,n.,B1
+558,climb,v.,A2
+559,climbing,n.,A2
+560,clock,n.,A1
+561,close,adj.,A1
+562,close,v.,A1
+563,closed,adj.,A1
+564,closely,adv.,B2
+565,closet,n.,A2
+566,cloth,n.,B2
+567,clothes,n.,A1
+568,clothing,n.,B2
+569,cloud,n.,A2
+570,club,n.,A2
+571,cm,abbr. centimeter,A2
+572,coach,n.,A2
+573,coal,n.,C1
+574,coast,n.,B1
+575,coat,n.,A1
+576,code,n.,B2
+577,coffee,n.,A1
+578,coin,n.,B1
+579,cold,adj.; n.,A1
+580,coldly,adv.,A2
+581,collapse,v.; n.,B2
+582,colleague,n.,A2
+583,collect,v.,A2
+584,collection,n.,B1
+585,college,n.,A2
+586,colour,n.; v.,A1
+587,coloured,adj.,A2
+588,column,n.,B2
+589,combination,n.,B2
+590,combine,v.,B2
+591,come,v.,A1
+592,comedy,n.,B1
+593,comfort,n.; v.,B2
+594,comfortable,adj.,A2
+595,comfortably,adv.,B2
+596,command,v.; n.,B2
+597,comment,n.; v.,B1
+598,commercial,adj.; n.,B2
+599,commission,n.; v.,B2
+600,commit,v.,B2
+601,commitment,n.,B2
+602,committee,n.,B2
+603,common,adj.,B1
+604,commonly,adv.,C1
+605,communicate,v.,B1
+606,communication,n.,B1
+607,community,n.,B2
+608,company,n.,A2
+609,compare,v.,B1
+610,comparison,n.,B2
+611,compete,v.,B1
+612,competition,n.,A2
+613,competitive,adj.,B2
+614,complain,v.,B1
+615,complaint,n.,B1
+616,complete,adj.; v.,A2
+617,completely,adv.,B1
+618,complex,adj.,B2
+619,complicate,v.,C1
+620,complicated,adj.,B1
+621,computer,n.,A1
+622,concentrate,v.,B1
+623,concentration,n.,B2
+624,concept,n.,B2
+625,concern,v.; n.,B2
+626,concerned,adj.,B2
+627,concerning,prep.,B2
+628,concert,n.,A2
+629,conclude,v.,C1
+630,conclusion,n.,B1
+631,concrete,adj.; n.,B2
+632,condition,n.,B1
+633,conduct,v.; n.,B2
+634,conference,n.,B1
+635,confidence,n.,B2
+636,confident,adj.,B1
+637,confidently,adv.,B2
+638,confine,v.,C2
+639,confined,adj.,C2
+640,confirm,v.,B1
+641,conflict,n.; v.,B2
+642,confront,v.,C2
+643,confuse,v.,B2
+644,confused,adj.,B1
+645,confusing,adj.,B1
+646,confusion,n.,B2
+647,congratulations,n.,A2
+648,congress,n.,B2
+649,connect,v.,B1
+650,connection,n.,B1
+651,conscious,adj.,B2
+652,consequence,n.,B2
+653,conservative,adj.,C1
+654,consider,v.,B1
+655,considerable,adj.,B1
+656,considerably,adv.,B2
+657,consideration,n.,B2
+658,consist of,v.,B1
+659,constant,adj.,B2
+660,constantly,adv.,B2
+661,construct,v.,B2
+662,construction,n.,B2
+663,consult,v.,C1
+664,consumer,n.,B2
+665,contact,n.; v.,A2
+666,contain,v.,B1
+667,container,n.,B2
+668,contemporary,adj.,B2
+669,content,n.,B2
+670,contest,n.,B1
+671,context,n.,B2
+672,continent,n.,B1
+673,continue,v.,B1
+674,continuous,adj.,B2
+675,continuously,adv.,B2
+676,contract,n.; v.,B1
+677,contrast,n.; v.,B2
+678,contrasting,adj.,B2
+679,contribute,v.,B2
+680,contribution,n.,B2
+681,control,n.; v.,B1
+682,controlled,adj.,B2
+683,convenient,adj.,B1
+684,convention,n.,C1
+685,conventional,adj.,B2
+686,conversation,n.,A1
+687,convert,v.,B2
+688,convince,v.,B1
+689,cook,v.; n.,A1
+690,cooker,n.,A2
+691,cookie,n.,C2
+692,cooking,n.,A2
+693,cool,adj.; v.,A2
+694,cope,v.,B2
+695,copy,n.; v.,A2
+696,core,n.,C2
+697,corner,n.,A2
+698,correct,adj.; v.,A2
+699,correctly,adv.,B1
+700,cost,n.; v.,A2
+701,cottage,n.,B1
+702,cotton,n.,B1
+703,cough,v.; n.,B1
+704,coughing,n.,B1
+705,could,modal; v.,A2
+706,council,n.,B2
+707,count,v.,B1
+708,counter,n.,B2
+709,country,n.,A1
+710,countryside,n.,A2
+711,county,n.,B2
+712,couple,n.,B1
+713,courage,n.,B2
+714,course,n.,A1
+715,court,n.,B1
+716,cousin,n.,A2
+717,cover,v.; n.,A2
+718,covered,adj.,A2
+719,covering,n.,A2
+720,cow,n.,A1
+721,crack,n.; v.,B2
+722,cracked,adj.,B2
+723,craft,n.,B2
+724,crash,n.; v.,B1
+725,crazy,adj.,A2
+726,cream,n.; adj.,A2
+727,create,v.,B1
+728,creature,n.,B1
+729,credit,n.; v.,B1
+730,credit card,n.,A1
+731,crime,n.,B1
+732,criminal,adj.; n.,B1
+733,crisis,n.,B2
+734,crisp,adj.,C2
+735,criterion,n.,C1
+736,critical,adj.,B2
+737,criticism,n.,B2
+738,criticize,v.,B2
+739,crop,n.,B1
+740,cross,n.; v.,A2
+741,crowd,n.,A2
+742,crowded,adj.,A2
+743,crown,n.,B1
+744,crucial,adj.,B2
+745,cruel,adj.,B1
+746,crush,v.,C2
+747,cry,v.; n.,A2
+748,ct,abbr. cent,A2
+749,cultural,adj.,B1
+750,culture,n.,B1
+751,cup,n.,A1
+752,cupboard,n.,A2
+753,curb,v.,C2
+754,cure,v.; n.,B2
+755,curious,adj.,B1
+756,curiously,adv.,B1
+757,curl,v.; n.,B1
+758,curly,adj.,B1
+759,current,adj.; n.,B2
+760,currently,adv.,B2
+761,curtain,n.,A2
+762,curve,n.; v.,B2
+763,curved,adj.,B2
+764,custom,n.,B1
+765,customer,n.,A2
+766,customs,n.,B1
+767,cut,v.; n.,A2
+768,cycle,n.; v.,B1
+769,cycling,n.,A2
+770,dad,n.,A1
+771,daily,adj.,A2
+772,damage,n.; v.,B1
+773,damp,adj.,B2
+774,dance,n.; v.,A1
+775,dancer,n.,A2
+776,dancing,n.,A1
+777,danger,n.,A2
+778,dangerous,adj.,A2
+779,dare,v.,B2
+780,dark,adj.; n.,A1
+781,data,n.,B2
+782,date,n.; v.,A1
+783,daughter,n.,A1
+784,day,n.,A1
+785,dead,adj.,A2
+786,deaf,adj.,B1
+787,deal,v.; n.,B2
+788,deal with,,B1
+789,dear,adj.,A1
+790,death,n.,B1
+791,debate,n.; v.,B2
+792,debt,n.,B2
+793,decade,n.,B2
+794,decay,n.; v.,B2
+795,December,n.; abbr. Dec.,A1
+796,decide,v.,A2
+797,decision,n.,B1
+798,declare,v.,B1
+799,decline,n.; v.,B2
+800,decorate,v.,B1
+801,decoration,n.,B2
+802,decorative,adj.,B2
+803,decrease,v.; n.,B1
+804,deep,adj.; adv.,A2
+805,deeply,adv.,B2
+806,defeat,v.; n.,B1
+807,defence,n.,B1
+808,defend,v.,B1
+809,define,v.,B2
+810,definite,adj.,B2
+811,definitely,adv.,B1
+812,definition,n.,B2
+813,degree,n.,A2
+814,delay,n.; v.,A2
+815,deliberate,adj.,B2
+816,deliberately,adv.,B2
+817,delicate,adj.,B2
+818,delight,n.; v.,B2
+819,delighted,adj.,B1
+820,deliver,v.,B1
+821,delivery,n.,B1
+822,demand,n.; v.,B1
+823,demonstrate,v.,B2
+824,dentist,n.,A2
+825,deny,v.,B2
+826,department,n.,A2
+827,departure,n.,B1
+828,depend,v.,B1
+829,deposit,n.; v.,B1
+830,depress,v.,B2
+831,depressed,adj.,B1
+832,depressing,adj.,B2
+833,depth,n.,B1
+834,derive,v.,C1
+835,describe,v.,A2
+836,description,n.,B1
+837,desert,n.; v.,A2
+838,deserted,adj.,C1
+839,deserve,v.,B1
+840,design,n.; v.,B1
+841,desire,n.; v.,B2
+842,desk,n.,A1
+843,desperate,adj.,B2
+844,desperately,adv.,B2
+845,despite,prep.,B1
+846,destroy,v.,B1
+847,destruction,n.,B2
+848,detail,n.,A2
+849,detailed,adj.,B2
+850,determination,n.,B2
+851,determine,v.,C1
+852,determined,adj.,B2
+853,develop,v.,B1
+854,development,n.,B1
+855,device,n.,B2
+856,devote,v.,B2
+857,devoted,adj.,B2
+858,diagram,n.,B1
+859,diamond,n.,B2
+860,diary,n.,A2
+861,dictionary,n.,A1
+862,die,v.,A1
+863,diet,n.,B1
+864,difference,n.,A2
+865,different,adj.,A1
+866,differently,adv.,B1
+867,difficult,adj.,A1
+868,difficulty,n.,B1
+869,dig,v.,B1
+870,dinner,n.,A1
+871,direct,adj.; v.,B1
+872,direction,n.,B1
+873,directly,adv.,B1
+874,director,n.,B1
+875,dirt,n.,B1
+876,dirty,adj.,A2
+877,disabled,adj.,B1
+878,disadvantage,n.,B1
+879,disagree,v.,B1
+880,disagreement,n.,B2
+881,disappear,v.,B1
+882,disappoint,v.,B1
+883,disappointed,adj.,B1
+884,disappointing,adj.,B1
+885,disappointment,n.,B1
+886,disapproval,n.,C1
+887,disapprove,v.,B2
+888,disapproving,adj.,B2
+889,disaster,n.,B2
+890,disc,n.,B1
+891,discipline,n.,B2
+892,discount,n.,A2
+893,discover,v.,B1
+894,discovery,n.,B2
+895,discuss,v.,A2
+896,discussion,n.,B1
+897,disease,n.,B1
+898,disgust,v.; n.,C2
+899,disgusted,adj.,C1
+900,disgusting,adj.,B1
+901,dish,n.,A2
+902,dishonest,adj.,B2
+903,dishonestly,adv.,C1
+904,disk,n.,B1
+905,dislike,v.; n.,B1
+906,dismiss,v.,C1
+907,display,v.; n.,B1
+908,dissolve,v.,C1
+909,distance,n.,B1
+910,distinguish,v.,B2
+911,distribute,v.,B2
+912,distribution,n.,C1
+913,district,n.,B1
+914,disturb,v.,B2
+915,disturbing,adj.,C2
+916,divide,v.,B1
+917,division,n.,B2
+918,divorce,n.; v.,B1
+919,divorced,adj.,B1
+920,"do, auxiliary",v.; v.,A1
+921,doctor,"n.; abbr. Dr, NAmE Dr.",A1
+922,document,n.,A2
+923,dog,n.,A1
+924,dollar,n.,A1
+925,domestic,adj.,B2
+926,dominate,v.,B2
+927,door,n.,A1
+928,dot,n.,B1
+929,double,adj.; det.; adv.; n.; v.,A2
+930,doubt,n.; v.,B1
+931,down,adv.; prep.,A1
+932,downstairs,adv.; adj.; n.,A2
+933,downward,adj.,C1
+934,downwards,adv.,C1
+935,dozen,n.; det.,B1
+936,Dr,abbr. doctor,A2
+937,draft,n.; adj.; v.,B2
+938,drag,v.,B1
+939,drama,n.,B1
+940,dramatic,adj.,B2
+941,dramatically,adv.,B2
+942,draw,v.,A1
+943,drawer,n.,A2
+944,drawing,n.,A2
+945,dream,n.; v.,A2
+946,dress,n.; v.,A1
+947,dressed,adj.,A2
+948,drink,n.; v.,A1
+949,drive,v.; n.,A1
+950,driver,n.,A1
+951,driving,n.,A1
+952,drop,v.; n.,B1
+953,drug,n.,B2
+954,drugstore,n.,B1
+955,drum,n.,A2
+956,drunk,adj.,B2
+957,dry,adj.; v.,A2
+958,due,adj.,B1
+959,due to,,B1
+960,dull,adj.,B1
+961,dump,v.; n.,C1
+962,during,prep.,A2
+963,dust,n.; v.,B1
+964,duty,n.,B1
+965,DVD,n.,A1
+966,dying,adj.,A2
+967,e.g.,abbr.,B2
+968,each,det.; pron.,A1
+969,each other,pron.,A2
+970,ear,n.,A1
+971,early,adj.; adv.,A1
+972,earn,v.,A2
+973,earth,n.,B1
+974,ease,n.; v.,B2
+975,easily,adv.,A2
+976,east,n.; adj.; adv.,A2
+977,eastern,adj.,B1
+978,easy,adj.,A1
+979,eat,v.,A1
+980,economic,adj.,B2
+981,economy,n.,B2
+982,edge,n.,B1
+983,edition,n.,B2
+984,editor,n.,B2
+985,educate,v.,B2
+986,educated,adj.,B2
+987,education,n.,B1
+988,effect,n.,B1
+989,effective,adj.,B2
+990,effectively,adv.,B2
+991,efficient,adj.,B1
+992,efficiently,adv.,B2
+993,effort,n.,B1
+994,egg,n.,A1
+995,either,det.; pron.; adv.,B1
+996,elbow,n.,B1
+997,elderly,adj.,B1
+998,elect,v.,B2
+999,election,n.,B1
+1000,electric,adj.,A2
+1001,electrical,adj.,B1
+1002,electricity,n.,A2
+1003,electronic,adj.,B1
+1004,elegant,adj.,B2
+1005,element,n.,B2
+1006,elevator,n.,A2
+1007,else,adv.,A2
+1008,elsewhere,adv.,B2
+1009,email,n.; v.,A1
+1010,embarrass,v.,C2
+1011,embarrassed,adj.,B1
+1012,embarrassing,adj.,B1
+1013,embarrassment,n.,B2
+1014,emerge,v.,B2
+1015,emergency,n.,B1
+1016,emotion,n.,B2
+1017,emotional,adj.,B2
+1018,emotionally,adv.,B2
+1019,emphasis,n.,B2
+1020,emphasize,v.,B2
+1021,empire,n.,C1
+1022,employ,v.,B1
+1023,employee,n.,B1
+1024,employer,n.,B1
+1025,employment,n.,B1
+1026,empty,adj.; v.,A2
+1027,enable,v.,B2
+1028,encounter,v.; n.,B2
+1029,encourage,v.,B1
+1030,encouragement,n.,B2
+1031,end,n.; v.,A1
+1032,ending,n.,B1
+1033,enemy,n.,B1
+1034,energy,n.,B1
+1035,engage,v.,C1
+1036,engaged,adj.,B1
+1037,engine,n.,A2
+1038,engineer,n.,A2
+1039,engineering,n.,B1
+1040,enjoy,v.,A1
+1041,enjoyable,adj.,B1
+1042,enjoyment,n.,B2
+1043,enormous,adj.,B1
+1044,enough,det.; pron.; adv.,A2
+1045,enquiry,n.,B1
+1046,ensure,v.,B2
+1047,enter,v.,A2
+1048,entertain,v.,B1
+1049,entertainer,n.,B2
+1050,entertaining,adj.,B2
+1051,entertainment,n.,B1
+1052,enthusiasm,n.,B2
+1053,enthusiastic,adj.,B2
+1054,entire,adj.,B2
+1055,entirely,adv.,B2
+1056,entitle,v.,B2
+1057,entrance,n.,A2
+1058,entry,n.,B1
+1059,envelope,n.,A2
+1060,environment,n.,B1
+1061,environmental,adj.,B1
+1062,equal,adj.; n.; v.,B1
+1063,equally,adv.,B2
+1064,equipment,n.,B1
+1065,equivalent,adj.; n.,C1
+1066,error,n.,B2
+1067,escape,v.; n.,B1
+1068,especially,adv.,A2
+1069,essay,n.,B1
+1070,essential,adj.; n.,B1
+1071,essentially,adv.,B2
+1072,establish,v.,B2
+1073,estate,n.,B2
+1074,estimate,n.; v.,B2
+1075,etc.,,B2
+1076,euro,n.,A2
+1077,even,adv.; adj.,A2
+1078,evening,n.,A1
+1079,event,n.,B1
+1080,eventually,adv.,B2
+1081,ever,adv.,A2
+1082,every,det.,A1
+1083,everyone,pron.,A2
+1084,everything,pron.,A2
+1085,everywhere,adv.,A2
+1086,evidence,n.,B2
+1087,evil,adj.; n.,B2
+1088,ex-,prefix,B2
+1089,exact,adj.,B1
+1090,exactly,adv.,A2
+1091,exaggerate,v.,C1
+1092,exaggerated,adj.,C1
+1093,exam,n.,A2
+1094,examination,n.,A2
+1095,examine,v.,B2
+1096,example,n.,A1
+1097,excellent,adj.,A2
+1098,except,prep.; conj.,A2
+1099,exception,n.,B2
+1100,exchange,v.; n.,B1
+1101,excite,v.,B2
+1102,excited,adj.,A1
+1103,excitement,n.,B1
+1104,exciting,adj.,A1
+1105,exclude,v.,C1
+1106,excluding,prep.,C1
+1107,excuse,n.; v.,B1
+1108,executive,n.; adj.,C1
+1109,exercise,n.; v.,A2
+1110,exhibit,v.; n.,C1
+1111,exhibition,n.,B1
+1112,exist,v.,A2
+1113,existence,n.,B2
+1114,exit,n.,A2
+1115,expand,v.,B2
+1116,expect,v.,B1
+1117,expectation,n.,B2
+1118,expected,adj.,B2
+1119,expense,n.,B2
+1120,expensive,adj.,A1
+1121,experience,n.; v.,B1
+1122,experienced,adj.,B1
+1123,experiment,n.; v.,B1
+1124,expert,n.; adj.,B1
+1125,explain,v.,A2
+1126,explanation,n.,B1
+1127,explode,v.,B1
+1128,explore,v.,B1
+1129,explosion,n.,B2
+1130,export,v.; n.,B2
+1131,expose,v.,B2
+1132,express,v.; adj.,B2
+1133,expression,n.,B2
+1134,extend,v.,B2
+1135,extension,n.,B2
+1136,extensive,adj.,B2
+1137,extent,n.,B2
+1138,extra,adj.; n.; adv.,A2
+1139,extraordinary,adj.,B1
+1140,extreme,adj.; n.,B2
+1141,extremely,adv.,B1
+1142,eye,n.,A1
+1143,face,n.; v.,A1
+1144,facility,n.,B2
+1145,fact,n.,A2
+1146,factor,n.,B2
+1147,factory,n.,A1
+1148,fail,v.,A2
+1149,failure,n.,B2
+1150,faint,adj.,B2
+1151,faintly,adv.,B2
+1152,fair,adj.,A2
+1153,fairly,adv.,B1
+1154,faith,n.,B2
+1155,faithful,adj.,B2
+1156,faithfully,adv.,B2
+1157,fall,v.; n.,A2
+1158,fall asleep,,B1
+1159,fall over,,B1
+1160,false,adj.,B1
+1161,fame,n.,B2
+1162,familiar,adj.,B1
+1163,family,n.; adj.,A1
+1164,famous,adj.,A1
+1165,fan,n.,A2
+1166,fancy,v.; adj.,B1
+1167,far,adv.; adj.,A2
+1168,farm,n.,A1
+1169,farmer,n.,A2
+1170,farming,n.,B1
+1171,"farther, farthest, far",,A2
+1172,fashion,n.,A2
+1173,fashionable,adj.,B1
+1174,fast,adj.; adv.,A1
+1175,fasten,v.,B1
+1176,fat,adj.; n.,A1
+1177,father,n.,A1
+1178,faucet,n.,B1
+1179,fault,n.,B2
+1180,favour,n.,B1
+1181,favourite,adj.; n.,A1
+1182,fear,n.; v.,B1
+1183,feather,n.,B2
+1184,feature,n.; v.,B2
+1185,February,n.; abbr. Feb.,A1
+1186,federal,adj.,C1
+1187,fee,n.,B1
+1188,feed,v.,B1
+1189,feel,v.,A1
+1190,feel sick,,B2
+1191,feeling,n.,B1
+1192,fellow,n.; adj.,B2
+1193,female,adj.; n.,B1
+1194,fence,n.,B2
+1195,festival,n.,B1
+1196,fetch,v.,B1
+1197,fever,n.,B1
+1198,few,det.; adj.; pron.,A2
+1199,field,n.,A2
+1200,fight,v.; n.,B1
+1201,fighting,n.,B2
+1202,figure,n.; v.,B1
+1203,file,n.,A2
+1204,fill,v.,A2
+1205,film,n.; v.,A1
+1206,final,adj.; n.,A2
+1207,finally,adv.,A2
+1208,finance,n.; v.,B2
+1209,financial,adj.,B1
+1210,find,v.,A1
+1211,find out sth,,A2
+1212,fine,adj.,A1
+1213,finely,adv.,B2
+1214,finger,n.,A2
+1215,finish,v.; n.,A1
+1216,finished,adj.,A2
+1217,fire,n.; v.,A2
+1218,firm,n.; adj.; adv.,B2
+1219,firmly,adv.,B2
+1220,first,det.; ordinal number; adv.; n.,A1
+1221,fish,n.; v.,A1
+1222,fishing,n.,A2
+1223,fit,v.; adj.,A2
+1224,fix,v.,B1
+1225,fixed,adj.,B2
+1226,flag,n.,B1
+1227,flame,n.,B2
+1228,flash,v.; n.,B2
+1229,flat,adj.; n.,A1
+1230,flavour,n.; v.,B1
+1231,flesh,n.,C2
+1232,flight,n.,A2
+1233,float,v.,B1
+1234,flood,n.; v.,B1
+1235,floor,n.,A1
+1236,flour,n.,B1
+1237,flow,n.; v.,B1
+1238,flower,n.,A1
+1239,flu,n.,B1
+1240,fly,v.; n.,A1
+1241,flying,adj.; n.,A2
+1242,focus,v.; n.,B2
+1243,fold,v.; n.,B1
+1244,folding,adj.,B2
+1245,follow,v.,A2
+1246,following,adj.; n.; prep.,B2
+1247,food,n.,A1
+1248,foot,n.,A1
+1249,football,n.,A1
+1250,for,prep.,A1
+1251,for instance,,B1
+1252,force,n.; v.,B2
+1253,forecast,n.; v.,B1
+1254,foreign,adj.,A2
+1255,forest,n.,A2
+1256,forever,adv.,B1
+1257,forget,v.,A1
+1258,forgive,v.,B1
+1259,fork,n.,A2
+1260,form,n.; v.,A2
+1261,formal,adj.,B2
+1262,formally,adv.,C1
+1263,former,adj.,B1
+1264,formerly,adv.,B2
+1265,formula,n.,C1
+1266,fortune,n.,B2
+1267,forward,adj.,B2
+1268,forward,adv.,B1
+1269,found,v.,B2
+1270,foundation,n.,C1
+1271,frame,n.; v.,B1
+1272,free,adj.; v.; adv.,A2
+1273,freedom,n.,B2
+1274,freely,adv.,B2
+1275,freeze,v.,B1
+1276,frequent,adj.,B1
+1277,frequently,adv.,B1
+1278,fresh,adj.,A2
+1279,freshly,adv.,A2
+1280,Friday,n.; abbr. Fri.,A1
+1281,fridge,n.,A2
+1282,friend,n.,A1
+1283,friendly,adj.,A2
+1284,friendship,n.,B1
+1285,frighten,v.,B2
+1286,frightened,adj.,B1
+1287,frightening,adj.,B1
+1288,from,prep.,A1
+1289,front,n.; adj.,A2
+1290,frozen,adj.,B1
+1291,"frozen, freeze",,B1
+1292,fruit,n.,A1
+1293,fry,v.; n.,B1
+1294,fuel,n.,B1
+1295,full,adj.,A2
+1296,fully,adv.,B1
+1297,fun,n.; adj.,A1
+1298,function,n.; v.,B2
+1299,fund,n.; v.,C1
+1300,fundamental,adj.,C2
+1301,funeral,n.,B2
+1302,funny,adj.,A1
+1303,fur,n.,B1
+1304,furniture,n.,A2
+1305,further,adj.,A2
+1306,future,n.; adj.,A2
+1307,g,abbr. gram,A2
+1308,gain,v.; n.,B1
+1309,gallon,n.,B2
+1310,gamble,v.; n.,C2
+1311,gambling,n.,B2
+1312,game,n.,A1
+1313,gap,n.,B1
+1314,garage,n.,A2
+1315,garbage,n.,B1
+1316,garden,n.,A1
+1317,gas,n.,A2
+1318,gasoline,n.,B2
+1319,gate,n.,A2
+1320,gather,v.,B2
+1321,gear,n.,B2
+1322,general,adj.,B1
+1323,generally,adv.,B1
+1324,generate,v.,B2
+1325,generation,n.,B1
+1326,generous,adj.,B1
+1327,generously,adv.,B2
+1328,gentle,adj.,B1
+1329,gentleman,n.,B2
+1330,gently,adv.,B2
+1331,genuine,adj.,B2
+1332,genuinely,adv.,B2
+1333,geography,n.,A2
+1334,get,v.,A1
+1335,get off,,B1
+1336,get on,,B1
+1337,giant,n.; adj.,B1
+1338,gift,n.,A2
+1339,girl,n.,A1
+1340,girlfriend,n.,A2
+1341,give up,,B2
+1342,give,v.,A1
+1343,give birth,,B2
+1344,give sth away,,B1
+1345,give sth out,,B1
+1346,glad,adj.,A2
+1347,glass,n.,A1
+1348,glasses,n.,A1
+1349,global,adj.,B2
+1350,glove,n.,A2
+1351,glue,n.; v.,C2
+1352,gm,abbr. gram,A2
+1353,go,v.,A1
+1354,go bad,,B1
+1355,go down,,B1
+1356,go up,,B1
+1357,go wrong,,B1
+1358,goal,n.,A2
+1359,god,n.,A2
+1360,gold,n.; adj.,A2
+1361,good,adj.; n.,A1
+1362,good at,,A2
+1363,good for,,A1
+1364,goodbye,exclamation; n.,A1
+1365,goods,n.,B2
+1366,govern,v.,B2
+1367,government,n.,B1
+1368,governor,n.,B2
+1369,grab,v.,B1
+1370,grade,n.; v.,A2
+1371,gradual,adj.,B2
+1372,gradually,adv.,B2
+1373,grain,n.,C2
+1374,gram,"n.; abbr. g, gm",A2
+1375,grammar,n.,A2
+1376,grand,adj.,C1
+1377,grandchild,n.,A2
+1378,granddaughter,n.,A2
+1379,grandfather,n.,A2
+1380,grandmother,n.,A2
+1381,grandparent,n.,A2
+1382,grandson,n.,A2
+1383,grant,v.; n.,B2
+1384,grass,n.,A1
+1385,grateful,adj.,B1
+1386,grave,n.; adj.,B2
+1387,gray grey,,A1
+1388,great,adj.,A1
+1389,greatly,adv.,B2
+1390,green,adj.; n.,A1
+1391,grey,adj.; n.,A1
+1392,groceries,n.,B1
+1393,grocery,n.,A2
+1394,ground,n.,B1
+1395,group,n.,A1
+1396,grow,v.,A2
+1397,grow up,,A2
+1398,growth,n.,B2
+1399,guarantee,n.; v.,B2
+1400,guard,n.; v.,B1
+1401,guess,v.; n.,A2
+1402,guest,n.,A2
+1403,guide,n.; v.,A2
+1404,guilty,adj.,B1
+1405,gun,n.,B1
+1406,guy,n.,A2
+1407,habit,n.,B1
+1408,hair,n.,A1
+1409,hairdresser,n.,B1
+1410,half,n.; det.; pron.; adv.,A1
+1411,hall,n.,A1
+1412,hammer,n.,B2
+1413,hand,n.; v.,A1
+1414,handle,v.; n.,B1
+1415,hang,v.,B1
+1416,happen,v.,A2
+1417,happily,adv.,B1
+1418,happiness,n.,B1
+1419,happy,adj.,A1
+1420,hard,adj.; adv.,A1
+1421,hardly,adv.,B1
+1422,harm,n.; v.,B2
+1423,harmful,adj.,B2
+1424,harmless,adj.,B2
+1425,hat,n.,A1
+1426,hate,v.; n.,A2
+1427,hatred,n.,C1
+1428,"have, auxiliary",v.; v.,A1
+1429,have to,modal; v.,A2
+1430,he,pron.,A1
+1431,head,n.; v.,A1
+1432,headache,n.,A2
+1433,heal,v.,B2
+1434,health,n.,A2
+1435,healthy,adj.,A2
+1436,hear,v.,A1
+1437,hearing,n.,A1
+1438,heart,n.,A2
+1439,heat,n.; v.,B1
+1440,heating,n.,B1
+1441,heaven,n.,B2
+1442,heavily,adv.,B1
+1443,heavy,adj.,A2
+1444,heel,n.,B1
+1445,height,n.,B1
+1446,hell,n.,B2
+1447,hello,exclamation; n.,A1
+1448,help,v.; n.,A1
+1449,helpful,adj.,B1
+1450,hence,adv.,C1
+1451,her,pron.; det.,A1
+1452,here,adv.,A1
+1453,hero,n.,B1
+1454,hers,pron.,A1
+1455,herself,pron.,A2
+1456,hesitate,v.,B2
+1457,hi,exclamation,A1
+1458,hide,v.,B1
+1459,high,adj.; adv.,A2
+1460,highlight,v.; n.,B2
+1461,highly,adv.,B2
+1462,highway,n.,A2
+1463,hill,n.,A2
+1464,him,pron.,A1
+1465,himself,pron.,A2
+1466,hip,n.,B2
+1467,hire,v.; n.,B1
+1468,his,det.; pron.,A1
+1469,historical,adj.,B1
+1470,history,n.,A2
+1471,hit,v.; n.,A2
+1472,hobby,n.,A2
+1473,hold,v.; n.,A2
+1474,hole,n.,B1
+1475,holiday,n.,A1
+1476,hollow,adj.,C2
+1477,holy,adj.,C1
+1478,"home,.",n.; adv.,A1
+1479,homework,n.,A1
+1480,honest,adj.,B1
+1481,honestly,adv.,B1
+1482,honour,n.,B2
+1483,hook,n.,B2
+1484,hope,v.; n.,A2
+1485,horizontal,adj.,C1
+1486,horn,n.,B2
+1487,horror,n.,B1
+1488,horse,n.,A1
+1489,hospital,n.,A1
+1490,host,n.; v.,B2
+1491,hot,adj.,A1
+1492,hotel,n.,A1
+1493,hour,n.,A1
+1494,house,n.,A1
+1495,household,n.; adj.,B2
+1496,housing,n.,C1
+1497,how,adv.,A1
+1498,however,adv.,A2
+1499,huge,adj.,B1
+1500,human,adj.; n.,B1
+1501,humorous,adj.,C1
+1502,humour,n.,B1
+1503,hungry,adj.,A1
+1504,hunt,v.,B1
+1505,hunting,n.,B2
+1506,hurry,v.; n.,A2
+1507,hurt,v.,A2
+1508,husband,n.,A1
+1509,I,pron.,A1
+1510,i.e.,abbr.,C1
+1511,ice,n.,A2
+1512,ice cream,n.,A1
+1513,idea,n.,A2
+1514,ideal,adj.; n.,B2
+1515,ideally,adv.,B2
+1516,identify,v.,B2
+1517,identity,n.,B2
+1518,if,conj.,A2
+1519,ignore,v.,B2
+1520,ill,adj.,A2
+1521,illegal,adj.,B2
+1522,illegally,adv.,B2
+1523,illness,n.,B1
+1524,illustrate,v.,B2
+1525,image,n.,B2
+1526,imaginary,adj.,C1
+1527,imagination,n.,B1
+1528,imagine,v.,B1
+1529,immediate,adj.,B2
+1530,immediately,adv.,A2
+1531,immoral,adj.,B2
+1532,impact,n.,B2
+1533,impatient,adj.,B2
+1534,impatiently,adv.,B2
+1535,implication,n.,C1
+1536,imply,v.,C2
+1537,import,n.; v.,B2
+1538,importance,n.,B1
+1539,important,adj.,A1
+1540,importantly,adv.,B2
+1541,impose,v.,C1
+1542,impossible,adj.,B1
+1543,impress,v.,B2
+1544,impressed,adj.,B2
+1545,impression,n.,B2
+1546,impressive,adj.,B2
+1547,improve,v.,A2
+1548,improvement,n.,B1
+1549,in,prep.; adv.,A1
+1550,in a hurry,,B1
+1551,in addition,,B1
+1552,in advance,,B1
+1553,in case,,B1
+1554,in charge of,,B1
+1555,in common,,B1
+1556,in control,,B2
+1557,in detail,,B1
+1558,in exchange,,B1
+1559,in favour/favor,,B2
+1560,in front,,B1
+1561,in general,,B1
+1562,in honour/honor of,,B2
+1563,in memory of,,C2
+1564,in order to,,B1
+1565,in public,,B2
+1566,in the end,,B1
+1567,inability,n.,C1
+1568,inch,n.,B1
+1569,incident,n.,B2
+1570,include,v.,A2
+1571,including,prep.,A2
+1572,income,n.,B2
+1573,increase,v.; n.,B1
+1574,increasingly,adv.,B2
+1575,indeed,adv.,B1
+1576,independence,n.,B2
+1577,independent,adj.,B1
+1578,independently,adv.,B2
+1579,index,n.,C1
+1580,indicate,v.,B2
+1581,indication,n.,C1
+1582,indirect,adj.,C1
+1583,indirectly,adv.,C1
+1584,individual,adj.; n.,B1
+1585,indoor,adj.,A2
+1586,indoors,adv.,B1
+1587,industrial,adj.,B2
+1588,industry,n.,B1
+1589,inevitable,adj.,C1
+1590,inevitably,adv.,C1
+1591,infect,v.,C1
+1592,infected,adj.,C1
+1593,infection,n.,B2
+1594,infectious,adj.,C2
+1595,influence,n.; v.,B2
+1596,inform,v.,B1
+1597,informal,adj.,B2
+1598,information,n.,A2
+1599,ingredient,n.,B1
+1600,initial,adj.; n.,B1
+1601,initially,adv.,B2
+1602,initiative,n.,C1
+1603,injure,v.,B1
+1604,injured,adj.,B1
+1605,injury,n.,B2
+1606,ink,n.,B1
+1607,inner,adj.,B2
+1608,innocent,adj.,B2
+1609,"inquiry, enquiry",,B1
+1610,insect,n.,A2
+1611,insert,v.,C1
+1612,inside,prep.; adv.; n.; adj.,A1
+1613,insist,v.,B1
+1614,install,v.,B1
+1615,instance,n.,B1
+1616,instead,adv.,A2
+1617,instead of,,B1
+1618,institute,n.,B2
+1619,institution,n.,B2
+1620,instruction,n.,A2
+1621,instrument,n.,A2
+1622,insult,v.; n.,B2
+1623,insulting,adj.,B2
+1624,insurance,n.,B2
+1625,intelligence,n.,B2
+1626,intelligent,adj.,B1
+1627,intend,v.,B1
+1628,intended,adj.,C1
+1629,intention,n.,B2
+1630,interest,n.; v.,B1
+1631,interested,adj.,A2
+1632,interesting,adj.,A1
+1633,interior,n.; adj.,B2
+1634,internal,adj.,B2
+1635,international,adj.,A2
+1636,Internet,n.,A1
+1637,interpret,v.,B2
+1638,interpretation,n.,C2
+1639,interrupt,v.,B1
+1640,interruption,n.,B2
+1641,interval,n.,B1
+1642,interview,n.; v.,B1
+1643,into,prep.,A1
+1644,introduce,v.,B1
+1645,introduction,n.,B2
+1646,invent,v.,B1
+1647,invention,n.,B1
+1648,invest,v.,B2
+1649,investigate,v.,B2
+1650,investigation,n.,B2
+1651,investment,n.,B2
+1652,invitation,n.,A2
+1653,invite,v.,A1
+1654,involve,v.,B1
+1655,involved in,,B2
+1656,involvement,n.,B2
+1657,iron,n.; v.,B1
+1658,irritate,v.,C1
+1659,irritated,adj.,B2
+1660,irritating,adj.,B2
+1661,-ish,suffix,B2
+1662,island,n.,A2
+1663,issue,n.; v.,B1
+1664,it,pron.; det.,A1
+1665,item,n.,B1
+1666,its,det.,A1
+1667,itself,pron.,A2
+1668,jacket,n.,A1
+1669,jam,n.,A2
+1670,January),n.; abbr. Ja(n.,A1
+1671,jealous,adj.,B1
+1672,jeans,n.,A1
+1673,jelly,n.,A2
+1674,jewellery,n.,A2
+1675,job,n.,A1
+1676,join,v.,A2
+1677,joint,adj.; n.,B2
+1678,jointly,adv.,C1
+1679,joke,n.; v.,B1
+1680,journalist,n.,B1
+1681,journey,n.,A2
+1682,joy,n.,B2
+1683,judge,n.; v.,B1
+1684,judgement,n.,B2
+1685,juice,n.,A1
+1686,July,n.; abbr. Jul.,A1
+1687,jump,v.; n.,A2
+1688,June,n.; abbr. Jun.,A1
+1689,junior,adj.; n.,B2
+1690,just,adv.,A2
+1691,justice,n.,B2
+1692,justified,adj.,C1
+1693,justify,v.,B2
+1694,k,abbr. kilometer,A2
+1695,keen,adj.,B1
+1696,keen on,,B1
+1697,keep,v.,A2
+1698,key,n.; adj.,A1
+1699,keyboard,n.,A2
+1700,kick,v.; n.,A1
+1701,kid,n.,B1
+1702,kill,v.,A2
+1703,killing,n.,B1
+1704,kilogram,n.; abbr. kg,A2
+1705,kilometre,"n.; abbr. k, km",A2
+1706,kind,n.; adj.,A1
+1707,kindly,adv.,B1
+1708,kindness,n.,B2
+1709,king,n.,A2
+1710,kiss,v.; n.,A2
+1711,kitchen,n.,A1
+1712,km,abbr. kilometer,A2
+1713,knee,n.,B1
+1714,knife,n.,A1
+1715,knit,v.,B1
+1716,knitted,adj.,B1
+1717,knitting,n.,B1
+1718,knock,v.; n.,B1
+1719,knot,n.,C2
+1720,know,v.,A1
+1721,knowledge,n.,B1
+1722,l abbr.litre,,A2
+1723,label,n.; v.,B1
+1724,"laboratory, lab",n.,B1
+1725,labour,n.,C1
+1726,lack,n.; v.,B1
+1727,lacking,adj.,C1
+1728,lady,n.,B1
+1729,lake,n.,A2
+1730,lamp,n.,A2
+1731,land,n.; v.,B1
+1732,landscape,n.,B1
+1733,lane,n.,B2
+1734,language,n.,A1
+1735,large,adj.,A2
+1736,largely,adv.,B2
+1737,last,det.; adv.; n.; v.,A1
+1738,late,adj.; adv.,A1
+1739,later,adv.; adj.,A1
+1740,latest,adj.; n.,A2
+1741,latter,adj.; n.,B2
+1742,laugh,v.; n.,A2
+1743,launch,v.; n.,B2
+1744,law,n.,B1
+1745,lawyer,n.,B1
+1746,lay,v.,B1
+1747,layer,n.,B2
+1748,lazy,adj.,A2
+1749,lead,v.; n.,B1
+1750,leader,n.,B1
+1751,leading,adj.,B2
+1752,leaf,n.,B1
+1753,league,n.,B1
+1754,lean,v.,B2
+1755,learn,v.,A1
+1756,least,det.; pron.; adv.,A2
+1757,leather,n.,A2
+1758,leave,v.,A1
+1759,leave out,,B2
+1760,lecture,n.,B1
+1761,left,adj.; adv.; n.,A2
+1762,leg,n.,A1
+1763,legal,adj.,B2
+1764,legally,adv.,B2
+1765,lemon,n.,A2
+1766,lend,v.,A2
+1767,length,n.,B1
+1768,less,det.; pron.; adv.,A2
+1769,lesson,n.,A1
+1770,let,v.,A2
+1771,letter,n.,A1
+1772,level,n.; adj.,A2
+1773,library,n.,A2
+1774,licence,n.,A2
+1775,license,v.,A2
+1776,lid,n.,B2
+1777,lie,v.; n.,A2
+1778,life,n.,A1
+1779,lift,v.; n.,A2
+1780,light,n.; adj.; v.,A1
+1781,lightly,adv.,B1
+1782,like,prep.; v.; conj.,A1
+1783,likely,adj.; adv.,B1
+1784,limit,n.; v.,B1
+1785,limited,adj.,B1
+1786,line,n.,A2
+1787,link,n.; v.,B1
+1788,lip,n.,B1
+1789,liquid,n.; adj.,B1
+1790,list,n.; v.,A2
+1791,listen,v.,A1
+1792,literature,n.,B1
+1793,litre,n.; abbr. l,A2
+1794,little,adj.; det.; pron.; adv.,A1
+1795,live,adj.; adv.,B1
+1796,live,v.,A1
+1797,lively,adj.,B1
+1798,living,adj.,B2
+1799,load,n.; v.,B1
+1800,loan,n.,B1
+1801,local,adj.,B1
+1802,locally,adv.,B2
+1803,locate,v.,B2
+1804,located,adj.,B1
+1805,location,n.,B1
+1806,lock,v.; n.,B1
+1807,logic,n.,C1
+1808,logical,adj.,B2
+1809,lonely,adj.,B1
+1810,long,adj.; adv.,A1
+1811,look,v.; n.,A1
+1812,look after,,A2
+1813,look at,,B2
+1814,look for,,B2
+1815,look forward to,,B1
+1816,loose,adj.,B1
+1817,loosely,adv.,B2
+1818,lord,n.,B2
+1819,lorry,n.,B1
+1820,lose,v.,A2
+1821,loss,n.,B2
+1822,lost,adj.,A2
+1823,lot: a lot),pron.; det.; adv.,A1
+1824,loud,adj.; adv.,A2
+1825,loudly,adv.,B1
+1826,love,n.; v.,A1
+1827,lovely,adj.,A2
+1828,lover,n.,B1
+1829,low,adj.; adv.,A2
+1830,loyal,adj.,B2
+1831,luck,n.,A2
+1832,lucky,adj.,A2
+1833,luggage,n.,A2
+1834,lump,n.,C2
+1835,lunch,n.,A1
+1836,lung,n.,B2
+1837,machine,n.,A2
+1838,machinery,n.,C1
+1839,mad,adj.,A2
+1840,magazine,n.,A2
+1841,magic,n.; adj.,A2
+1842,mail,n.; v.,A1
+1843,main,adj.,B1
+1844,mainly,adv.,B1
+1845,maintain,v.,B2
+1846,major,adj.,B2
+1847,majority,n.,B2
+1848,make,v.; n.,A1
+1849,make friends,,B1
+1850,make fun of,,B2
+1851,make sth up,,B1
+1852,make sure,,A2
+1853,make-up,n.,A2
+1854,male,adj.; n.,B1
+1855,mall,n.,B1
+1856,man,n.,A1
+1857,manage,v.,B1
+1858,management,n.,B2
+1859,manager,n.,A2
+1860,manner,n.,B2
+1861,manufacture,v.; n.,B2
+1862,manufacturer,n.,B2
+1863,manufacturing,n.,B2
+1864,many,det.; pron.,A1
+1865,map,n.,A2
+1866,March,n.; abbr. Mar.,A1
+1867,march,v.; n.,C1
+1868,mark,n.; v.,A2
+1869,market,n.,A2
+1870,marketing,n.,B2
+1871,marriage,n.,B1
+1872,married,adj.,A2
+1873,marry,v.,B1
+1874,mass,n.; adj.,B2
+1875,massive,adj.,B2
+1876,master,n.,B2
+1877,match,n.; v.,A2
+1878,matching,adj.,B2
+1879,mate,n.; v.,B1
+1880,material,n.; adj.,B1
+1881,mathematics,n.,A2
+1882,matter,n.; v.,A2
+1883,maximum,adj.; n.,B1
+1884,may,modal; v.,A2
+1885,May,n.,A1
+1886,maybe,adv.,A2
+1887,mayor,n.,B2
+1888,me,pron.,A1
+1889,meal,n.,A1
+1890,mean,v.,A2
+1891,meaning,n.,B1
+1892,means,n.,B2
+1893,meanwhile,adv.,B1
+1894,measure,v.; n.,B2
+1895,measurement,n.,B2
+1896,meat,n.,A1
+1897,media,n.,B2
+1898,medical,adj.,B2
+1899,medicine,n.,A2
+1900,medium,adj.; n.,B1
+1901,meet,v.,A1
+1902,meeting,n.,A2
+1903,melt,v.,B2
+1904,member,n.,A2
+1905,membership,n.,B1
+1906,memory,n.,A2
+1907,mental,adj.,B2
+1908,mentally,adv.,B2
+1909,mention,v.,B1
+1910,menu,n.,A2
+1911,mere,adj.,B2
+1912,merely,adv.,B2
+1913,mess,n.,B1
+1914,message,n.,A1
+1915,metal,n.,B1
+1916,method,n.,B1
+1917,metre,n.,A2
+1918,mg,abbr. milligram,B1
+1919,mid- combining form,,B2
+1920,midday,n.,A2
+1921,middle,n.; adj.,A2
+1922,midnight,n.,A2
+1923,might,modal; v.,A2
+1924,mild,adj.,B1
+1925,mile,n.,B1
+1926,military,adj.,B2
+1927,milk,n.,A1
+1928,milligram,n.; abbr. mg,B1
+1929,millimetre,n.; abbr. mm,B1
+1930,mind,n.; v.,B1
+1931,mine,pron.; n.,A2
+1932,mineral,n.; adj.,A2
+1933,minimum,adj.; n.,B1
+1934,minister,n.,B2
+1935,ministry,n.,C1
+1936,minor,adj.,B2
+1937,minority,n.,B2
+1938,minute,n.,A1
+1939,mirror,n.,A2
+1940,Miss,n.,A1
+1941,miss,v.; n.,A2
+1942,missing,adj.,A2
+1943,mistake,n.; v.,A2
+1944,mistaken,adj.,C1
+1945,mix,v.; n.,A2
+1946,mixed,adj.,A2
+1947,mixture,n.,B2
+1948,mm,abbr. millimetre,B1
+1949,mobile,adj.,A1
+1950,mobile phone,n.,A1
+1951,model,n.,A2
+1952,modern,adj.,A2
+1953,mom,n.,A1
+1954,moment,n.,A2
+1955,Monday),n.; abbr. Mo(n.,A1
+1956,money,n.,A1
+1957,monitor,n.; v.,B2
+1958,month,n.,A1
+1959,mood,n.,B1
+1960,moon,n.,A2
+1961,moral,adj.,B2
+1962,morally,adv.,B2
+1963,more,det.; pron.; adv.,A1
+1964,moreover,adv.,B2
+1965,morning,n.,A1
+1966,most,det.; pron.; adv.,A2
+1967,mostly,adv.,B1
+1968,mother,n.,A1
+1969,motion,n.,C2
+1970,motor,n.,B2
+1971,motorcycle,n.,A2
+1972,mount,v.; n.,C2
+1973,mountain,n.,A2
+1974,mouse,n.,A2
+1975,mouth,n.,A1
+1976,move,v.; n.,A2
+1977,movement,n.,B2
+1978,movie,n.,A1
+1979,movie theater,n.,A2
+1980,moving,adj.,B2
+1981,Mr,abbr.,A1
+1982,Mrs,abbr.,A1
+1983,Ms,abbr.,A2
+1984,much,det.; pron.; adv.,A1
+1985,mud,n.,B2
+1986,multiply,v.,B2
+1987,mum,n.,A1
+1988,murder,n.; v.,B1
+1989,muscle,n.,B2
+1990,museum,n.,A1
+1991,music,n.,A1
+1992,musical,adj.,A2
+1993,musician,n.,B1
+1994,must,v.,A2
+1995,my,det.,A1
+1996,myself,pron.,A2
+1997,mysterious,adj.,B2
+1998,mystery,n.,B1
+1999,nail,n.,B2
+2000,naked,adj.,B2
+2001,name,n.; v.,A1
+2002,narrow,adj.,B1
+2003,nation,n.,B2
+2004,national,adj.,A2
+2005,natural,adj.,B1
+2006,naturally,adv.,B2
+2007,nature,n.,A2
+2008,navy,n.,B2
+2009,near,adj.; adv.; prep.,A1
+2010,nearby,adj.; adv.,B1
+2011,nearly,adv.,A2
+2012,neat,adj.,B1
+2013,neatly,adv.,C1
+2014,necessarily,adv.,B2
+2015,necessary,adj.,B1
+2016,neck,n.,A2
+2017,need,v.; modal; v.; n.,A1
+2018,needle,n.,B2
+2019,negative,adj.,A2
+2020,neighbour,n.,A2
+2021,neighbourhood,n.,B1
+2022,neither,det.; pron.; adv.,B2
+2023,nephew,n.,B1
+2024,nerve,n.,C1
+2025,nervous,adj.,B1
+2026,nervously,adv.,B2
+2027,nest,n.; v.,C2
+2028,net,n.,A2
+2029,network,n.,B2
+2030,never,adv.,A1
+2031,nevertheless,adv.,B2
+2032,new,adj.,A1
+2033,newly,adv.,B2
+2034,news,n.,A2
+2035,newspaper,n.,A1
+2036,next,adj.; adv.; n.,A1
+2037,next to,prep.,A2
+2038,nice,adj.,A1
+2039,nicely,adv.,B2
+2040,niece,n.,B1
+2041,night,n.,A1
+2042,no,exclamation; det.,A1
+2043,"no one, nobody",,A2
+2044,No.,abbr. number,A1
+2045,nobody,pron.,A2
+2046,noise,n.,A1
+2047,noisily,adv.,B1
+2048,noisy,adj.,A2
+2049,non-,prefix,B2
+2050,none,pron.,B1
+2051,nonsense,n.,B2
+2052,nor,conj.; adv.,B2
+2053,normal,adj.; n.,A2
+2054,normally,adv.,B1
+2055,north,n.; adj.; adv.,A2
+2056,northern,adj.,B1
+2057,nose,n.,A1
+2058,not,adv.,A1
+2059,note,n.; v.,A1
+2060,nothing,pron.,A2
+2061,notice,n.; v.,A2
+2062,noticeable,adj.,C1
+2063,novel,n.,B1
+2064,November),n.; abbr. No(v.,A1
+2065,now,adv.,A1
+2066,nowhere,adv.,B1
+2067,nuclear,adj.,B2
+2068,number,"abbr. No., no.; n.",A1
+2069,nurse,n.,A2
+2070,nut,n.,B2
+2071,o’clock,adv.,A1
+2072,obey,v.,B2
+2073,object,n.; v.,B1
+2074,objective,n.; adj.,B2
+2075,observation,n.,B2
+2076,observe,v.,B2
+2077,obtain,v.,B2
+2078,obvious,adj.,B1
+2079,obviously,adv.,B1
+2080,occasion,n.,B1
+2081,occasionally,adv.,B2
+2082,occupied,adj.,B2
+2083,occupy,v.,B2
+2084,occur,v.,B2
+2085,ocean,n.,B1
+2086,October,n.; abbr. Oct.,A1
+2087,odd,adj.,B2
+2088,oddly,adv.,C2
+2089,of,prep.,A1
+2090,of course,,A1
+2091,off,adv.; prep.,A2
+2092,offence,n.,B2
+2093,offend,v.,B2
+2094,offensive,adj.,B2
+2095,offer,v.; n.,A2
+2096,office,n.,A2
+2097,officer,n.,B1
+2098,official,adj.; n.,B2
+2099,officially,adv.,C1
+2100,often,adv.,A1
+2101,oh,exclamation,A1
+2102,oil,n.,A2
+2103,OK,exclamation; adj.; adv.,A1
+2104,old,adj.,A1
+2105,old-fashioned,adj.,B1
+2106,on,prep.; adv.,A1
+2107,on board,,B1
+2108,on purpose,,B1
+2109,once,adv.; conj.,A2
+2110,one,number; det.; pron.,A1
+2111,"one another, each other",,B1
+2112,onion,n.,A2
+2113,only,adj.; adv.,A1
+2114,onto,prep.,B1
+2115,open,adj.; v.,A1
+2116,opening,n.,B2
+2117,openly,adv.,C1
+2118,operate,v.,B1
+2119,operation,n.,B1
+2120,opinion,n.,B1
+2121,opponent,n.,B2
+2122,opportunity,n.,B1
+2123,oppose,v.,B2
+2124,opposed to,,C1
+2125,opposing,adj.,B2
+2126,opposite,adj.; adv.; n.; prep.,A2
+2127,opposition,n.,C1
+2128,option,n.,B1
+2129,or,conj.,A1
+2130,orange,n.; adj.,A1
+2131,order,n.; v.,A2
+2132,ordinary,adj.,B1
+2133,organ,n.,C1
+2134,organization,n.,B1
+2135,organize,v.,B1
+2136,organized,adj.,B2
+2137,origin,n.,B2
+2138,original,adj.; n.,B1
+2139,originally,adv.,B2
+2140,other,adj.; pron.,A1
+2141,otherwise,adv.,B1
+2142,ought to,modal; v.,B1
+2143,our,det.,A1
+2144,ours,pron.,A2
+2145,ourselves,pron.,A2
+2146,out,adv.; prep.,A2
+2147,outdoor,adj.,B1
+2148,outdoors,adv.,B1
+2149,outer,adj.,B2
+2150,outline,v.; n.,B2
+2151,output,n.,C2
+2152,outside,n.; adj.; prep.; adv.,A1
+2153,outstanding,adj.,B2
+2154,oven,n.,B1
+2155,over,adv.; prep.,A2
+2156,overall,adj.; adv.,B2
+2157,overcome,v.,B2
+2158,owe,v.,B1
+2159,own,adj.; pron.; v.,A2
+2160,owner,n.,B1
+2161,p,"abbr. page, penny",A1
+2162,p.m.,abbr.,A1
+2163,pace,n.,B2
+2164,pack,v.; n.,A2
+2165,package,n.; v.,B2
+2166,packaging,n.,B2
+2167,packet,n.,B1
+2168,page,n.; abbr. p,A1
+2169,pain,n.,A2
+2170,painful,adj.,B1
+2171,paint,n.; v.,A1
+2172,painter,n.,A2
+2173,painting,n.,A2
+2174,pair,n.,A1
+2175,palace,n.,B1
+2176,pale,adj.,A2
+2177,pan,n.,B1
+2178,panel,n.,C1
+2179,pants,n.,B1
+2180,paper,n.,A1
+2181,parallel,adj.,C2
+2182,parent,n.,A1
+2183,park,n.; v.,A1
+2184,parliament,n.,B2
+2185,part,n.,A1
+2186,particular,adj.,B2
+2187,particularly,adv.,B1
+2188,partly,adv.,B1
+2189,partner,n.,A2
+2190,partnership,n.,B2
+2191,party,n.,A1
+2192,pass,v.,A2
+2193,passage,n.,B2
+2194,passenger,n.,A2
+2195,passing,n.; adj.,B1
+2196,passport,n.,A2
+2197,past,adj.; n.; prep.; adv.,A2
+2198,path,n.,A2
+2199,patience,n.,B2
+2200,patient,n.; adj.,B1
+2201,pattern,n.,B1
+2202,pause,v.; n.,B1
+2203,pay,v.; n.,A1
+2204,pay attention,,B1
+2205,payment,n.,B2
+2206,peace,n.,B1
+2207,peaceful,adj.,B1
+2208,peak,n.,B1
+2209,pen,n.,A1
+2210,pence,n.,A2
+2211,pencil,n.,A1
+2212,penny,,B1
+2213,penny,n.; abbr. p,B1
+2214,pension,n.,B2
+2215,people,n.,A1
+2216,pepper,n.,A2
+2217,per,prep.,A2
+2218,per cent,n.; adj.; adv.,B1
+2219,perfect,adj.,A2
+2220,perfectly,adv.,B1
+2221,perform,v.,B1
+2222,performance,n.,B1
+2223,performer,n.,B1
+2224,perhaps,adv.,A2
+2225,period,n.,B1
+2226,permanent,adj.,B1
+2227,permanently,adv.,B2
+2228,permission,n.,B1
+2229,permit,v.,B1
+2230,person,n.,A1
+2231,personal,adj.,B1
+2232,personality,n.,B2
+2233,personally,adv.,B1
+2234,persuade,v.,B1
+2235,pet,n.,A1
+2236,petrol,n.,A2
+2237,phase,n.,B2
+2238,philosophy,n.,B2
+2239,"phone, telephone",,A1
+2240,photocopy,n.; v.,B1
+2241,"photograph,)",n.; v.; also photo (n.,A2
+2242,photographer,n.,A2
+2243,photography,n.,A2
+2244,phrase,n.,B1
+2245,physical,adj.,B2
+2246,physically,adv.,B2
+2247,physics,n.,A2
+2248,piano,n.,A2
+2249,pick,v.,B1
+2250,pick sth up,,A2
+2251,picture,n.,A1
+2252,piece,n.,A2
+2253,pig,n.,A1
+2254,pile,n.; v.,B1
+2255,pill,n.,B1
+2256,pilot,n.,A2
+2257,pin,n.; v.,B1
+2258,pink,adj.; n.,A2
+2259,pint,n.; abbr. pt,B2
+2260,pipe,n.,B1
+2261,pitch,n.,B2
+2262,pity,n.,B2
+2263,place,n.; v.,A1
+2264,plain,adj.,B1
+2265,plan,n.; v.,A2
+2266,plane,n.,A1
+2267,planet,n.,B1
+2268,planning,n.,B2
+2269,plant,n.; v.,A1
+2270,plastic,n.; adj.,A2
+2271,plate,n.,A1
+2272,platform,n.,A2
+2273,play,v.; n.,A1
+2274,player,n.,A1
+2275,pleasant,adj.,A2
+2276,pleasantly,adv.,B1
+2277,please,exclamation; v.,A1
+2278,pleased,adj.,A2
+2279,pleasing,adj.,A2
+2280,pleasure,n.,B1
+2281,plenty,pron.; adv.; n.; det.,B1
+2282,plot,n.; v.,B2
+2283,plug,n.,B1
+2284,plus,prep.; n.; adj.; conj.,A2
+2285,pocket,n.,A2
+2286,poem,n.,B1
+2287,poetry,n.,B1
+2288,point,n.; v.,B1
+2289,pointed,adj.,B2
+2290,poison,n.; v.,B2
+2291,poisonous,adj.,B2
+2292,pole,n.,C2
+2293,police,n.,A2
+2294,policy,n.,B2
+2295,polish,n.; v.,B2
+2296,polite,adj.,A2
+2297,politely,adv.,B1
+2298,political,adj.,B1
+2299,politically,adv.,C1
+2300,politician,n.,B1
+2301,politics,n.,B1
+2302,pollution,n.,B1
+2303,pool,n.,A2
+2304,poor,adj.,A1
+2305,pop,n.; v.,A2
+2306,popular,adj.,A2
+2307,population,n.,B1
+2308,port,n.,B1
+2309,pose,v.; n.,C1
+2310,position,n.,B1
+2311,positive,adj.,B1
+2312,possess,v.,C1
+2313,possession,n.,B2
+2314,possibility,n.,B1
+2315,possible,adj.,A1
+2316,possibly,adv.,A2
+2317,post,n.; v.,A2
+2318,post office,n.,A2
+2319,pot,n.,B1
+2320,potato,n.,A1
+2321,potential,adj.; n.,B2
+2322,potentially,adv.,B2
+2323,pound,n.,A2
+2324,pour,v.,B1
+2325,powder,n.,B1
+2326,power,n.,B1
+2327,powerful,adj.,B1
+2328,practical,adj.,B2
+2329,practically,adv.,B2
+2330,practice,n.; v.,A2
+2331,practise,v.,A1
+2332,praise,n.; v.,B2
+2333,prayer,n.,B1
+2334,precise,adj.,B2
+2335,precisely,adv.,B2
+2336,predict,v.,B1
+2337,prefer,v.,A2
+2338,preference,n.,B2
+2339,pregnant,adj.,B1
+2340,premises,n.,C1
+2341,preparation,n.,B2
+2342,prepare,v.,A2
+2343,prepared,adj.,A2
+2344,presence,n.,B2
+2345,present,adj.; n.; v.,A1
+2346,presentation,n.,B1
+2347,preserve,v.,B2
+2348,president,n.,B1
+2349,press,n.; v.,B1
+2350,pressure,n.,B2
+2351,presumably,adv.,B2
+2352,pretend,v.,B2
+2353,pretty,adv.; adj.,A2
+2354,prevent,v.,B1
+2355,previous,adj.,B1
+2356,previously,adv.,B1
+2357,price,n.,A2
+2358,pride,n.,B2
+2359,priest,n.,B1
+2360,primarily,adv.,B2
+2361,primary,adj.,B2
+2362,prime minister,n.,B2
+2363,prince,n.,B1
+2364,princess,n.,B1
+2365,principle,n.,C1
+2366,print,v.; n.,A2
+2367,printer,n.,A2
+2368,printing,n.,A2
+2369,prior,adj.,C1
+2370,priority,n.,B2
+2371,prison,n.,B1
+2372,prisoner,n.,B1
+2373,private,adj.,B1
+2374,privately,adv.,B2
+2375,prize,n.,A2
+2376,probable,adj.,B2
+2377,probably,adv.,A2
+2378,problem,n.,A2
+2379,procedure,n.,B2
+2380,proceed,v.,C1
+2381,process,n.; v.,B2
+2382,produce,v.,B1
+2383,producer,n.,B2
+2384,product,n.,B1
+2385,production,n.,B2
+2386,profession,n.,B1
+2387,professional,adj.; n.,B1
+2388,professor,n.,B1
+2389,profit,n.,B2
+2390,program,n.; v.,A2
+2391,programme,n.,A2
+2392,progress,n.; v.,B1
+2393,project,n.; v.,A2
+2394,promise,v.; n.,B1
+2395,promote,v.,B1
+2396,promotion,n.,B2
+2397,prompt,adj.; v.,B2
+2398,promptly,adv.,B2
+2399,pronounce,v.,B1
+2400,pronunciation,n.,B1
+2401,proof,n.,B2
+2402,proper,adj.,B1
+2403,properly,adv.,B1
+2404,property,n.,B1
+2405,proportion,n.,C1
+2406,proposal,n.,B2
+2407,propose,v.,B2
+2408,prospect,n.,B2
+2409,protect,v.,B1
+2410,protection,n.,B2
+2411,protest,n.; v.,B2
+2412,proud,adj.,B1
+2413,proudly,adv.,B2
+2414,prove,v.,B1
+2415,provide,v.,B1
+2416,provided,conj.,B2
+2417,pt,abbr. pint,B2
+2418,pub,n.,A2
+2419,public,adj.; n.,B1
+2420,publication,n.,B2
+2421,publicity,n.,B2
+2422,publicly,adv.,C1
+2423,publish,v.,B1
+2424,publishing,n.,B1
+2425,pull,v.; n.,A2
+2426,punch,v.; n.,B2
+2427,punish,v.,B1
+2428,punishment,n.,B2
+2429,pupil,n.,A2
+2430,purchase,n.; v.,B2
+2431,pure,adj.,B1
+2432,purely,adv.,C1
+2433,purple,adj.; n.,A2
+2434,purpose,n.,B1
+2435,pursue,v.,C1
+2436,push,v.; n.,A2
+2437,put,v.,A1
+2438,put sth on,,A2
+2439,put sth out,,B1
+2440,qualification,n.,B1
+2441,qualified,adj.,B1
+2442,qualify,v.,B2
+2443,quality,n.,B1
+2444,quantity,n.,B1
+2445,quarter,n.,A1
+2446,queen,n.,A2
+2447,question,n.; v.,A1
+2448,quick,adj.,A1
+2449,quickly,adv.,A2
+2450,quiet,adj.,A2
+2451,quietly,adv.,B1
+2452,quit,v.,B1
+2453,quite,adv.,A2
+2454,quote,v.,C1
+2455,race,n.; v.,A2
+2456,racing,n.,A2
+2457,radio,n.,A1
+2458,rail,n.,B1
+2459,railway,n.,A2
+2460,rain,n.; v.,A1
+2461,raise,v.,B1
+2462,range,n.,B1
+2463,rank,n.; v.,C1
+2464,rapid,adj.,B2
+2465,rapidly,adv.,B2
+2466,rare,adj.,B1
+2467,rarely,adv.,B1
+2468,rate,n.; v.,B1
+2469,rather,adv.,B1
+2470,rather than,,B1
+2471,raw,adj.,B1
+2472,re-,prefix,B2
+2473,reach,v.,B1
+2474,react,v.,B2
+2475,reaction,n.,B2
+2476,read,v.,A1
+2477,reader,n.,B1
+2478,reading,n.,A1
+2479,ready,adj.,A1
+2480,real,adj.,A2
+2481,realistic,adj.,B1
+2482,reality,n.,B2
+2483,realize,v.,B1
+2484,really,adv.,A1
+2485,"really, real",,A2
+2486,rear,n.; adj.,B2
+2487,reason,n.,A2
+2488,reasonable,adj.,B1
+2489,reasonably,adv.,B1
+2490,recall,v.,B2
+2491,receipt,n.,A2
+2492,receive,v.,A2
+2493,recent,adj.,B1
+2494,recently,adv.,B1
+2495,reception,n.,B1
+2496,reckon,v.,B2
+2497,recognition,n.,C2
+2498,recognize,v.,B1
+2499,recommend,v.,B1
+2500,record,n.; v.,A2
+2501,recording,n.,B1
+2502,recover,v.,B1
+2503,red,adj.; n.,A1
+2504,reduce,v.,B1
+2505,reduction,n.,B2
+2506,refer to,v.,B2
+2507,reference,n.,B2
+2508,reflect,v.,B2
+2509,reform,v.; n.,C2
+2510,refrigerator,n.,A1
+2511,refusal,n.,C1
+2512,refuse,v.,B1
+2513,regard,v.; n.,B2
+2514,regarding,prep.,B1
+2515,region,n.,B1
+2516,regional,adj.,B2
+2517,register,v.; n.,B1
+2518,regret,v.; n.,B1
+2519,regular,adj.,B1
+2520,regularly,adv.,B1
+2521,regulation,n.,B2
+2522,reject,v.,B2
+2523,relate,v.,C2
+2524,related,adj.,C1
+2525,relation,n.,B1
+2526,relationship,n.,B1
+2527,relative,adj.; n.,B1
+2528,relatively,adv.,B2
+2529,relax,v.,B1
+2530,relaxed,adj.,B1
+2531,relaxing,adj.,B1
+2532,release,v.; n.,B2
+2533,relevant,adj.,B2
+2534,relief,n.,B2
+2535,religion,n.,B1
+2536,religious,adj.,B2
+2537,rely on,v.,B2
+2538,remain,v.,B1
+2539,remaining,adj.,B2
+2540,remains,n.,B2
+2541,remark,n.; v.,B2
+2542,remarkable,adj.,B2
+2543,remarkably,adv.,C1
+2544,remember,v.,A1
+2545,remind,v.,B1
+2546,remote,adj.,B2
+2547,removal,n.,B2
+2548,remove,v.,B1
+2549,rent,n.; v.,A2
+2550,rented,adj.,A2
+2551,repair,v.; n.,A2
+2552,repeat,v.,A2
+2553,repeated,adj.,C2
+2554,repeatedly,adv.,C1
+2555,replace,v.,B1
+2556,reply,n.; v.,B1
+2557,report,v.; n.,B1
+2558,represent,v.,B2
+2559,representative,n.; adj.,B2
+2560,reproduce,v.,C1
+2561,reputation,n.,B2
+2562,request,n.; v.,B1
+2563,require,v.,B1
+2564,requirement,n.,B2
+2565,rescue,v.; n.,B1
+2566,research,n.,B1
+2567,reservation,n.,B1
+2568,reserve,v.; n.,B1
+2569,resident,n.; adj.,B2
+2570,resist,v.,B2
+2571,resistance,n.,C2
+2572,resolve,v.,C1
+2573,resort,n.,B1
+2574,resource,n.,B2
+2575,respect,n.; v.,B1
+2576,respond,v.,B2
+2577,response,n.,B2
+2578,responsibility,n.,B2
+2579,responsible,adj.,B2
+2580,rest,n.; v.,A2
+2581,restaurant,n.,A1
+2582,restore,v.,B2
+2583,restrict,v.,C1
+2584,restricted,adj.,C1
+2585,restriction,n.,C1
+2586,result,n.; v.,B1
+2587,retain,v.,C2
+2588,retire,v.,B1
+2589,retired,adj.,B2
+2590,retirement,n.,B2
+2591,return,v.; n.,A2
+2592,reveal,v.,B2
+2593,reverse,v.; n.,B2
+2594,review,n.; v.,B2
+2595,revise,v.,B1
+2596,revision,n.,B1
+2597,revolution,n.,B2
+2598,reward,n.; v.,B1
+2599,rhythm,n.,B2
+2600,rice,n.,A1
+2601,rich,adj.,A2
+2602,rid: get rid of,v.,B1
+2603,ride,v.; n.,A1
+2604,rider,n.,B1
+2605,ridiculous,adj.,B2
+2606,riding,n.,A2
+2607,right,adj.; adv.; n.,A1
+2608,rightly,adv.,B2
+2609,ring,n.; v.,A2
+2610,rise,n.; v.,B1
+2611,risk,n.; v.,B2
+2612,rival,n.; adj.,C1
+2613,river,n.,A1
+2614,road,n.,A1
+2615,rob,v.,B1
+2616,rock,n.,A2
+2617,role,n.,B1
+2618,roll,n.; v.,B2
+2619,romantic,adj.,B1
+2620,roof,n.,A2
+2621,room,n.,A1
+2622,root,n.,B2
+2623,rope,n.,B2
+2624,rough,adj.,B1
+2625,roughly,adv.,B2
+2626,round,adj.; adv.; prep.; n.,A2
+2627,rounded,adj.,A2
+2628,route,n.,B1
+2629,routine,n.; adj.,B1
+2630,row,n.,B1
+2631,royal,adj.,B2
+2632,rub,v.,B2
+2633,rubber,n.,A2
+2634,rubbish,n.,B1
+2635,rude,adj.,B1
+2636,rudely,adv.,C1
+2637,ruin,v.; n.,B1
+2638,ruined,adj.,B2
+2639,rule,n.; v.,B1
+2640,ruler,n.,A2
+2641,rumour,n.,B2
+2642,run,v.; n.,A1
+2643,runner,n.,A2
+2644,running,n.,A2
+2645,rural,adj.,B2
+2646,rush,v.; n.,B2
+2647,sack,n.; v.,B2
+2648,sad,adj.,A1
+2649,sadly,adv.,B2
+2650,sadness,n.,B2
+2651,safe,adj.,A1
+2652,safely,adv.,B1
+2653,safety,n.,B2
+2654,sail,v.; n.,B1
+2655,sailing,n.,B1
+2656,sailor,n.,B1
+2657,salad,n.,A2
+2658,salary,n.,B1
+2659,sale,n.,A2
+2660,salt,n.,A1
+2661,salty,adj.,B2
+2662,same,adj.; pron.,A1
+2663,sample,n.,B2
+2664,sand,n.,B1
+2665,satisfaction,n.,B2
+2666,satisfied,adj.,B1
+2667,satisfy,v.,B2
+2668,satisfying,adj.,B2
+2669,Saturday,n.; abbr. Sat.,A1
+2670,sauce,n.,A2
+2671,save,v.,A2
+2672,saving,n.,C1
+2673,say,v.,A1
+2674,scale,n.,B2
+2675,scare,v.; n.,C1
+2676,scared,adj.,B2
+2677,scene,n.,B1
+2678,schedule,n.; v.,B2
+2679,scheme,n.,B2
+2680,school,n.,A1
+2681,science,n.,A2
+2682,scientific,adj.,B1
+2683,scientist,n.,B1
+2684,scissors,n.,A2
+2685,score,n.; v.,B1
+2686,scratch,v.; n.,B2
+2687,scream,v.; n.,B1
+2688,screen,n.,A2
+2689,screw,n.; v.,B2
+2690,sea,n.,A1
+2691,seal,n.; v.,B2
+2692,search,n.; v.,B1
+2693,season,n.,B1
+2694,seat,n.,A2
+2695,second,det.; ordinal number; adv.; n.,A1
+2696,secondary,adj.,B1
+2697,secret,adj.; n.,B1
+2698,secretary,n.,A2
+2699,secretly,adv.,B1
+2700,section,n.,B1
+2701,sector,n.,C1
+2702,secure,adj.; v.,B2
+2703,security,n.,B1
+2704,see,v.,A1
+2705,seed,n.,B2
+2706,seek,v.,B2
+2707,seem,linking verb,B1
+2708,select,v.,B1
+2709,selection,n.,B2
+2710,self-,combining form,B2
+2711,self,n.,C1
+2712,sell,v.,A2
+2713,senate,n.,C2
+2714,senator,n.,C2
+2715,send,v.,A1
+2716,senior,adj.; n.,B2
+2717,sense,n.,B1
+2718,sensible,adj.,B1
+2719,sensitive,adj.,B2
+2720,sentence,n.,A1
+2721,separate,adj.; v.,B1
+2722,separated,adj.,B2
+2723,separately,adv.,B2
+2724,separation,n.,B2
+2725,September,n.; abbr. Sept.,A1
+2726,series,n.,B1
+2727,serious,adj.,B1
+2728,seriously,adv.,B1
+2729,servant,n.,B2
+2730,serve,v.,A2
+2731,service,n.,B1
+2732,session,n.,B1
+2733,set,n.; v.,B1
+2734,set fire to,,C2
+2735,settle,v.,B2
+2736,several,det.; pron.,A2
+2737,severe,adj.,B2
+2738,severely,adv.,B2
+2739,sew,v.,B1
+2740,sewing,n.,C1
+2741,sex,n.,B1
+2742,sexual,adj.,B2
+2743,sexually,adv.,B2
+2744,shade,n.,B1
+2745,shadow,n.,B1
+2746,shake,v.; n.,B1
+2747,shall,modal; v.,A2
+2748,shallow,adj.,B2
+2749,shame,n.,C1
+2750,shape,n.; v.,B1
+2751,shaped,adj.,B2
+2752,share,v.; n.,A2
+2753,sharp,adj.,B1
+2754,sharply,adv.,B2
+2755,shave,v.,B1
+2756,she,pron.,A1
+2757,sheep,n.,A1
+2758,sheet,n.,A2
+2759,shelf,n.,A2
+2760,shell,n.,B2
+2761,shelter,n.; v.,B2
+2762,shift,v.; n.,B2
+2763,shine,v.,B1
+2764,shiny,adj.,B1
+2765,ship,n.,A2
+2766,shirt,n.,A1
+2767,shock,n.; v.,B1
+2768,shocked,adj.,B1
+2769,shocking,adj.,B1
+2770,shoe,n.,A1
+2771,shoot,v.,B1
+2772,shooting,n.,B2
+2773,shop,n.; v.,A1
+2774,shopping,n.,A1
+2775,short,adj.,A1
+2776,shortly,adv.,B1
+2777,shot,n.,B2
+2778,should,modal; v.,A2
+2779,shoulder,n.,B1
+2780,shout,v.; n.,A2
+2781,show,v.; n.,A1
+2782,shower,n.,A1
+2783,shut,v.; adj.,A2
+2784,shy,adj.,B1
+2785,sick,adj.,A2
+2786,side,n.,A2
+2787,sideways,adj.; adv.,C2
+2788,sight,n.,B1
+2789,sign,n.; v.,A2
+2790,signal,n.; v.,B2
+2791,signature,n.,B1
+2792,significant,adj.,B2
+2793,significantly,adv.,B2
+2794,silence,n.,B1
+2795,silent,adj.,B1
+2796,silk,n.,B1
+2797,silly,adj.,B1
+2798,silver,n.; adj.,A2
+2799,similar,adj.,B1
+2800,similarly,adv.,C1
+2801,simple,adj.,A2
+2802,simply,adv.,B2
+2803,since,prep.; conj.; adv.,A2
+2804,sincere,adj.,C1
+2805,sincerely,adv.,C1
+2806,sing,v.,A1
+2807,singer,n.,A2
+2808,singing,n.,A2
+2809,single,adj.,A2
+2810,sink,v.,A2
+2811,Sir,n.,B1
+2812,sister,n.,A1
+2813,sit,v.,A1
+2814,sit down,,A2
+2815,site,n.,A1
+2816,situation,n.,B1
+2817,size,n.,A2
+2818,-sized,,B2
+2819,skilful,adj.,B2
+2820,skilfully,adv.,B2
+2821,skill,n.,B1
+2822,skilled,adj.,B2
+2823,skin,n.,B1
+2824,skirt,n.,A1
+2825,sky,n.,A2
+2826,sleep,v.; n.,A1
+2827,sleeve,n.,B1
+2828,slice,n.; v.,A2
+2829,slide,v.,B2
+2830,slight,adj.,B2
+2831,slightly,adv.,B2
+2832,slip,v.,B1
+2833,slope,n.; v.,B2
+2834,slow,adj.,A1
+2835,slowly,adv.,A2
+2836,small,adj.,A1
+2837,smart,adj.,B1
+2838,smash,v.; n.,B2
+2839,smell,v.; n.,B1
+2840,smile,v.; n.,B1
+2841,smoke,n.; v.,A1
+2842,smoking,n.,A1
+2843,smooth,adj.,B1
+2844,smoothly,adv.,B2
+2845,snake,n.,A2
+2846,snow,n.; v.,A1
+2847,so,adv.; conj.,A2
+2848,so that,,B1
+2849,soap,n.,A2
+2850,social,adj.,B1
+2851,socially,adv.,B2
+2852,society,n.,B1
+2853,sock,n.,A2
+2854,soft,adj.,A2
+2855,softly,adv.,B1
+2856,software,n.,A2
+2857,soil,n.,B2
+2858,soldier,n.,B1
+2859,solid,adj.; n.,B2
+2860,solution,n.,B1
+2861,solve,v.,B1
+2862,some,det.; pron.,A1
+2863,somebody,pron.,A2
+2864,somehow,adv.,B1
+2865,something,pron.,A1
+2866,sometimes,adv.,A1
+2867,somewhat,adv.,C1
+2868,somewhere,adv.,A2
+2869,son,n.,A1
+2870,song,n.,A2
+2871,soon,adv.,A1
+2872,sore,adj.,B1
+2873,sorry,adj.,A1
+2874,sort,n.; v.,A2
+2875,soul,n.,A2
+2876,sound,n.; v.,A2
+2877,soup,n.,A1
+2878,sour,adj.,B1
+2879,source,n.,B2
+2880,south,n.; adj.; adv.,A2
+2881,southern,adj.,B1
+2882,space,n.,A2
+2883,spare,adj.; n.,B1
+2884,speak,v.,A1
+2885,speaker,n.,A2
+2886,special,adj.,A2
+2887,specialist,n.,B2
+2888,specially,adv.,B1
+2889,specific,adj.,B2
+2890,specifically,adv.,C1
+2891,speech,n.,B1
+2892,speed,n.,B1
+2893,spell,v.; n.,A2
+2894,spelling,n.,A2
+2895,spend,v.,A2
+2896,spice,n.,B1
+2897,spicy,adj.,B1
+2898,spider,n.,B1
+2899,spin,v.,C1
+2900,spirit,n.,B2
+2901,spiritual,adj.,B2
+2902,spite: in spite of,n.,B1
+2903,split,v.; n.,B2
+2904,spoil,v.,B1
+2905,spoken,adj.,A2
+2906,"spoken, speak",,A2
+2907,spoon,n.,A2
+2908,sport,n.,A1
+2909,spot,n.,B1
+2910,spray,n.; v.,B2
+2911,spread,v.,B2
+2912,spring,n.,A2
+2913,square,adj.; n.,A2
+2914,squeeze,v.; n.,B2
+2915,stable,adj.; n.,C1
+2916,staff,n.,A2
+2917,stage,n.,A2
+2918,stair,n.,A2
+2919,stamp,n.; v.,A2
+2920,stand,v.; n.,A2
+2921,stand up,,B2
+2922,standard,n.; adj.,B2
+2923,star,n.; v.,A2
+2924,stare,v.; n.,B2
+2925,start,v.; n.,A1
+2926,state,n.; adj.; v.,B2
+2927,statement,n.,B2
+2928,station,n.,A1
+2929,statue,n.,B1
+2930,status,n.,C1
+2931,stay,v.; n.,A1
+2932,steadily,adv.,B2
+2933,steady,adj.,B2
+2934,steal,v.,A2
+2935,steam,n.,B2
+2936,steel,n.,B2
+2937,steep,adj.,B1
+2938,steeply,adv.,B2
+2939,steer,v.,B2
+2940,step,n.; v.,B1
+2941,stick,v.; n.,B1
+2942,stick out,,B2
+2943,sticky,adj.,B1
+2944,stiff,adj.,B2
+2945,stiffly,adv.,B2
+2946,still,adv.; adj.,A2
+2947,sting,v.; n.,C1
+2948,stir,v.,B1
+2949,stock,n.,B2
+2950,stomach,n.,A2
+2951,stone,n.,B1
+2952,stop,v.; n.,A1
+2953,store,n.; v.,B1
+2954,storm,n.,A2
+2955,story,n.,A2
+2956,stove,n.,A2
+2957,straight,adv.; adj.,A2
+2958,strain,n.,B2
+2959,strange,adj.,A2
+2960,strangely,adv.,B2
+2961,stranger,n.,B1
+2962,strategy,n.,B2
+2963,stream,n.,B1
+2964,street,n.,A1
+2965,strength,n.,B2
+2966,stress,n.; v.,B1
+2967,stressed,adj.,B1
+2968,stretch,v.,B2
+2969,strict,adj.,B1
+2970,strictly,adv.,B2
+2971,strike,v.; n.,B1
+2972,striking,adj.,B2
+2973,string,n.,B2
+2974,strip,v.; n.,C1
+2975,stripe,n.,B1
+2976,striped,adj.,B2
+2977,stroke,n.; v.,B2
+2978,strong,adj.,A2
+2979,strongly,adv.,B2
+2980,structure,n.,B2
+2981,struggle,v.; n.,B2
+2982,student,n.,A1
+2983,studio,n.,B1
+2984,study,n.; v.,A1
+2985,stuff,n.,B1
+2986,stupid,adj.,B1
+2987,style,n.,B1
+2988,subject,n.,A1
+2989,substance,n.,B2
+2990,substantial,adj.,B2
+2991,substantially,adv.,C1
+2992,substitute,n.; v.,B2
+2993,succeed,v.,B1
+2994,success,n.,B1
+2995,successful,adj.,B1
+2996,successfully,adv.,B2
+2997,such,det.; pron.,A2
+2998,such as,,A2
+2999,suck,v.,C2
+3000,sudden,adj.,B2
+3001,suddenly,adv.,B1
+3002,suffer,v.,B2
+3003,suffering,n.,B2
+3004,sufficient,adj.,B2
+3005,sufficiently,adv.,C1
+3006,sugar,n.,A1
+3007,suggest,v.,B1
+3008,suggestion,n.,B1
+3009,suit,n.; v.,A2
+3010,suitable,adj.,B1
+3011,suitcase,n.,A2
+3012,suited,adj.,C1
+3013,sum,n.,B1
+3014,summary,n.,B2
+3015,summer,n.,A1
+3016,sun,n.,A1
+3017,Sunday),n.; abbr. Su(n.,A1
+3018,superior,adj.,C1
+3019,supermarket,n.,A1
+3020,supply,n.; v.,B2
+3021,support,n.; v.,B2
+3022,supporter,n.,B1
+3023,suppose,v.,A2
+3024,sure,adj.; adv.,A2
+3025,surely,adv.,B2
+3026,surface,n.,B2
+3027,surname,n.,A2
+3028,surprise,n.; v.,A2
+3029,surprised,adj.,A2
+3030,surprising,adj.,B1
+3031,surprisingly,adv.,B1
+3032,surround,v.,B1
+3033,surrounding,adj.,B1
+3034,surroundings,n.,B2
+3035,survey,n.; v.,B2
+3036,survive,v.,B2
+3037,suspect,v.; n.,B2
+3038,suspicion,n.,B2
+3039,suspicious,adj.,B2
+3040,swallow,v.,B2
+3041,swear,v.,B2
+3042,swearing,n.,B2
+3043,sweat,n.; v.,B2
+3044,sweater,n.,A2
+3045,sweep,v.,B2
+3046,sweet,adj.; n.,A1
+3047,swell,v.,C1
+3048,swelling,n.,C1
+3049,swim,v.,A1
+3050,swimming,n.,A2
+3051,swimming pool,n.,A1
+3052,swing,n.; v.,B2
+3053,switch,n.; v.,B1
+3054,switch sth off,,B1
+3055,switch sth on,,B1
+3056,swollen,adj.,B2
+3057,"swollen, swell",,B2
+3058,symbol,n.,B2
+3059,sympathetic,adj.,B2
+3060,sympathy,n.,B2
+3061,system,n.,B1
+3062,table,n.,A1
+3063,tablet,n.,B1
+3064,tackle,v.; n.,B2
+3065,tail,n.,B2
+3066,take over,,B2
+3067,take,v.,A1
+3068,take action,,B2
+3069,take advantage of,,B1
+3070,take care,,B1
+3071,take notice of,,B2
+3072,take part,,B1
+3073,take place,,B1
+3074,take sth off,,A2
+3075,talk,v.; n.,A1
+3076,tall,adj.,A1
+3077,tank,n.,C1
+3078,"tap,.",v.; n.,B1
+3079,tape,n.,A2
+3080,target,n.,B2
+3081,task,n.,B2
+3082,taste,n.; v.,B1
+3083,tax,n.; v.,B1
+3084,taxi,n.,A1
+3085,tea,n.,A1
+3086,teach,v.,A1
+3087,teacher,n.,A1
+3088,teaching,n.,A1
+3089,team,n.,A2
+3090,tear,n.,B1
+3091,tear,v.; n.,B1
+3092,technical,adj.,B2
+3093,technique,n.,B1
+3094,technology,n.,B1
+3095,telephone,n.; v.,A1
+3096,television,n.,A1
+3097,tell,v.,A1
+3098,temperature,n.,A2
+3099,temporarily,adv.,B2
+3100,temporary,adj.,B1
+3101,tend,v.,B2
+3102,tendency,n.,C1
+3103,tension,n.,B2
+3104,tent,n.,B1
+3105,term,n.,A2
+3106,terrible,adj.,A2
+3107,terribly,adv.,B1
+3108,test,n.; v.,A1
+3109,text,n.,A2
+3110,than,prep.; conj.,A1
+3111,thank,v.,A2
+3112,thank you,exclamation; n.,A1
+3113,thanks,exclamation; n.,B2
+3114,that,det.; pron.; conj.,A1
+3115,the,definite article,A1
+3116,the rest,,A2
+3117,the Web,n.,A2
+3118,theatre,n.,A2
+3119,their,det.,A1
+3120,theirs,pron.,A2
+3121,them,pron.,A1
+3122,theme,n.,B2
+3123,themselves,pron.,A2
+3124,then,adv.,A1
+3125,theory,n.,B2
+3126,there,adv.,A1
+3127,therefore,adv.,B1
+3128,they,pron.,A1
+3129,thick,adj.,B1
+3130,thickly,adv.,B2
+3131,thickness,n.,B2
+3132,thief,n.,B1
+3133,thin,adj.,A2
+3134,thing,n.,A1
+3135,think,v.,A1
+3136,thinking,n.,A2
+3137,thirsty,adj.,A2
+3138,this,det.; pron.,A1
+3139,thorough,adj.,B2
+3140,thoroughly,adv.,B2
+3141,though,conj.; adv.,B1
+3142,thought,n.,B1
+3143,thread,n.,C2
+3144,threat,n.,B2
+3145,threaten,v.,B2
+3146,threatening,adj.,B2
+3147,throat,n.,B1
+3148,through,prep.; adv.,A2
+3149,throughout,prep.; adv.,C1
+3150,throw,v.,A2
+3151,throw sth away,,B1
+3152,thumb,n.,B1
+3153,Thursday,"n.; abbr. Thur., Thurs.",A1
+3154,thus,adv.,B2
+3155,ticket,n.,A1
+3156,tidy,adj.; v.,A2
+3157,tie,v.; n.,A2
+3158,tie sth up,,B2
+3159,tight,adj.; adv.,B1
+3160,tightly,,B2
+3161,"till, until",,A1
+3162,time,n.,A1
+3163,timetable,n.,A2
+3164,tin,n.,B1
+3165,tiny,adj.,B1
+3166,tip,n.; v.,B1
+3167,tire,v.; n.,A2
+3168,tired,adj.,A1
+3169,tiring,adj.,B1
+3170,title,n.,B1
+3171,"to, infinitive marker",prep.,A1
+3172,today,adv.; n.,A1
+3173,toe,n.,A2
+3174,together,adv.,A1
+3175,toilet,n.,A1
+3176,tomato,n.,A1
+3177,tomorrow,adv.; n.,A1
+3178,ton,n.,B2
+3179,tone,n.,B2
+3180,tongue,n.,B1
+3181,tonight,adv.; n.,A1
+3182,tonne,n.,B2
+3183,too,adv.,A1
+3184,tool,n.,B2
+3185,tooth,n.,A1
+3186,top,n.; adj.,A2
+3187,topic,n.,B1
+3188,total,adj.; n.,B1
+3189,totally,adv.,B1
+3190,touch,v.; n.,B1
+3191,tough,adj.,B2
+3192,tour,n.; v.,A2
+3193,tourist,n.,A2
+3194,towards,prep.,B1
+3195,towel,n.,A2
+3196,tower,n.,B1
+3197,town,n.,A1
+3198,toy,n.; adj.,A2
+3199,trace,v.; n.,B2
+3200,track,n.,B1
+3201,trade,n.; v.,B1
+3202,trading,n.,B2
+3203,tradition,n.,B2
+3204,traditional,adj.,B1
+3205,traditionally,adv.,B2
+3206,traffic,n.,A2
+3207,train,n.; v.,A1
+3208,training,n.,B1
+3209,transfer,v.; n.,B1
+3210,transform,v.,B2
+3211,translate,v.,B1
+3212,translation,n.,B1
+3213,transparent,adj.,B2
+3214,transport,n.,B1
+3215,transport,v.,B2
+3216,trap,n.; v.,B2
+3217,travel,v.; n.,A1
+3218,traveller,n.,B1
+3219,treat,v.,B2
+3220,treatment,n.,B2
+3221,tree,n.,A1
+3222,trend,n.,B1
+3223,trial,n.,B2
+3224,triangle,n.,B2
+3225,trick,n.; v.,B1
+3226,trip,n.; v.,A2
+3227,tropical,adj.,B2
+3228,trouble,n.,B1
+3229,trousers,n.,A1
+3230,truck,n.,B1
+3231,true,adj.,A2
+3232,truly,adv.,B2
+3233,trust,n.; v.,B1
+3234,truth,n.,B2
+3235,try,v.,A2
+3236,tube,n.,B1
+3237,Tuesday,"n.; abbr. Tue., Tues.",A1
+3238,tune,n.; v.,A2
+3239,tunnel,n.,B1
+3240,turn,v.; n.,A2
+3241,"TV, television",,A1
+3242,twice,adv.,A2
+3243,twin,n.; adj.,B1
+3244,twist,v.; n.,C1
+3245,twisted,adj.,B2
+3246,type,n.; v.,A2
+3247,typical,adj.,B1
+3248,typically,adv.,B1
+3249,tyre,n.,A2
+3250,ugly,adj.,B1
+3251,ultimate,adj.,B2
+3252,ultimately,adv.,C1
+3253,umbrella,n.,A2
+3254,unable,adj.,B1
+3255,unacceptable,adj.,B2
+3256,uncertain,adj.,B2
+3257,uncle,n.,A2
+3258,uncomfortable,adj.,B1
+3259,unconscious,adj.,B2
+3260,uncontrolled,adj.,B2
+3261,under,prep.; adv.,A1
+3262,under control,,B2
+3263,underground,adj.; adv.,A2
+3264,underneath,prep.; adv.,B1
+3265,understand,v.,A1
+3266,understanding,n.,B2
+3267,underwater,adj.; adv.,B2
+3268,underwear,n.,B1
+3269,undo,v.,B2
+3270,unemployed,adj.,B1
+3271,unemployment,n.,B1
+3272,unexpected,adj.,B1
+3273,unexpectedly,adv.,B2
+3274,unfair,adj.,B1
+3275,unfairly,adv.,B2
+3276,unfortunate,adj.,B2
+3277,unfortunately,adv.,A2
+3278,unfriendly,adj.,B1
+3279,unhappiness,n.,B2
+3280,unhappy,adj.,A2
+3281,uniform,n.; adj.,A2
+3282,unimportant,adj.,B1
+3283,union,n.,B1
+3284,unique,adj.,B2
+3285,unit,n.,B1
+3286,unite,v.,C1
+3287,united,adj.,B2
+3288,universe,n.,B1
+3289,university,n.,A1
+3290,unkind,adj.,B1
+3291,unknown,adj.,B1
+3292,unless,conj.,B1
+3293,unlike,prep.; adj.,B2
+3294,unlikely,adj.,B1
+3295,unload,v.,C1
+3296,unlucky,adj.,B1
+3297,unnecessary,adj.,B1
+3298,unpleasant,adj.,B1
+3299,unreasonable,adj.,B2
+3300,unsteady,adj.,B2
+3301,unsuccessful,adj.,B2
+3302,untidy,adj.,B1
+3303,until,conj.; prep.,A1
+3304,unusual,adj.,A2
+3305,unusually,adv.,B2
+3306,unwilling,adj.,B2
+3307,unwillingly,adv.,C1
+3308,up,adv.; prep.,A1
+3309,upon,prep.,B2
+3310,upper,adj.,B1
+3311,upset,v.; adj.,A2
+3312,upsetting,adj.,A2
+3313,upside down,adv.,B2
+3314,upstairs,adv.; adj.; n.,A2
+3315,upward,adj.,C1
+3316,upwards,adv.,C1
+3317,urban,adj.,B2
+3318,urge,v.; n.,C2
+3319,urgent,adj.,B1
+3320,us,pron.,A1
+3321,use,v.; n.,A1
+3322,used,adj.,A2
+3323,used to,modal; v.,B1
+3324,used to sth/to doing sth,,B1
+3325,useful,adj.,A2
+3326,useless,adj.,B1
+3327,user,n.,B1
+3328,usual,adj.,B1
+3329,usually,adv.,A2
+3330,vacation,n.,A1
+3331,valid,adj.,B2
+3332,valley,n.,B1
+3333,valuable,adj.,B1
+3334,value,n.; v.,B1
+3335,van,n.,B1
+3336,variation,n.,B2
+3337,varied,adj.,B2
+3338,variety,n.,A2
+3339,various,adj.,A2
+3340,vary,v.,B2
+3341,vast,adj.,B2
+3342,vegetable,n.,A1
+3343,vehicle,n.,B1
+3344,venture,n.; v.,C2
+3345,version,n.,B2
+3346,vertical,adj.,C1
+3347,very,adv.,A1
+3348,via,prep.,B1
+3349,victim,n.,B2
+3350,victory,n.,B2
+3351,video,n.,A2
+3352,view,n.; v.,A2
+3353,village,n.,A1
+3354,violence,n.,B2
+3355,violent,adj.,B2
+3356,violently,adv.,B2
+3357,virtually,adv.,B2
+3358,virus,n.,B1
+3359,visible,adj.,B2
+3360,vision,n.,B2
+3361,visit,v.; n.,A1
+3362,visitor,n.,A2
+3363,vital,adj.,B2
+3364,vocabulary,n.,A2
+3365,voice,n.,B1
+3366,volume,n.,B1
+3367,vote,n.; v.,B1
+3368,wage,n.,B1
+3369,waist,n.,B2
+3370,wait,v.,A1
+3371,"waiter, waitress",n.,A1
+3372,wake,v.,A1
+3373,walk,v.; n.,A1
+3374,walking,n.,A2
+3375,wall,n.,A1
+3376,wallet,n.,A2
+3377,wander,v.; n.,B2
+3378,want,v.,A1
+3379,war,n.,A2
+3380,warm,adj.; v.,A1
+3381,warmth,n.,B2
+3382,warn,v.,B1
+3383,warning,n.,B1
+3384,wash,v.,A1
+3385,washing,n.,A2
+3386,waste,v.; n.; adj.,B1
+3387,watch,v.; n.,A1
+3388,water,n.,A1
+3389,wave,n.; v.,B1
+3390,way,n.,A2
+3391,we,pron.,A1
+3392,weak,adj.,B1
+3393,weakness,n.,B2
+3394,wealth,n.,B2
+3395,weapon,n.,B2
+3396,wear,v.,A1
+3397,weather,n.,A1
+3398,web,n.,B1
+3399,website,n.,A1
+3400,wedding,n.,B1
+3401,Wednesday,"n.; abbr. Wed., Weds.",A1
+3402,week,n.,A1
+3403,weekend,n.,A1
+3404,weekly,adj.,A2
+3405,weigh,v.,B1
+3406,weight,n.,B1
+3407,welcome,v.; adj.; n.; exclamation,A2
+3408,well,adv.; adj.; exclamation,A1
+3409,well known,adj.,A2
+3410,west,n.; adj.; adv.,A2
+3411,western,adj.,B1
+3412,wet,adj.,A2
+3413,what,pron.; det.,A1
+3414,whatever,det.; pron.,B1
+3415,wheel,n.,A2
+3416,when,adv.; pron.; conj.,A1
+3417,whenever,conj.,B1
+3418,where,adv.; conj.,A1
+3419,whereas,conj.,B2
+3420,wherever,conj.,B1
+3421,whether,conj.,B1
+3422,which,pron.; det.,A1
+3423,while,conj.; n.,A2
+3424,whilst,conj.,B2
+3425,whisper,v.; n.,B2
+3426,whistle,n.; v.,B2
+3427,white,adj.; n.,A1
+3428,who,pron.,A1
+3429,whoever,pron.,B2
+3430,whole,adj.; n.,A2
+3431,whom,pron.,B2
+3432,whose,det.; pron.,B1
+3433,why,adv.,A1
+3434,wide,adj.,A2
+3435,widely,adv.,B2
+3436,width,n.,B2
+3437,wife,n.,A1
+3438,wild,adj.,A2
+3439,wildly,adv.,B2
+3440,will,modal; v.; n.,A1
+3441,willing,adj.,B1
+3442,willingly,adv.,B2
+3443,willingness,n.,B2
+3444,win,v.,A2
+3445,wind,n.,A1
+3446,wind,v.,B2
+3447,wind sth up,,B2
+3448,window,n.,A1
+3449,wine,n.,A1
+3450,wing,n.,B1
+3451,winner,n.,A2
+3452,winning,adj.,A2
+3453,winter,n.,A1
+3454,wire,n.,B2
+3455,wise,adj.,B2
+3456,wish,v.; n.,B1
+3457,with,prep.,A1
+3458,withdraw,v.,C1
+3459,within,prep.,B1
+3460,without,prep.,A2
+3461,witness,n.; v.,B2
+3462,woman,n.,A1
+3463,wonder,v.,B1
+3464,wonderful,adj.,A2
+3465,wood,n.,A2
+3466,wooden,adj.,A2
+3467,wool,n.,A2
+3468,word,n.,A1
+3469,work,v.; n.,A1
+3470,worker,n.,A2
+3471,working,adj.,B1
+3472,world,n.,A1
+3473,worried,adj.,A2
+3474,worry,v.; n.,A2
+3475,worrying,adj.,A2
+3476,"worse, worst, bad",,A2
+3477,worship,n.; v.,C1
+3478,worth,adj.,B1
+3479,would,modal; v.,A1
+3480,wound,n.; v.,B2
+3481,wounded,adj.,B2
+3482,wrap,v.,B1
+3483,wrapping,n.,B1
+3484,wrist,n.,B2
+3485,write,v.,A1
+3486,writer,n.,B1
+3487,writing,n.,A1
+3488,written,adj.,B1
+3489,wrong,adj.; adv.,A1
+3490,wrongly,adv.,B2
+3491,yard,n.,B1
+3492,yawn,v.; n.,B2
+3493,yeah,exclamation,A2
+3494,year,n.,A1
+3495,yellow,adj.; n.,A1
+3496,yes,exclamation; n.,A1
+3497,yesterday,adv.; n.,A1
+3498,yet,adv.; conj.,A2
+3499,you,pron.,A1
+3500,young,adj.,A1
+3501,your,det.,A1
+3502,yours,pron.,A2
+3503,Yours faithfully,,B2
+3504,Yours sincerely,,B1
+3505,Yours Truly,,B1
+3506,yourself,pron.,A2
+3507,youth,n.,B1
+3508,zero,number,A2
+3509,zone,n.,B1
