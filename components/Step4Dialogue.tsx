@@ -231,18 +231,32 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
     try {
       setIsLoading(true);
       
-      // Отправляем аудио напрямую как Blob
-      const { data, error } = await supabase.functions.invoke('google-speech', {
-        body: audioBlob,
-        headers: {
-          'Content-Type': mimeType,
-        },
-      });
-
-      if (error) {
-        throw error;
+      // Получаем URL и ключ Supabase для прямого вызова
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      if (!supabaseUrl || !supabaseAnonKey) {
+        throw new Error('Supabase credentials not configured');
       }
 
+      // Отправляем аудио напрямую через fetch
+      const response = await fetch(`${supabaseUrl}/functions/v1/google-speech`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': mimeType,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'apikey': supabaseAnonKey,
+        },
+        body: audioBlob,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Transcribe] Server error:', errorText);
+        throw new Error(`Server error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
       const transcript = data?.transcript || '';
       
       if (transcript.trim()) {
