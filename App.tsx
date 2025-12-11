@@ -128,12 +128,18 @@ const App = () => {
         (msg) => msg.text && msg.text.includes('<lesson_complete>')
       );
 
-      // Приоритет у тега в истории; если его нет — считаем урок незавершённым
-      const resolvedCompleted = hasTagInHistory;
-
-      // Синхронизируем флаг в базе, если отличается
-      if (progressFlag !== resolvedCompleted) {
-        await saveLessonCompleted(currentDayPlan.day, currentDayPlan.lesson, resolvedCompleted);
+      // Приоритет у флага в БД (practice_completed), так как тег может быть удален из текста
+      // Если флаг установлен в БД - урок завершен
+      // Если тег есть в истории, но флага нет - устанавливаем флаг
+      let resolvedCompleted = progressFlag;
+      
+      if (hasTagInHistory && !progressFlag) {
+        // Тег есть, но флага нет - синхронизируем
+        resolvedCompleted = true;
+        await saveLessonCompleted(currentDayPlan.day, currentDayPlan.lesson, true);
+      } else if (!hasTagInHistory && progressFlag) {
+        // Флаг есть, но тега нет (нормально, тег удаляется) - оставляем как есть
+        resolvedCompleted = true;
       }
 
       setLessonCompleted(resolvedCompleted);
