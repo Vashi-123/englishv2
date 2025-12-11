@@ -5,65 +5,6 @@ import { startDialogueSession, sendDialogueMessage, saveChatMessage, loadChatMes
 import { supabase } from '../services/supabaseClient';
 import { useLanguage } from '../hooks/useLanguage';
 
-// Типы для Web Speech API
-interface SpeechRecognition extends EventTarget {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  start(): void;
-  stop(): void;
-  onstart: ((this: SpeechRecognition, ev: Event) => any) | null;
-  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => any) | null;
-  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => any) | null;
-  onend: ((this: SpeechRecognition, ev: Event) => any) | null;
-}
-
-interface SpeechRecognitionEvent {
-  results: SpeechRecognitionResultList;
-}
-
-interface SpeechRecognitionResultList {
-  [index: number]: SpeechRecognitionResult;
-  length: number;
-}
-
-interface SpeechRecognitionResult {
-  [index: number]: SpeechRecognitionAlternative;
-  isFinal: boolean;
-  length: number;
-}
-
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
-
-interface SpeechRecognitionErrorEvent {
-  error: string;
-  message: string;
-}
-
-declare var SpeechRecognition: {
-  prototype: SpeechRecognition;
-  new(): SpeechRecognition;
-};
-
-declare var webkitSpeechRecognition: {
-  prototype: SpeechRecognition;
-  new(): SpeechRecognition;
-};
-
-// Расширяем Window для поддержки webkit префиксов
-declare global {
-  interface Window {
-    SpeechRecognition?: typeof SpeechRecognition;
-    webkitSpeechRecognition?: typeof webkitSpeechRecognition;
-    webkit?: {
-      speechRecognition?: typeof webkitSpeechRecognition;
-    };
-  }
-}
-
 interface Props {
   day?: number;
   lesson?: number;
@@ -87,7 +28,8 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
   const [isRecording, setIsRecording] = useState(false);
   const [lessonCompletedPersisted, setLessonCompletedPersisted] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
   const hasRecordedLessonCompleteRef = useRef<boolean>(false);
   const hasSpeechResultRef = useRef<boolean>(false);
   const initializedKeyRef = useRef<string | null>(null);
@@ -213,144 +155,114 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
   };
 
   // Работа с микрофоном и распознавание речи
-  const startRecording = () => {
-    // Проверяем поддержку Web Speech API (Safari использует webkit префикс)
-    const win = window as any;
-    
-    // Проверяем все возможные варианты для разных браузеров
-    let SpeechRecognitionClass: any = null;
-    
-    // Chrome, Edge (стандартный API)
-    if (typeof win.SpeechRecognition !== 'undefined') {
-      SpeechRecognitionClass = win.SpeechRecognition;
-      console.log('[SpeechRecognition] Using SpeechRecognition (Chrome/Edge)');
-    }
-    // Safari, старые версии Chrome (webkit префикс)
-    else if (typeof win.webkitSpeechRecognition !== 'undefined') {
-      SpeechRecognitionClass = win.webkitSpeechRecognition;
-      console.log('[SpeechRecognition] Using webkitSpeechRecognition (Safari/old Chrome)');
-    }
-    // Альтернативный путь для Safari через webkit объект
-    else if (win.webkit && typeof (win.webkit as any).speechRecognition !== 'undefined') {
-      SpeechRecognitionClass = (win.webkit as any).speechRecognition;
-      console.log('[SpeechRecognition] Using webkit.speechRecognition (Safari alternative)');
-    }
-    // Прямой доступ через window (для некоторых версий Safari)
-    else if (typeof (window as any).webkitSpeechRecognition !== 'undefined') {
-      SpeechRecognitionClass = (window as any).webkitSpeechRecognition;
-      console.log('[SpeechRecognition] Using direct window.webkitSpeechRecognition');
-    }
-    
-    const userAgent = navigator.userAgent;
-    const isSafari = /^((?!chrome|android).)*safari/i.test(userAgent);
-    const isChrome = /chrome/i.test(userAgent) && !/edg/i.test(userAgent);
-    const isEdge = /edg/i.test(userAgent);
-    
-    console.log('[SpeechRecognition] Browser check:', {
-      SpeechRecognition: !!win.SpeechRecognition,
-      webkitSpeechRecognition: !!win.webkitSpeechRecognition,
-      webkit: !!win.webkit,
-      userAgent,
-      isSafari,
-      isChrome,
-      isEdge,
-      found: !!SpeechRecognitionClass
-    });
-    
-    if (!SpeechRecognitionClass) {
-      let browserName = 'Unknown';
-      if (isSafari) browserName = 'Safari';
-      else if (isChrome) browserName = 'Chrome';
-      else if (isEdge) browserName = 'Edge';
-      else if (userAgent.includes('Firefox')) browserName = 'Firefox';
-      
-      const isHTTPS = window.location.protocol === 'https:' || window.location.hostname === 'localhost';
-      const safariMessage = isSafari 
-        ? `\n\nДля Safari:\n- Версия должна быть 14.5 или новее\n- Сайт должен быть открыт по HTTPS (сейчас: ${window.location.protocol})\n- Разрешите доступ к микрофону в настройках Safari`
-        : '';
-      
-      alert(`Ваш браузер (${browserName}) не поддерживает распознавание речи.\n\nПоддерживаемые браузеры:\n- Google Chrome (рекомендуется)\n- Microsoft Edge\n- Safari 14.5+ (macOS/iOS)${safariMessage}`);
-      return;
-    }
-    
-    // Дополнительная проверка для Safari: требуется HTTPS
-    if (isSafari && window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-      alert('В Safari распознавание речи работает только по HTTPS.\n\nПожалуйста, откройте сайт по безопасному соединению (https://).');
-      return;
-    }
-
-    let recognition: SpeechRecognition;
+  const startRecording = async () => {
     try {
-      recognition = new SpeechRecognitionClass() as SpeechRecognition;
-    } catch (error) {
-      console.error('[SpeechRecognition] Error creating recognition:', error);
-      alert('Ошибка при инициализации распознавания речи. Попробуйте обновить страницу.');
-      return;
-    }
-    recognition.lang = 'en-US'; // Распознаем английскую речь
-    recognition.continuous = false; // Останавливаем после паузы
-    recognition.interimResults = false; // Только финальные результаты
+      // Запрашиваем доступ к микрофону
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 48000,
+        } 
+      });
 
-    recognition.onstart = () => {
+      // Определяем MIME type для записи
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm';
+      } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+      }
+
+      // Создаем MediaRecorder
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: mimeType,
+      });
+
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Останавливаем все треки потока
+        stream.getTracks().forEach(track => track.stop());
+
+        // Создаем Blob из записанных чанков
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+        
+        // Отправляем на сервер для распознавания
+        await transcribeAudio(audioBlob, mimeType);
+      };
+
+      mediaRecorder.onerror = (event) => {
+        console.error('[MediaRecorder] Error:', event);
+        setIsRecording(false);
+        alert('Ошибка при записи аудио. Попробуйте еще раз.');
+      };
+
+      mediaRecorderRef.current = mediaRecorder;
       setIsRecording(true);
       hasSpeechResultRef.current = false;
-      console.log('[SpeechRecognition] Recording started');
-    };
-
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const transcript = event.results[0][0].transcript;
-      console.log('[SpeechRecognition] Result:', transcript);
-      hasSpeechResultRef.current = true;
       
-      // Отправляем распознанный текст как сообщение
-      if (transcript.trim()) {
-        handleAudioInput(transcript.trim());
-      }
-    };
-
-    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
-      console.error('[SpeechRecognition] Error:', event.error);
-      setIsRecording(false);
-      
-      if (event.error === 'no-speech') {
-        alert('Речь не распознана. Попробуйте еще раз.');
-      } else if (event.error === 'not-allowed') {
-        alert('Доступ к микрофону запрещен. Разрешите доступ в настройках браузера.');
-      }
-    };
-
-    recognition.onend = () => {
-      setIsRecording(false);
-      console.log('[SpeechRecognition] Recording ended');
-      if (!hasSpeechResultRef.current) {
-        alert('Речь не распознана. Попробуйте еще раз.');
-      }
-    };
-
-    recognitionRef.current = recognition;
-    
-    try {
-      recognition.start();
-      console.log('[SpeechRecognition] Start called successfully');
+      // Начинаем запись
+      mediaRecorder.start();
+      console.log('[MediaRecorder] Recording started');
     } catch (error: any) {
-      console.error('[SpeechRecognition] Error starting:', error);
+      console.error('[MediaRecorder] Error:', error);
       setIsRecording(false);
-      recognitionRef.current = null;
       
-      if (error?.message?.includes('not allowed') || error?.name === 'NotAllowedError') {
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         alert('Доступ к микрофону запрещен. Разрешите доступ в настройках браузера.');
-      } else if (error?.message?.includes('no-speech') || error?.name === 'NoSpeechError') {
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
         alert('Микрофон не обнаружен. Проверьте подключение микрофона.');
       } else {
-        alert(`Ошибка при запуске записи: ${error?.message || 'Неизвестная ошибка'}\n\nВ Safari убедитесь, что:\n1. Сайт открыт по HTTPS\n2. Разрешен доступ к микрофону\n3. Используется Safari 14.5+`);
+        alert(`Ошибка при запуске записи: ${error.message || 'Неизвестная ошибка'}`);
       }
     }
   };
 
+  const transcribeAudio = async (audioBlob: Blob, mimeType: string) => {
+    try {
+      setIsLoading(true);
+      
+      // Отправляем аудио напрямую как Blob
+      const { data, error } = await supabase.functions.invoke('google-speech', {
+        body: audioBlob,
+        headers: {
+          'Content-Type': mimeType,
+        },
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      const transcript = data?.transcript || '';
+      
+      if (transcript.trim()) {
+        hasSpeechResultRef.current = true;
+        handleAudioInput(transcript.trim());
+      } else {
+        alert('Речь не распознана. Попробуйте еще раз.');
+      }
+    } catch (error: any) {
+      console.error('[Transcribe] Error:', error);
+      alert(`Ошибка при распознавании речи: ${error.message || 'Неизвестная ошибка'}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const stopRecording = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
       setIsRecording(false);
     }
   };
@@ -428,9 +340,9 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
   // Очистка при размонтировании компонента
   useEffect(() => {
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-        recognitionRef.current = null;
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop();
+        mediaRecorderRef.current = null;
       }
     };
   }, []);
