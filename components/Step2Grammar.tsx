@@ -108,7 +108,7 @@ const Step2Grammar: React.FC<Props> = ({ data, onComplete, onBack, topic, copy }
 
   return (
     <div className="flex flex-col min-h-full p-6 pb-12">
-      <div className="max-w-3xl mx-auto w-full">
+      <div className="max-w-2xl lg:max-w-3xl mx-auto w-full">
         {/* Header with navigation */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">

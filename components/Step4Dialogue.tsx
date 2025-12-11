@@ -679,7 +679,8 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
   };
 
   return (
-    <div className="flex flex-col h-full bg-white relative">
+    <div className="flex flex-col h-full bg-white relative w-full">
+      <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
       {/* Sticky Header */}
       <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -699,7 +700,7 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
       {/* Scrollable Messages Area */}
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto p-6 pt-12 space-y-6 pb-32 bg-white"
+        className="flex-1 overflow-y-auto p-6 pt-12 space-y-6 pb-32 bg-white w-full"
       >
 
         {messages.map((msg, idx) => {
@@ -976,10 +977,11 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="absolute bottom-0 left-0 w-full bg-white p-4 border-t border-gray-100">
+      <div className="absolute bottom-0 left-0 right-0 bg-white p-4 border-t border-gray-100">
+        <div className="max-w-3xl lg:max-w-4xl mx-auto px-4">
         {requiresAudioInput ? (
           // Режим аудио-ввода: показываем только кнопку микрофона
-          <div className="flex justify-center max-w-2xl mx-auto">
+          <div className="flex justify-center">
             <button
               type="button"
               disabled={isLoading}
@@ -1007,7 +1009,7 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
           </div>
         ) : (
           // Режим текстового ввода: показываем клавиатуру
-        <form onSubmit={handleSend} className="relative flex items-center gap-3 max-w-2xl mx-auto">
+        <form onSubmit={handleSend} className="relative flex items-center gap-3">
             <input
                 type="text"
                 value={input}
@@ -1026,6 +1028,8 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
             </button>
         </form>
         )}
+        </div>
+      </div>
       </div>
     </div>
   );

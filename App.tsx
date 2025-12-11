@@ -33,7 +33,7 @@ const App = () => {
   }, []);
 
   // Day plans management
-  const { dayPlans, planLoading } = useDayPlans("A1");
+  const { dayPlans, planLoading } = useDayPlans();
   const [selectedDayId, setSelectedDayId] = useState<number>(1);
   const currentDayPlan = dayPlans.find(d => d.day === selectedDayId) || dayPlans[0];
 
@@ -342,13 +342,13 @@ const App = () => {
     const chatLocked = isCurrentDayCompleted && chatCompleted && !lessonCompleted;
 
     return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 py-0 font-sans flex flex-col relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
       
       {/* Background accents */}
       <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
       <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-      <div className="w-full max-w-5xl mx-auto flex flex-col gap-5 flex-1 pt-8">
+      <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-5 flex-1 pt-8">
       {/* 1. Header */}
         <div className="flex flex-col gap-1.5 z-10 flex-none">
           <div className="flex items-start justify-between gap-3">
@@ -481,98 +481,99 @@ const App = () => {
             </div>
         </button>
 
-        {/* 3. Course Progress */}
-        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-4 flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{copy.progress.title}</span>
-              <span className="text-[10px] text-brand-primary font-medium">{totalCompletedCount} / {TOTAL_SPRINT_TASKS} {copy.progress.lessons}</span>
+        {/* 3. Course Progress and Insight - Side by side on large screens */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Course Progress - Left */}
+          <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{copy.progress.title}</span>
+                <span className="text-[10px] text-brand-primary font-medium">{totalCompletedCount} / {TOTAL_SPRINT_TASKS} {copy.progress.lessons}</span>
+              </div>
             </div>
+            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-brand-primary to-brand-secondary transition-all duration-700 ease-out"
+                style={{ width: `${sprintProgressPercent}%` }}
+              />
+            </div>
+            <div className="h-px bg-gray-100" />
+            <div className="flex overflow-x-auto gap-2.5 pt-1 pb-1 hide-scrollbar pl-1">
+          {dayPlans.map((d, idx) => {
+            const isSelected = selectedDayId === d.day;
+            const label = copy.calendar.weekdays[idx % copy.calendar.weekdays.length];
+            const isPast = idx < selectedIndex;
+            const isFuture = idx > selectedIndex;
+            const isLocked = isFuture && !isCurrentDayCompleted;
+            
+            return (
+                <button 
+                    key={d.day}
+                    onClick={() => {
+                      if (isLocked) return;
+                      setSelectedDayId(d.day);
+                    }}
+                    disabled={isLocked}
+                    className={`
+                      min-w-[50px] flex flex-col items-center gap-1.5 px-2 py-2 rounded-3xl border-2 transition-all duration-200
+                      ${isSelected 
+                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-lg shadow-brand-primary/30 scale-105' 
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-brand-primary/40 hover:shadow-md hover:scale-[1.02]'
+                      }
+                      ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                    `}
+                >
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>
+                        {label}
+                    </span>
+                    <div className={`
+                      w-8 h-8 rounded-xl flex items-center justify-center transition-all
+                      ${isSelected 
+                        ? 'bg-white text-brand-primary shadow-md' 
+                        : 'bg-gray-50 text-gray-700'
+                      }
+                    `}>
+                      {isPast ? (
+                        <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
+                      ) : isLocked ? (
+                        <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
+                      ) : (
+                        <span className={`text-xs font-bold ${isSelected ? 'text-brand-primary' : 'text-gray-700'}`}>
+                          {d.day}
+                        </span>
+                      )}
+                    </div>
+                </button>
+            )
+          })}
           </div>
-          <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-brand-primary to-brand-secondary transition-all duration-700 ease-out"
-              style={{ width: `${sprintProgressPercent}%` }}
-            />
-          </div>
-          <div className="h-px bg-gray-100" />
-          <div className="flex overflow-x-auto gap-2.5 pt-1 pb-1 hide-scrollbar pl-1">
-        {dayPlans.map((d, idx) => {
-          const isSelected = selectedDayId === d.day;
-          const label = copy.calendar.weekdays[idx % copy.calendar.weekdays.length];
-          const isPast = idx < selectedIndex;
-          const isFuture = idx > selectedIndex;
-          const isLocked = isFuture && !isCurrentDayCompleted;
-          
-          return (
-              <button 
-                  key={d.day}
-                  onClick={() => {
-                    if (isLocked) return;
-                    setSelectedDayId(d.day);
-                  }}
-                  disabled={isLocked}
-                  className={`
-                    min-w-[50px] flex flex-col items-center gap-1.5 px-2 py-2 rounded-3xl border-2 transition-all duration-200
-                    ${isSelected 
-                      ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-lg shadow-brand-primary/30 scale-105' 
-                      : 'bg-white border-gray-200 text-gray-700 hover:border-brand-primary/40 hover:shadow-md hover:scale-[1.02]'
-                    }
-                    ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                  `}
-              >
-                  <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>
-                      {label}
-                  </span>
-                  <div className={`
-                    w-8 h-8 rounded-xl flex items-center justify-center transition-all
-                    ${isSelected 
-                      ? 'bg-white text-brand-primary shadow-md' 
-                      : 'bg-gray-50 text-gray-700'
-                    }
-                  `}>
-                    {isPast ? (
-                      <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
-                    ) : isLocked ? (
-                      <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
-                    ) : (
-                      <span className={`text-xs font-bold ${isSelected ? 'text-brand-primary' : 'text-gray-700'}`}>
-                        {d.day}
-                      </span>
-                    )}
-                  </div>
-              </button>
-          )
-        })}
         </div>
-      </div>
 
-        {/* 4. Insight */}
-        <div className="grid grid-cols-1 gap-4">
-      <div 
-        onClick={() => setShowInsightPopup(true)}
+          {/* Insight - Right */}
+          <div 
+            onClick={() => setShowInsightPopup(true)}
             className="bg-white border border-gray-200 rounded-3xl p-5 relative overflow-hidden group hover:border-brand-primary/20 transition-all cursor-pointer shadow-sm"
-      >
+          >
             <div className="absolute top-[-30px] right-[-30px] w-28 h-28 bg-brand-primary/10 rounded-full blur-2xl pointer-events-none"></div>
-              <div className="flex items-start gap-4 relative z-10">
+            <div className="flex items-start gap-4 relative z-10">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/30 flex items-center justify-center border border-brand-primary/20 shadow-lg shrink-0 group-hover:scale-110 transition-transform duration-500">
-                  <Sparkles className={`w-5 h-5 ${aiContent.color}`} />
+                <Sparkles className={`w-5 h-5 ${aiContent.color}`} />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1 min-w-0">
                   <h3 className={`font-bold text-sm ${aiContent.color} whitespace-nowrap overflow-hidden text-ellipsis`}>
                     {aiContent.status}
                   </h3>
-                  </div>
+                </div>
                 <p className="text-slate-900 text-sm font-medium leading-relaxed line-clamp-2 opacity-90">
-                      {aiContent.assessment}
-                  </p>
+                  {aiContent.assessment}
+                </p>
               </div>
               <div className="text-gray-400 group-hover:text-brand-primary transition-colors">
-                  <ChevronRight className="w-5 h-5" /> 
+                <ChevronRight className="w-5 h-5" /> 
               </div>
+            </div>
           </div>
-      </div>
         </div>
       </div>
     </div>

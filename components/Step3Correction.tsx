@@ -110,7 +110,7 @@ const Step3Correction: React.FC<Props> = ({ data, onComplete, onBack, copy }) =>
 
   return (
     <div className="flex flex-col min-h-full p-6 pb-12">
-      <div className="w-full max-w-2xl mx-auto">
+      <div className="w-full max-w-xl lg:max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">

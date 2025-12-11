@@ -29,8 +29,8 @@ export const ExerciseView: React.FC<Props> = ({
 }) => {
   return (
     <div className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up">
-      <div className="flex-1 overflow-y-auto bg-white">
-        <div className="h-full">
+      <div className="flex-1 overflow-y-auto bg-white flex justify-center">
+        <div className="h-full w-full max-w-3xl lg:max-w-4xl">
           {activityStep === ActivityType.WARMUP && vocabData && (
             <Step1Warmup 
               data={vocabData.vocabulary} 
