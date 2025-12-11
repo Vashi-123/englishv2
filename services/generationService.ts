@@ -1,6 +1,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { VocabResponse, GrammarResponse, GrammarRow, CorrectionResponse, ChatMessage } from "../types";
 import { supabase } from "./supabaseClient";
+import { getOrCreateLocalUser } from "./userService";
 
 const apiKey = process.env.API_KEY || "";
 const ai = new GoogleGenAI({ apiKey });
@@ -223,40 +224,40 @@ export const generateCorrections = async (focus: string, theme: string): Promise
  * Инициализирует диалог через Groq edge функцию
  */
 export const startDialogueSession = async (
-  theme: string, 
-  focus: string, 
-  vocab: string[]
+  uiLang?: string,
+  lessonScript?: string
 ): Promise<{ text: string; translation: string }> => {
   try {
+    if (!lessonScript) {
+      throw new Error("lessonScript is required");
+    }
+    
     const { data, error } = await supabase.functions.invoke("groq-dialogue", {
       body: {
         messages: [],
-        theme,
-        focus,
-        vocab: vocab.length > 0 ? vocab : [],
-        uiLang: "ru",
-        level: "A1",
+        uiLang: uiLang || "ru",
         isFirstMessage: true,
+        lessonScript,
       },
     });
 
     if (error) {
       console.error("Groq dialogue function error:", error);
       return { 
-        text: "Hello! Ready to practice English?", 
-        translation: "Привет! Готов практиковать английский?" 
+        text: "Техническая ошибка или нет соединения. Попробуй еще раз.",
+        translation: ""
       };
     }
 
     return {
-      text: data?.response || "Hello! Ready to practice English?",
+      text: data?.response || "Техническая ошибка или нет соединения. Попробуй еще раз.",
       translation: data?.translation || "",
     };
   } catch (error) {
     console.error("Error starting dialogue session:", error);
     return { 
-      text: "Hello! Ready to practice English?", 
-      translation: "Привет! Готов практиковать английский?" 
+      text: "Техническая ошибка или нет соединения. Попробуй еще раз.",
+      translation: ""
     };
   }
 };
@@ -266,43 +267,43 @@ export const startDialogueSession = async (
  */
 export const sendDialogueMessage = async (
   messages: ChatMessage[],
-  theme: string,
-  focus: string,
-  vocab: string[]
+  uiLang?: string,
+  lessonScript?: string
 ): Promise<{ text: string; translation: string }> => {
   try {
+    if (!lessonScript) {
+      throw new Error("lessonScript is required");
+    }
+    
     const { data, error } = await supabase.functions.invoke("groq-dialogue", {
       body: {
         messages: messages.map(msg => ({
           role: msg.role === 'user' ? 'user' : 'assistant',
           content: msg.text,
         })),
-        theme,
-        focus,
-        vocab: vocab.length > 0 ? vocab : [],
-        uiLang: "ru",
-        level: "A1",
+        uiLang: uiLang || "ru",
         isFirstMessage: false,
+        lessonScript,
       },
     });
 
     if (error) {
       console.error("Groq dialogue function error:", error);
       return { 
-        text: "I'm sorry, I didn't understand. Can you try again?",
-        translation: "Извините, я не понял. Можете попробовать еще раз?"
+        text: "Техническая проблема или нет соединения. Попробуй отправить снова.",
+        translation: ""
       };
     }
 
     return {
-      text: data?.response || "I'm sorry, I didn't understand. Can you try again?",
+      text: data?.response || "Техническая проблема или нет соединения. Попробуй отправить снова.",
       translation: data?.translation || "",
     };
   } catch (error) {
     console.error("Error sending dialogue message:", error);
     return { 
-      text: "I'm sorry, I didn't understand. Can you try again?",
-      translation: "Извините, я не понял. Можете попробовать еще раз?"
+      text: "Техническая проблема или нет соединения. Попробуй отправить снова.",
+      translation: ""
     };
   }
 };
@@ -318,4 +319,340 @@ export const generateGeminiResponse = async (prompt: string, context?: any) => {
   }
 
   return data?.response || "No response from AI.";
+};
+
+/**
+ * Сохранить прогресс модуля в чате
+ * @deprecated Логика модулей больше не используется, функция оставлена для обратной совместимости
+ */
+export const saveChatProgress = async (
+  day: number,
+  lesson: number,
+  currentModule: string,
+  moduleIndex: number
+): Promise<void> => {
+  // Функция больше не используется, но оставлена для обратной совместимости
+  console.log("[saveChatProgress] Deprecated - module logic is no longer used");
+};
+
+/**
+ * Сохранить флаг завершения урока
+ */
+export const saveLessonCompleted = async (
+  day: number,
+  lesson: number,
+  completed: boolean
+): Promise<void> => {
+  try {
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) {
+      console.error("[saveLessonCompleted] Failed to get local user ID");
+      return;
+    }
+
+    // Сохраняем только флаг завершения урока (practice_completed используется как индикатор)
+    const { error } = await supabase
+      .from('chat_progress')
+      .upsert({
+        local_user_id: localUserId,
+        day,
+        lesson,
+        current_module: 'practice', // Для обратной совместимости с БД
+        vocab_completed: completed,
+        grammar_completed: completed,
+        correction_completed: completed,
+        practice_completed: completed, // Используем как флаг завершения урока
+        messages_count: 0,
+      }, {
+        onConflict: 'local_user_id,day,lesson'
+      });
+
+    if (error) {
+      console.error("[saveLessonCompleted] Error saving lesson completion:", error);
+    } else {
+      console.log("[saveLessonCompleted] Lesson completion saved:", completed);
+    }
+  } catch (error) {
+    console.error("[saveLessonCompleted] Exception saving lesson completion:", error);
+  }
+};
+
+/**
+ * Загрузить сохраненный прогресс модуля
+ */
+export const loadChatProgress = async (
+  day: number,
+  lesson: number
+): Promise<{ current_module: string; vocab_completed: boolean; grammar_completed: boolean; correction_completed: boolean; practice_completed: boolean } | null> => {
+  try {
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) {
+      console.log("[loadChatProgress] No local user ID found");
+      return null;
+    }
+
+    const { data, error } = await supabase
+      .from('chat_progress')
+      .select('current_module, vocab_completed, grammar_completed, correction_completed, practice_completed')
+      .eq('local_user_id', localUserId)
+      .eq('day', day)
+      .eq('lesson', lesson)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Запись не найдена - это нормально для нового урока
+        return null;
+      }
+      console.error("[loadChatProgress] Error loading chat progress:", error);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error("[loadChatProgress] Exception loading chat progress:", error);
+    return null;
+  }
+};
+
+/**
+ * Сохранить сообщение в чате
+ */
+export const saveChatMessage = async (
+  day: number,
+  lesson: number,
+  role: 'user' | 'model',
+  text: string,
+  translation?: string
+): Promise<void> => {
+  try {
+    // Валидация параметров
+    if (!day || !lesson) {
+      console.error("[saveChatMessage] Invalid parameters:", { day, lesson, role });
+      return;
+    }
+
+    if (!text || text.trim().length === 0) {
+      console.error("[saveChatMessage] Empty text, skipping save");
+      return;
+    }
+
+    // Получаем или создаем локального пользователя
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) {
+      console.error("[saveChatMessage] Failed to get local user ID");
+      return;
+    }
+
+    console.log("[saveChatMessage] Attempting to save:", { 
+      localUserId, 
+      day, 
+      lesson, 
+      role, 
+      textLength: text.length 
+    });
+
+    // Получаем текущий порядковый номер сообщения
+    const { count, error: countError } = await supabase
+      .from('chat_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('local_user_id', localUserId)
+      .eq('day', day)
+      .eq('lesson', lesson);
+
+    if (countError) {
+      console.error("[saveChatMessage] Error counting messages:", countError);
+      // Продолжаем с order = 1 если ошибка
+    }
+
+    const messageOrder = (count || 0) + 1;
+
+    const insertData = {
+      local_user_id: localUserId,
+      day: Number(day),
+      lesson: Number(lesson),
+      module: 'practice', // Для обратной совместимости с БД, но логика модулей не используется
+      role: role,
+      text: text.trim(),
+      translation: translation?.trim() || null,
+      message_order: messageOrder,
+    };
+
+    console.log("[saveChatMessage] Insert data:", insertData);
+
+    const { data: insertedData, error } = await supabase
+      .from('chat_messages')
+      .insert(insertData)
+      .select();
+
+    if (error) {
+      console.error("[saveChatMessage] Error saving chat message:", error);
+      console.error("[saveChatMessage] Error details:", {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
+    } else {
+      console.log("[saveChatMessage] Message saved successfully:", insertedData);
+    }
+  } catch (error) {
+    console.error("[saveChatMessage] Exception saving chat message:", error);
+  }
+};
+
+/**
+ * Загрузить историю сообщений для урока
+ */
+export const loadChatMessages = async (
+  day: number,
+  lesson: number
+): Promise<ChatMessage[]> => {
+  try {
+    // Получаем локального пользователя
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) {
+      console.log("[loadChatMessages] No local user ID found");
+      return [];
+    }
+
+    console.log("[loadChatMessages] Loading messages for day:", day, "lesson:", lesson, "localUserId:", localUserId);
+
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('id, role, text, translation, module, message_order')
+      .eq('local_user_id', localUserId)
+      .eq('day', day)
+      .eq('lesson', lesson)
+      .order('message_order', { ascending: true });
+
+    if (error) {
+      console.error("[loadChatMessages] Error loading chat messages:", error);
+      // Если таблица не существует, это нормально для первого запуска
+      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        console.log("[loadChatMessages] Table chat_messages does not exist yet");
+      }
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      console.log("[loadChatMessages] No messages found");
+      return [];
+    }
+
+    console.log("[loadChatMessages] Loaded", data.length, "messages");
+    return data.map(msg => ({
+      id: msg.id,
+      role: msg.role as 'user' | 'model',
+      text: msg.text,
+      translation: msg.translation || undefined,
+      moduleId: msg.module || undefined,
+      messageOrder: msg.message_order || undefined,
+    }));
+  } catch (error) {
+    console.error("[loadChatMessages] Exception loading chat messages:", error);
+    return [];
+  }
+};
+
+/**
+ * Загрузить структуру урока (lessonScript) из базы данных
+ */
+export const loadLessonScript = async (
+  day: number,
+  lesson: number
+): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('lesson_scripts')
+      .select('script_text')
+      .eq('day', day)
+      .eq('lesson', lesson)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Запись не найдена - это нормально, значит для этого урока нет скрипта
+        console.log("[loadLessonScript] No script found for day:", day, "lesson:", lesson);
+        return null;
+      }
+      console.error("[loadLessonScript] Error loading lesson script:", error);
+      return null;
+    }
+
+    return data?.script_text || null;
+  } catch (error) {
+    console.error("[loadLessonScript] Exception loading lesson script:", error);
+    return null;
+  }
+};
+
+/**
+ * Realtime подписка на сообщения чата
+ */
+export const subscribeChatMessages = async (
+  day: number,
+  lesson: number,
+  onMessage: (msg: ChatMessage) => void
+): Promise<() => void> => {
+  const localUserId = await getOrCreateLocalUser();
+  if (!localUserId) return () => {};
+
+  const channel = supabase
+    .channel(`chat_messages_${localUserId}_${day}_${lesson}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `local_user_id=eq.${localUserId}` },
+      (payload) => {
+        const row: any = payload.new;
+        if (!row) return;
+        if (row.day !== Number(day) || row.lesson !== Number(lesson)) return;
+        onMessage({
+          id: row.id,
+          role: row.role,
+          text: row.text,
+          translation: row.translation || undefined,
+          moduleId: row.module || undefined,
+          messageOrder: row.message_order || undefined,
+        });
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
+
+/**
+ * Realtime подписка на прогресс чата (флаги модулей, завершение)
+ */
+export const subscribeChatProgress = async (
+  day: number,
+  lesson: number,
+  onProgress: (progress: { practice_completed?: boolean; current_module?: string }) => void
+): Promise<() => void> => {
+  const localUserId = await getOrCreateLocalUser();
+  if (!localUserId) return () => {};
+
+  const channel = supabase
+    .channel(`chat_progress_${localUserId}_${day}_${lesson}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'chat_progress', filter: `local_user_id=eq.${localUserId}` },
+      (payload) => {
+        const row: any = payload.new;
+        if (!row) return;
+        if (row.day !== Number(day) || row.lesson !== Number(lesson)) return;
+        onProgress({
+          practice_completed: row.practice_completed,
+          current_module: row.current_module,
+        });
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };

@@ -56,11 +56,10 @@ export const ExerciseView: React.FC<Props> = ({
               copy={copy.correction}
             />
           )}
-          {activityStep === ActivityType.DIALOGUE && currentDayPlan && vocabData && (
+          {activityStep === ActivityType.DIALOGUE && currentDayPlan && (
             <Step4Dialogue 
-              theme={currentDayPlan.theme}
-              focus={currentDayPlan.grammarFocus}
-              vocab={vocabData.vocabulary.map(v => v.word)}
+              day={currentDayPlan.day}
+              lesson={currentDayPlan.lesson}
               onFinish={onComplete}
               onBack={onBack}
               copy={copy.dialogue}

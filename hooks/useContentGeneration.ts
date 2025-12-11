@@ -51,16 +51,8 @@ export const useContentGeneration = (currentDayPlan: DayPlan | undefined, select
         const data = await generateCorrections(currentDayPlan.grammarFocus, currentDayPlan.theme);
         setCorrectionData(data);
       } else if (type === ActivityType.DIALOGUE) {
-        if (!vocabData) {
-          const data = await generateVocabulary(
-            currentDayPlan.theme,
-            currentDayPlan.lesson || currentDayPlan.day,
-            currentDayPlan.grammarFocus,
-            undefined,
-            currentDayPlan.wordIds
-          );
-          setVocabData(data);
-        }
+        // Для DIALOGUE все данные теперь в lessonScript, загрузка словаря не нужна
+        // Просто завершаем без загрузки данных
       }
     } catch (e) {
       console.error("Error loading task", e);

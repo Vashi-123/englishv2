@@ -86,9 +86,12 @@ export interface CorrectionItem {
 }
 
 export interface ChatMessage {
+  id?: string;
   role: 'user' | 'model';
   text: string;
   translation?: string; // перевод на русский (для сообщений модели)
+  moduleId?: string; // ID модуля, к которому относится сообщение
+  messageOrder?: number;
 }
 
 // Gemini Response Schemas
