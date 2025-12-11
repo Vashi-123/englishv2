@@ -26,7 +26,9 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
   const [requiresAudioInput, setRequiresAudioInput] = useState(false);
   const [lessonScript, setLessonScript] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const [lessonCompletedPersisted, setLessonCompletedPersisted] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -229,7 +231,7 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
 
   const transcribeAudio = async (audioBlob: Blob, mimeType: string) => {
     try {
-      setIsLoading(true);
+      setIsTranscribing(true);
       
       // Получаем URL и ключ Supabase для прямого вызова
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -239,8 +241,13 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
         throw new Error('Supabase credentials not configured');
       }
 
-      // Отправляем аудио напрямую через fetch
-      const response = await fetch(`${supabaseUrl}/functions/v1/google-speech`, {
+      // Таймаут 60 секунд
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Таймаут: распознавание речи заняло слишком много времени')), 60000);
+      });
+
+      // Отправляем аудио напрямую через fetch с таймаутом
+      const fetchPromise = fetch(`${supabaseUrl}/functions/v1/google-speech`, {
         method: 'POST',
         headers: {
           'Content-Type': mimeType,
@@ -249,6 +256,8 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
         },
         body: audioBlob,
       });
+
+      const response = await Promise.race([fetchPromise, timeoutPromise]);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -269,7 +278,7 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
       console.error('[Transcribe] Error:', error);
       alert(`Ошибка при распознавании речи: ${error.message || 'Неизвестная ошибка'}`);
     } finally {
-      setIsLoading(false);
+      setIsTranscribing(false);
     }
   };
 
@@ -372,6 +381,17 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
     }
   }, [messages, day, lesson]);
 
+  // Отслеживаем изменения lessonCompletedPersisted для отладки и анимации
+  useEffect(() => {
+    if (lessonCompletedPersisted && messages.length > 0) {
+      console.log("[Step4Dialogue] Lesson completed state changed - dopamine effect should be visible:", {
+        lessonCompletedPersisted,
+        messagesCount: messages.length,
+        isLoading,
+      });
+    }
+  }, [lessonCompletedPersisted, messages.length, isLoading]);
+
   useEffect(() => {
     const initChat = async () => {
       // Защита от повторных вызовов для одного и того же набора параметров
@@ -384,6 +404,7 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
       
       try {
         setIsLoading(true);
+        setIsInitializing(true); // Блокируем realtime подписку во время инициализации
         console.log("[Step4Dialogue] Initializing chat for day:", day, "lesson:", lesson);
         
         // СНАЧАЛА загружаем сохраненную историю сообщений (быстрая операция)
@@ -422,6 +443,18 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
         } else {
           // Если истории нет, начинаем новый диалог
           console.log("[Step4Dialogue] No history found, starting new chat");
+          
+          // Небольшая задержка на случай, если App.tsx еще предзагружает первое сообщение
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Повторно проверяем, не появились ли сообщения за это время (от предзагрузки)
+          const recheckMessages = await loadChatMessages(day || 1, lesson || 1);
+          if (recheckMessages && recheckMessages.length > 0) {
+            console.log("[Step4Dialogue] Messages appeared after delay (preloaded), using them:", recheckMessages.length);
+            setMessages(recheckMessages);
+            setIsLoading(false);
+            return;
+          }
           
           // Загружаем скрипт урока, если он есть
           let script = lessonScript;
@@ -480,6 +513,8 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
           messageOrder: 1,
         }]);
         setIsLoading(false);
+      } finally {
+        setIsInitializing(false); // Разблокируем realtime подписку после инициализации
       }
     };
     initChat();
@@ -496,22 +531,51 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
 
     const initRealtime = async () => {
       unsubMessages = await subscribeChatMessages(day || 1, lesson || 1, (msg) => {
+        // Игнорируем сообщения во время инициализации, чтобы избежать дубликатов
+        if (isInitializing) {
+          console.log("[Step4Dialogue] Ignoring realtime message during initialization:", msg);
+          return;
+        }
+        
         setMessages((prev) => {
+          // Улучшенная проверка дубликатов: по id, messageOrder+role, или по тексту+role (на случай если id еще не установлен)
           const exists = prev.some(
             (m) =>
               (m.id && msg.id && m.id === msg.id) ||
-              (m.messageOrder && msg.messageOrder && m.messageOrder === msg.messageOrder && m.role === msg.role)
+              (m.messageOrder && msg.messageOrder && m.messageOrder === msg.messageOrder && m.role === msg.role) ||
+              (m.text === msg.text && m.role === msg.role && m.messageOrder === msg.messageOrder)
           );
-          if (exists) return prev;
+          if (exists) {
+            console.log("[Step4Dialogue] Duplicate message detected, skipping:", msg);
+            return prev;
+          }
+          console.log("[Step4Dialogue] Adding new realtime message:", msg);
           return [...prev, msg];
         });
       });
 
       unsubProgress = await subscribeChatProgress(day || 1, lesson || 1, (progress) => {
         if (typeof progress.practice_completed === 'boolean') {
-          setLessonCompletedPersisted(progress.practice_completed);
-          if (progress.practice_completed) {
+          console.log("[Step4Dialogue] Realtime progress update:", {
+            day: day || 1,
+            lesson: lesson || 1,
+            practice_completed: progress.practice_completed,
+            currentState: lessonCompletedPersisted,
+          });
+          
+          const wasCompleted = lessonCompletedPersisted;
+          const isNowCompleted = progress.practice_completed;
+          
+          setLessonCompletedPersisted(isNowCompleted);
+          
+          if (isNowCompleted) {
             hasRecordedLessonCompleteRef.current = true;
+            
+            // Если урок только что завершился через realtime (не было завершен, стало завершен)
+            if (!wasCompleted && isNowCompleted) {
+              console.log("[Step4Dialogue] Lesson completed via realtime! Showing dopamine effect.");
+              // Эффект дофамина появится автоматически через lessonCompletedPersisted
+            }
           } else {
             hasRecordedLessonCompleteRef.current = false;
           }
@@ -525,7 +589,7 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
       if (unsubMessages) unsubMessages();
       if (unsubProgress) unsubProgress();
     };
-  }, [day, lesson]);
+  }, [day, lesson, isInitializing]);
 
 
   const handleSend = async (e: React.FormEvent) => {
@@ -537,13 +601,16 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
     const newMessages = [...messages, { role: 'user' as const, text: userMsg, messageOrder: userOrder }];
     setMessages(newMessages);
     
-    // Сохраняем сообщение пользователя
-    await saveChatMessage(day || 1, lesson || 1, 'user', userMsg);
-    
+    // Очищаем поле ввода СРАЗУ после добавления в чат
     setInput('');
     setRequiresAudioInput(false); // Сбрасываем флаг аудио-ввода при отправке текста
     localStorage.setItem(audioFlagKey, '0');
     setIsLoading(true);
+    
+    // Сохраняем сообщение пользователя (асинхронно, после очистки поля)
+    saveChatMessage(day || 1, lesson || 1, 'user', userMsg).catch(err => 
+      console.error("Error saving user message:", err)
+    );
     try {
       const response = await sendDialogueMessage(newMessages, language, script || undefined);
       
@@ -673,7 +740,15 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
             </div>
           );
         })}
-        {isLoading && (
+        {isTranscribing && (
+          <div className="flex justify-start mb-4">
+            <div className="bg-gray-50 px-4 py-2 rounded-full flex items-center space-x-2">
+              <div className="w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin"></div>
+              <span className="text-sm text-gray-600">Распознавание речи...</span>
+            </div>
+          </div>
+        )}
+        {isLoading && messages.length > 0 && messages[messages.length - 1]?.role === 'model' && (
           <div className="flex justify-start">
              <div className="bg-gray-50 px-4 py-2 rounded-full flex space-x-1">
                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
@@ -685,7 +760,7 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
         
         {/* Дофаминовый компонент достижения */}
         {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
-          <div className="flex justify-center my-8">
+          <div key={`achievement-${lessonCompletedPersisted}`} className="flex justify-center my-8 animate-fade-in">
             <div className="relative group">
               {/* Основная карточка с градиентом */}
               <div className="relative bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 rounded-3xl p-8 shadow-2xl border-2 border-amber-300/60 backdrop-blur-sm overflow-hidden achievement-card">
@@ -859,6 +934,19 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
                   opacity: 0;
                 }
               }
+              @keyframes fade-in {
+                0% {
+                  opacity: 0;
+                  transform: translateY(20px) scale(0.95);
+                }
+                100% {
+                  opacity: 1;
+                  transform: translateY(0) scale(1);
+                }
+              }
+              .animate-fade-in {
+                animation: fade-in 0.6s ease-out forwards;
+              }
               .twinkle-particle {
                 animation: twinkle ease-in-out infinite;
               }
@@ -910,7 +998,7 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
           <div className="flex justify-center">
             <button
               type="button"
-              disabled={isLoading}
+              disabled={isLoading || isTranscribing}
               onClick={() => {
                 if (isRecording) {
                   stopRecording();
@@ -921,6 +1009,8 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
               className={`p-6 rounded-full transition-all shadow-lg ${
                 isRecording 
                   ? 'bg-red-500 text-white animate-pulse' 
+                  : isTranscribing
+                  ? 'bg-gray-400 text-white cursor-not-allowed'
                   : 'bg-brand-primary text-white hover:opacity-90'
               }`}
               aria-label={isRecording ? "Stop recording" : "Record audio"}
@@ -930,6 +1020,11 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
             {isRecording && (
               <span className="ml-4 text-sm text-gray-600 flex items-center">
                 Запись... Говорите
+              </span>
+            )}
+            {isTranscribing && (
+              <span className="ml-4 text-sm text-gray-600 flex items-center">
+                Обработка аудио...
               </span>
             )}
           </div>

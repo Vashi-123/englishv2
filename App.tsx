@@ -4,7 +4,7 @@ import { useLanguage } from './hooks/useLanguage';
 import { useDayPlans } from './hooks/useDayPlans';
 import { useContentGeneration } from './hooks/useContentGeneration';
 import { ExerciseView } from './components/Exercise/ExerciseView';
-import { loadChatProgress, loadChatMessages, saveLessonCompleted, startDialogueSession, loadLessonScript, saveChatMessage } from './services/generationService';
+import { loadChatProgress, loadChatMessages, saveLessonCompleted, startDialogueSession, loadLessonScript, saveChatMessage, subscribeChatProgress } from './services/generationService';
 import { 
   X, 
   CheckCircle2, 
@@ -148,6 +148,38 @@ const App = () => {
     };
     checkLessonCompletion();
   }, [currentDayPlan, view]);
+
+  // Realtime подписка на изменения прогресса урока
+  useEffect(() => {
+    if (!currentDayPlan) return;
+
+    let unsubProgress: (() => void) | null = null;
+
+    const initRealtime = async () => {
+      unsubProgress = await subscribeChatProgress(
+        currentDayPlan.day,
+        currentDayPlan.lesson,
+        (progress) => {
+          if (typeof progress.practice_completed === 'boolean') {
+            console.log("[App] Realtime progress update:", {
+              day: currentDayPlan.day,
+              lesson: currentDayPlan.lesson,
+              practice_completed: progress.practice_completed,
+            });
+            setLessonCompleted(progress.practice_completed);
+          }
+        }
+      );
+    };
+
+    initRealtime();
+
+    return () => {
+      if (unsubProgress) {
+        unsubProgress();
+      }
+    };
+  }, [currentDayPlan]);
 
   const renderPlanState = () => {
     if (planLoading && dayPlans.length === 0) {
