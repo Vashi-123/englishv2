@@ -241,20 +241,32 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
         throw new Error('Supabase credentials not configured');
       }
 
+      // Получаем последнее сообщение от модели для контекста
+      const lastModelMessage = messages
+        .filter(m => m.role === 'model')
+        .slice(-1)[0];
+      const contextText = lastModelMessage?.text || '';
+
       // Таймаут 60 секунд
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error('Таймаут: распознавание речи заняло слишком много времени')), 60000);
       });
 
+      // Отправляем аудио с контекстом через FormData
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'audio.webm');
+      if (contextText) {
+        formData.append('context', contextText);
+      }
+
       // Отправляем аудио напрямую через fetch с таймаутом
       const fetchPromise = fetch(`${supabaseUrl}/functions/v1/google-speech`, {
         method: 'POST',
         headers: {
-          'Content-Type': mimeType,
           'Authorization': `Bearer ${supabaseAnonKey}`,
           'apikey': supabaseAnonKey,
         },
-        body: audioBlob,
+        body: formData,
       });
 
       const response = await Promise.race([fetchPromise, timeoutPromise]);
@@ -740,14 +752,6 @@ const Step4Dialogue: React.FC<Props> = ({ day, lesson, onFinish, onBack, copy })
             </div>
           );
         })}
-        {isTranscribing && (
-          <div className="flex justify-start mb-4">
-            <div className="bg-gray-50 px-4 py-2 rounded-full flex items-center space-x-2">
-              <div className="w-4 h-4 border-2 border-brand-primary border-t-transparent rounded-full animate-spin"></div>
-              <span className="text-sm text-gray-600">Распознавание речи...</span>
-            </div>
-          </div>
-        )}
         {isLoading && messages.length > 0 && messages[messages.length - 1]?.role === 'model' && (
           <div className="flex justify-start">
              <div className="bg-gray-50 px-4 py-2 rounded-full flex space-x-1">

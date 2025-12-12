@@ -404,6 +404,11 @@ export const loadChatProgress = async (
         // Запись не найдена - это нормально для нового урока
         return null;
       }
+      // Ошибка 406 (Not Acceptable) может возникать при проблемах с RLS или форматом запроса
+      if (error.message?.includes('406') || error.message?.includes('Not Acceptable')) {
+        console.log("[loadChatProgress] 406 error (likely RLS or format issue), returning null for day:", day, "lesson:", lesson);
+        return null;
+      }
       console.error("[loadChatProgress] Error loading chat progress:", error);
       return null;
     }

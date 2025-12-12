@@ -35,6 +35,7 @@ const App = () => {
   // Day plans management
   const { dayPlans, planLoading } = useDayPlans();
   const [selectedDayId, setSelectedDayId] = useState<number>(1);
+  const [isInitializing, setIsInitializing] = useState(true);
   const currentDayPlan = dayPlans.find(d => d.day === selectedDayId) || dayPlans[0];
 
   // Content generation
@@ -50,8 +51,10 @@ const App = () => {
   const [view, setView] = useState<ViewState>(ViewState.DASHBOARD);
   const [activityStep, setActivityStep] = useState<ActivityType>(ActivityType.DIALOGUE);
   const [completedTasks, setCompletedTasks] = useState<ActivityType[]>([]);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [showInsightPopup, setShowInsightPopup] = useState(false);
   const [lessonCompleted, setLessonCompleted] = useState(false);
+  const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>({});
 
   const studyPlanWords = copy.header.studyPlan.split(' ');
   const studyPlanFirst = studyPlanWords[0] || '';
@@ -60,11 +63,20 @@ const App = () => {
   // Reset progress when day changes
   useEffect(() => {
     setCompletedTasks([]);
-    setLessonCompleted(false);
-  }, [selectedDayId]);
+    // Устанавливаем статус из кэша для мгновенного отображения, если он есть
+    if (currentDayPlan && dayCompletedStatus[currentDayPlan.day] !== undefined) {
+      setLessonCompleted(dayCompletedStatus[currentDayPlan.day]);
+    } else {
+      // Если статуса нет в кэше, сбрасываем
+      setLessonCompleted(false);
+    }
+  }, [selectedDayId, currentDayPlan, dayCompletedStatus]);
 
-  // Preload first message in background when app loads
+  // Preload first message в фоне только после инициализации (не блокирует загрузку)
   useEffect(() => {
+    // Запускаем preload только после завершения инициализации
+    if (isInitializing) return;
+    
     const preloadFirstMessage = async () => {
       if (!currentDayPlan) return;
 
@@ -103,8 +115,6 @@ const App = () => {
             );
             console.log("[App] First message preloaded and saved");
           }
-        } else {
-          console.log("[App] Messages already exist, skipping preload");
         }
       } catch (error) {
         console.error("[App] Error preloading first message:", error);
@@ -113,17 +123,25 @@ const App = () => {
     };
 
     preloadFirstMessage();
-  }, [currentDayPlan, language]);
+  }, [currentDayPlan, language, isInitializing]);
 
-  // Check if lesson is completed by checking chat progress and chat history
-  useEffect(() => {
-    const checkLessonCompletion = async () => {
-      if (!currentDayPlan) return;
+  // Функция проверки статуса урока
+  const checkLessonCompletion = async (showLoading = false) => {
+    if (!currentDayPlan) return;
 
-      const progress = await loadChatProgress(currentDayPlan.day, currentDayPlan.lesson);
+    // Сохраняем day и lesson для проверки актуальности после асинхронных операций
+    const checkingDay = currentDayPlan.day;
+    const checkingLesson = currentDayPlan.lesson;
+
+    if (showLoading) {
+      setIsCheckingStatus(true);
+    }
+
+    try {
+      const progress = await loadChatProgress(checkingDay, checkingLesson);
       const progressFlag = progress?.practice_completed === true;
 
-      const messages = await loadChatMessages(currentDayPlan.day, currentDayPlan.lesson);
+      const messages = await loadChatMessages(checkingDay, checkingLesson);
       const hasTagInHistory = messages.some(
         (msg) => msg.text && msg.text.includes('<lesson_complete>')
       );
@@ -136,24 +154,112 @@ const App = () => {
       if (hasTagInHistory && !progressFlag) {
         // Тег есть, но флага нет - синхронизируем
         resolvedCompleted = true;
-        await saveLessonCompleted(currentDayPlan.day, currentDayPlan.lesson, true);
+        await saveLessonCompleted(checkingDay, checkingLesson, true);
       } else if (!hasTagInHistory && progressFlag) {
         // Флаг есть, но тега нет (нормально, тег удаляется) - оставляем как есть
         resolvedCompleted = true;
       }
 
-      setLessonCompleted(resolvedCompleted);
+      // Проверяем, что день не изменился перед установкой статуса
+      if (currentDayPlan && currentDayPlan.day === checkingDay && currentDayPlan.lesson === checkingLesson) {
+        setLessonCompleted(resolvedCompleted);
+
+        // Обновляем статус дня
+        setDayCompletedStatus(prev => ({
+          ...prev,
+          [checkingDay]: resolvedCompleted
+        }));
+      } else {
+        console.log("[App] Day changed during check, skipping status update");
+      }
+
+      // Убрали автоматический переход - пользователь может повторить урок
 
       console.log("[App] Lesson completion check:", {
-        day: currentDayPlan.day,
-        lesson: currentDayPlan.lesson,
+        day: checkingDay,
+        lesson: checkingLesson,
         completed: resolvedCompleted,
         progressFlag,
         tag: hasTagInHistory,
+        currentDay: currentDayPlan?.day,
+        stillValid: currentDayPlan && currentDayPlan.day === checkingDay,
       });
+    } finally {
+      if (showLoading) {
+        setIsCheckingStatus(false);
+      }
+    }
+  };
+
+  // Загружаем статусы всех дней при загрузке и выбираем актуальный день
+  useEffect(() => {
+    const loadAllDaysStatusAndSelectCurrent = async () => {
+      if (dayPlans.length === 0) return;
+      
+      setIsInitializing(true);
+      const statuses: Record<number, boolean> = {};
+      
+      // Загружаем статусы всех дней параллельно
+      const progressPromises = dayPlans.map(async (dayPlan) => {
+        try {
+          const progress = await loadChatProgress(dayPlan.day, dayPlan.lesson);
+          return { day: dayPlan.day, completed: progress?.practice_completed === true };
+        } catch (error) {
+          // Игнорируем ошибки 406 и другие - просто считаем урок незавершенным
+          console.log("[App] Error loading progress for day", dayPlan.day, "- treating as incomplete");
+          return { day: dayPlan.day, completed: false };
+        }
+      });
+      
+      const results = await Promise.all(progressPromises);
+      results.forEach(({ day, completed }) => {
+        statuses[day] = completed;
+      });
+      
+      setDayCompletedStatus(statuses);
+      
+      // Находим первый незавершенный день (актуальный)
+      let actualDayId = dayPlans[0]?.day || 1;
+      for (const dayPlan of dayPlans) {
+        if (!statuses[dayPlan.day]) {
+          actualDayId = dayPlan.day;
+          break;
+        }
+      }
+      
+      // Устанавливаем актуальный день
+      setSelectedDayId(actualDayId);
+      setIsInitializing(false);
+      
+      console.log("[App] Initialized with actual day:", actualDayId, "statuses:", statuses);
     };
-    checkLessonCompletion();
-  }, [currentDayPlan, view]);
+    
+    if (dayPlans.length > 0 && isInitializing) {
+      loadAllDaysStatusAndSelectCurrent();
+    }
+  }, [dayPlans, isInitializing]);
+
+  // Check if lesson is completed by checking chat progress and chat history
+  useEffect(() => {
+    if (!currentDayPlan || isInitializing) return;
+    
+    // Сохраняем day для проверки актуальности
+    const currentDay = currentDayPlan.day;
+    
+    // Устанавливаем статус из кэша для мгновенного отображения, если он есть
+    if (dayCompletedStatus[currentDay] !== undefined) {
+      setLessonCompleted(dayCompletedStatus[currentDay]);
+    } else {
+      // Если статуса нет в кэше, сбрасываем
+      setLessonCompleted(false);
+    }
+    
+    // Проверяем актуальный статус из БД только при смене view (не при инициализации)
+    if (view === ViewState.DASHBOARD) {
+      checkLessonCompletion(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDayPlan, view, isInitializing]);
 
   // Realtime подписка на изменения прогресса урока
   useEffect(() => {
@@ -173,6 +279,14 @@ const App = () => {
               practice_completed: progress.practice_completed,
             });
             setLessonCompleted(progress.practice_completed);
+            
+            // Обновляем статус дня
+            setDayCompletedStatus(prev => ({
+              ...prev,
+              [currentDayPlan.day]: progress.practice_completed
+            }));
+            
+            // Убрали автоматический переход - пользователь может повторить урок
           }
         }
       );
@@ -188,7 +302,7 @@ const App = () => {
   }, [currentDayPlan]);
 
   const renderPlanState = () => {
-    if (planLoading && dayPlans.length === 0) {
+    if (planLoading || (dayPlans.length === 0) || isInitializing) {
       return (
         <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center">
           <div className="text-center">
@@ -219,13 +333,12 @@ const App = () => {
     0,
     dayPlans.findIndex((d) => d.day === selectedDayId)
   );
-  const pastDaysTasks = selectedIndex >= 0 ? selectedIndex * TASKS_PER_DAY : 0;
-  const currentDayTasks = completedTasks.length;
-  const totalCompletedCount = pastDaysTasks + currentDayTasks;
+  // Считаем завершенные уроки на основе dayCompletedStatus
+  const totalCompletedCount = Object.values(dayCompletedStatus).filter(Boolean).length;
   const sprintProgressPercent = Math.round((totalCompletedCount / TOTAL_SPRINT_TASKS) * 100);
   
-  // Check if current day is completed (all tasks done)
-  const isCurrentDayCompleted = currentDayTasks >= TASKS_PER_DAY;
+  // Check if current day is completed на основе dayCompletedStatus
+  const isCurrentDayCompleted = currentDayPlan ? (dayCompletedStatus[currentDayPlan.day] === true) : false;
 
   // Expanded AI Insight Logic
   const getExtendedAIInsight = () => {
@@ -243,23 +356,10 @@ const App = () => {
         color: "text-brand-primary"
     };
 
-    if (currentDayTasks === 1) {
-        feedback = {
-            status: copy.ai.states.vocab.status,
-            assessment: copy.ai.states.vocab.assessment,
-            learningGoal: copy.ai.states.vocab.learningGoal,
-            motivation: copy.ai.states.vocab.motivation,
-            color: "text-brand-primaryLight"
-        };
-    } else if (currentDayTasks === 2) {
-        feedback = {
-            status: copy.ai.states.grammar.status,
-            assessment: copy.ai.states.grammar.assessment,
-            learningGoal: copy.ai.states.grammar.learningGoal,
-            motivation: copy.ai.states.grammar.motivation,
-            color: "text-brand-accent"
-        };
-    } else if (currentDayTasks >= 3) {
+    // Используем dayCompletedStatus для определения состояния
+    const isCurrentDayCompleted = dayCompletedStatus[currentDayPlan.day] === true;
+    
+    if (isCurrentDayCompleted) {
         feedback = {
             status: copy.ai.states.practice.status,
             assessment: copy.ai.states.practice.assessment,
@@ -270,7 +370,7 @@ const App = () => {
     }
 
     // Sprint Level Overrides
-    if (sprintProgressPercent > 50 && currentDayTasks === 0) {
+    if (sprintProgressPercent > 50 && !isCurrentDayCompleted) {
         feedback.assessment = copy.ai.sprintOverride.assessment;
         feedback.motivation = copy.ai.sprintOverride.motivation;
     }
@@ -300,11 +400,17 @@ const App = () => {
     setView(ViewState.EXERCISE);
   };
 
-  const handleNextStep = () => {
+  const handleNextStep = async () => {
     // Add current step to completed if not already
     if (!completedTasks.includes(activityStep)) {
         setCompletedTasks(prev => [...prev, activityStep]);
     }
+    
+    // Если выходим из чата (Step4Dialogue), проверяем статус урока
+    if (activityStep === ActivityType.DIALOGUE) {
+      await checkLessonCompletion(true);
+    }
+    
     setView(ViewState.DASHBOARD);
   };
 
@@ -536,13 +642,16 @@ const App = () => {
               />
             </div>
             <div className="h-px bg-gray-100" />
-            <div className="flex overflow-x-auto gap-2.5 pt-1 pb-1 hide-scrollbar pl-1">
+            <div className="flex overflow-x-auto gap-2.5 pt-0.5 pb-2 hide-scrollbar pl-1">
           {dayPlans.map((d, idx) => {
             const isSelected = selectedDayId === d.day;
             const label = copy.calendar.weekdays[idx % copy.calendar.weekdays.length];
             const isPast = idx < selectedIndex;
-            const isFuture = idx > selectedIndex;
-            const isLocked = isFuture && !isCurrentDayCompleted;
+            // Блокируем день, если предыдущий не завершён
+            const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
+            const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
+            const isLocked = idx > 0 && !prevCompleted;
+            const isDayCompleted = dayCompletedStatus[d.day] === true;
             
             return (
                 <button 
@@ -553,25 +662,46 @@ const App = () => {
                     }}
                     disabled={isLocked}
                     className={`
-                      min-w-[50px] flex flex-col items-center gap-1.5 px-2 py-2 rounded-3xl border-2 transition-all duration-200
-                      ${isSelected 
-                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-lg shadow-brand-primary/30 scale-105' 
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-brand-primary/40 hover:shadow-md hover:scale-[1.02]'
+                      min-w-[50px] flex flex-col items-center gap-1.5 px-2 py-2 rounded-3xl border-2 transition-all duration-200 relative overflow-hidden
+                      ${isDayCompleted && !isSelected
+                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
+                        : isSelected 
+                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-brand-primary/40 hover:shadow-sm hover:scale-[1.02]'
                       }
                       ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                     `}
                 >
-                    <span className={`text-[10px] font-bold uppercase tracking-wider ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>
+                    {/* Анимированный фон для завершенного дня */}
+                    {isDayCompleted && !isSelected && (
+                      <>
+                        <div className="absolute inset-0 opacity-30">
+                          <div className="absolute top-0 left-0 w-20 h-20 bg-gradient-to-br from-amber-400/40 to-orange-400/40 rounded-full blur-2xl animate-pulse"></div>
+                          <div className="absolute bottom-0 right-0 w-24 h-24 bg-gradient-to-br from-rose-400/40 to-pink-400/40 rounded-full blur-2xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+                        </div>
+                      </>
+                    )}
+                    <span className={`text-[10px] font-bold uppercase tracking-wider relative z-10 ${
+                      isDayCompleted && !isSelected
+                        ? 'text-amber-700'
+                        : isSelected 
+                        ? 'text-white/90' 
+                        : 'text-gray-500'
+                    }`}>
                         {label}
                     </span>
                     <div className={`
-                      w-8 h-8 rounded-xl flex items-center justify-center transition-all
-                      ${isSelected 
+                      w-8 h-8 rounded-xl flex items-center justify-center transition-all relative z-10
+                      ${isDayCompleted && !isSelected
+                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+                        : isSelected 
                         ? 'bg-white text-brand-primary shadow-md' 
                         : 'bg-gray-50 text-gray-700'
                       }
                     `}>
-                      {isPast ? (
+                      {isDayCompleted ? (
+                        <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-white drop-shadow-sm'}`} />
+                      ) : isPast ? (
                         <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
                       ) : isLocked ? (
                         <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
@@ -617,6 +747,12 @@ const App = () => {
     </div>
   );};
 
+  const handleBackFromExercise = async () => {
+    // Проверяем статус урока перед возвратом на главный экран
+    await checkLessonCompletion(true);
+    setView(ViewState.DASHBOARD);
+  };
+
   const renderExercise = () => {
     return (
       <ExerciseView
@@ -626,7 +762,7 @@ const App = () => {
         correctionData={correctionData}
         currentDayPlan={currentDayPlan}
         onComplete={handleNextStep}
-        onBack={() => setView(ViewState.DASHBOARD)}
+        onBack={handleBackFromExercise}
         copy={copy}
       />
     );
@@ -639,7 +775,7 @@ const App = () => {
       {renderInsightPopup()}
 
       {/* Loading Overlay */}
-       {loading && (
+       {(loading || isCheckingStatus) && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center animate-in fade-in duration-300">
                 <div className="relative mb-8">
                     <div className="w-24 h-24 border-4 border-white/10 border-t-brand-primary rounded-full animate-spin"></div>
@@ -647,8 +783,12 @@ const App = () => {
                         <Sparkles className="w-8 h-8 text-brand-primary animate-pulse" />
                     </div>
                 </div>
-                <h3 className="text-white font-bold text-3xl tracking-tight mb-2">{copy.common.loadingOverlayTitle}</h3>
-                <p className="text-gray-200 font-medium">{copy.common.loadingOverlaySubtitle}</p>
+                <h3 className="text-white font-bold text-3xl tracking-tight mb-2">
+                  {isCheckingStatus ? 'Проверка статуса...' : copy.common.loadingOverlayTitle}
+                </h3>
+                <p className="text-gray-200 font-medium">
+                  {isCheckingStatus ? 'Обновление информации об уроке' : copy.common.loadingOverlaySubtitle}
+                </p>
             </div>
         )}
     </>

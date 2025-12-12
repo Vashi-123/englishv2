@@ -44,10 +44,13 @@ Deno.serve(async (req: Request) => {
     let audioBlob: Blob;
     let mimeType = "audio/webm";
     
+    let contextText = "";
+    
     if (contentType.includes("multipart/form-data")) {
       // Парсим FormData
       const formData = await req.formData();
       const audioFile = formData.get("audio") as File;
+      const context = formData.get("context") as string;
       
       if (!audioFile) {
         console.error("[google-speech] No audio file in form data");
@@ -59,7 +62,9 @@ Deno.serve(async (req: Request) => {
       
       audioBlob = audioFile;
       mimeType = audioFile.type || "audio/webm";
+      contextText = context || "";
       console.log("[google-speech] Audio file size:", audioBlob.size, "type:", mimeType);
+      console.log("[google-speech] Context text length:", contextText.length);
     } else {
       // Принимаем аудио как Blob напрямую
       audioBlob = await req.blob();
@@ -103,14 +108,86 @@ Deno.serve(async (req: Request) => {
     console.log("[google-speech] Encoding:", encoding, "Sample rate:", sampleRate);
     console.log("[google-speech] Base64 audio length:", base64Audio.length, "chars");
 
+    // Извлекаем ключевые фразы из контекста для speechContexts
+    const extractPhrases = (text: string): string[] => {
+      if (!text) return [];
+      
+      // Удаляем markdown форматирование и теги
+      const cleanText = text
+        .replace(/\*\*/g, '')
+        .replace(/\*/g, '')
+        .replace(/`/g, '')
+        .replace(/<[^>]+>/g, '')
+        .replace(/\n/g, ' ')
+        .trim();
+      
+      const phrasesSet = new Set<string>();
+      
+      // Извлекаем фразы в кавычках (английские примеры)
+      const quotedPhrases = cleanText.match(/"([^"]+)"/g) || [];
+      for (const quoted of quotedPhrases) {
+        const phrase = quoted.replace(/"/g, '').trim();
+        if (phrase.length > 0 && phrase.length < 50) {
+          phrasesSet.add(phrase);
+        }
+      }
+      
+      // Извлекаем английские слова и фразы (слова с латинскими буквами)
+      const englishPattern = /[A-Za-z]+(?:\s+[A-Za-z]+){0,4}/g;
+      const englishMatches = cleanText.match(englishPattern) || [];
+      for (const match of englishMatches) {
+        const phrase = match.trim();
+        // Добавляем фразы от 2 до 5 слов
+        const wordCount = phrase.split(/\s+/).length;
+        if (wordCount >= 2 && wordCount <= 5 && phrase.length < 50) {
+          phrasesSet.add(phrase);
+        }
+      }
+      
+      // Извлекаем отдельные важные английские слова (заглавные, в скобках после перевода)
+      const translationPattern = /\(([^)]+)\)/g;
+      const translations = cleanText.match(translationPattern) || [];
+      for (const translation of translations) {
+        const content = translation.replace(/[()]/g, '').trim();
+        // Если это английский текст (содержит латинские буквы)
+        if (/[A-Za-z]/.test(content)) {
+          const words = content.split(/\s+/).filter(w => /^[A-Za-z]+$/.test(w));
+          for (const word of words) {
+            if (word.length > 2 && word.length < 20) {
+              phrasesSet.add(word);
+            }
+          }
+        }
+      }
+      
+      // Ограничиваем количество фраз (Google API имеет лимиты)
+      return Array.from(phrasesSet).slice(0, 20);
+    };
+
+    const contextPhrases = extractPhrases(contextText);
+    console.log("[google-speech] Extracted context phrases:", contextPhrases.length, contextPhrases.slice(0, 5));
+
+    // Формируем конфигурацию с speechContexts если есть контекст
+    const config: any = {
+      encoding: encoding,
+      sampleRateHertz: sampleRate,
+      languageCode: "en-US",
+      alternativeLanguageCodes: ["ru-RU"],
+      enableAutomaticPunctuation: true,
+    };
+
+    if (contextPhrases.length > 0) {
+      config.speechContexts = [{
+        phrases: contextPhrases,
+        boost: 10.0
+      }];
+      console.log("[google-speech] Added speechContexts with", contextPhrases.length, "phrases");
+    }
+
     // Вызываем Google Speech-to-Text API
     const googleApiUrl = `https://speech.googleapis.com/v1/speech:recognize?key=${GOOGLE_API_KEY.substring(0, 10)}...`;
     console.log("[google-speech] Calling Google Speech API...");
     console.log("[google-speech] API URL:", googleApiUrl);
-    console.log("[google-speech] Request payload size:", JSON.stringify({
-      config: { encoding, sampleRateHertz: sampleRate, languageCode: "en-US" },
-      audio: { content: `[${base64Audio.length} chars]` }
-    }).length, "bytes");
     
     const requestStartTime = Date.now();
     const googleResponse = await fetch(
@@ -121,13 +198,7 @@ Deno.serve(async (req: Request) => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          config: {
-            encoding: encoding,
-            sampleRateHertz: sampleRate,
-            languageCode: "en-US",
-            alternativeLanguageCodes: ["ru-RU"],
-            enableAutomaticPunctuation: true,
-          },
+          config: config,
           audio: {
             content: base64Audio,
           },
