@@ -54,6 +54,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     }
   };
 
+  const redirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
+
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setError(null);
     setMessage(null);
@@ -61,7 +63,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
       await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: window.location.origin,
+          redirectTo,
         },
       });
     } catch (err: any) {
