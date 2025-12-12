@@ -119,6 +119,46 @@ export const translations = {
       active: "AI Tutor Active",
       placeholder: "Type your answer...",
       endSession: "End Session"
+    },
+    intro: {
+      badge: "New level of English",
+      title: "Live AI English coach",
+      subtitle: "10-minute dialogues, topic vocabulary, concise grammar, error fixes, and voice hints.",
+      bullets: [
+        { title: "1 lesson per day", text: "Short tasks without overload" },
+        { title: "Dialogue with translation", text: "Instant hints and corrections" },
+        { title: "Gamified progress", text: "Track days and achievements" },
+      ],
+      cardTitle: "Daily dialogue",
+      cardSubtitle: "Topic, vocab, grammar, practice and review — in one flow.",
+      insideTitle: "What's inside",
+      insideItems: [
+        "Topic words with examples",
+        "Short grammar explainers",
+        "Live dialogue with error highlights",
+        "Voice input and translation on demand",
+      ],
+      cta: "Next"
+    },
+    auth: {
+      welcome: "Welcome",
+      loginTitle: "Sign in",
+      signupTitle: "Create account",
+      noAccount: "No account?",
+      haveAccount: "Already with us?",
+      create: "Create",
+      signIn: "Sign in",
+      google: "Continue with Google",
+      apple: "Continue with Apple",
+      orEmail: "or with email",
+      emailLabel: "Email",
+      emailPlaceholder: "you@example.com",
+      passwordLabel: "Password",
+      passwordPlaceholder: "At least 6 characters",
+      submitLogin: "Sign in",
+      submitSignup: "Sign up",
+      loading: "Please wait...",
+      tos: "By continuing you agree to the Terms and Privacy Policy."
     }
   },
   ru: {
@@ -237,6 +277,46 @@ export const translations = {
       active: "AI наставник",
       placeholder: "Введите ответ...",
       endSession: "Завершить сессию"
+    },
+    intro: {
+      badge: "Новый уровень английского",
+      title: "Живой тренер по английскому с AI",
+      subtitle: "10-минутные диалоги, словарь по теме, короткая грамматика, разбор ошибок и голосовые подсказки.",
+      bullets: [
+        { title: "1 урок в день", text: "Короткие задания без перегруза" },
+        { title: "Диалог с переводом", text: "Мгновенные подсказки и исправления" },
+        { title: "Геймификация", text: "Прогресс по дням и достижениям" },
+      ],
+      cardTitle: "Диалог дня",
+      cardSubtitle: "Тема, словарь, грамматика, практика и разбор — всё в одном потоке.",
+      insideTitle: "Что внутри",
+      insideItems: [
+        "Слова под тему урока с примерами",
+        "Краткие объяснения грамматики",
+        "Живой диалог с подсветкой ошибок",
+        "Голосовой ввод и перевод по запросу",
+      ],
+      cta: "Далее"
+    },
+    auth: {
+      welcome: "Добро пожаловать",
+      loginTitle: "Вход",
+      signupTitle: "Регистрация",
+      noAccount: "Нет аккаунта?",
+      haveAccount: "Уже с нами?",
+      create: "Создать",
+      signIn: "Войти",
+      google: "Войти через Google",
+      apple: "Войти через Apple",
+      orEmail: "или по email",
+      emailLabel: "Email",
+      emailPlaceholder: "you@example.com",
+      passwordLabel: "Пароль",
+      passwordPlaceholder: "Минимум 6 символов",
+      submitLogin: "Войти",
+      submitSignup: "Зарегистрироваться",
+      loading: "Подождите...",
+      tos: "Продолжая, ты соглашаешься с условиями сервиса и политикой конфиденциальности. Мы не спамим."
     }
   }
 } as const;

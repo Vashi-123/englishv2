@@ -1,10 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Session } from '@supabase/supabase-js';
 import { ActivityType, ViewState } from './types';
 import { useLanguage } from './hooks/useLanguage';
 import { useDayPlans } from './hooks/useDayPlans';
 import { useContentGeneration } from './hooks/useContentGeneration';
 import { ExerciseView } from './components/Exercise/ExerciseView';
-import { loadChatProgress, loadChatMessages, saveLessonCompleted, startDialogueSession, loadLessonScript, saveChatMessage, subscribeChatProgress } from './services/generationService';
+import { AuthScreen } from './components/AuthScreen';
+import { IntroScreen } from './components/IntroScreen';
+import { loadChatProgress, loadChatMessages, saveLessonCompleted, startDialogueSession, loadLessonScript, saveChatMessage, subscribeChatProgress, resetUserProgress } from './services/generationService';
+import { supabase } from './services/supabaseClient';
 import { 
   X, 
   CheckCircle2, 
@@ -16,11 +20,15 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
-const App = () => {
+const AppContent: React.FC<{
+  userEmail?: string;
+  onSignOut: () => Promise<void>;
+}> = ({ userEmail, onSignOut }) => {
   // Language management
   const { language, setLanguage, copy, languages } = useLanguage();
   const [showLangMenu, setShowLangMenu] = useState(false);
   const langMenuRef = useRef<HTMLDivElement | null>(null);
+  const [level, setLevel] = useState<string>('A1');
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
@@ -33,7 +41,7 @@ const App = () => {
   }, []);
 
   // Day plans management
-  const { dayPlans, planLoading } = useDayPlans();
+  const { dayPlans, planLoading } = useDayPlans(level);
   const [selectedDayId, setSelectedDayId] = useState<number>(1);
   const [isInitializing, setIsInitializing] = useState(true);
   const currentDayPlan = dayPlans.find(d => d.day === selectedDayId) || dayPlans[0];
@@ -400,6 +408,30 @@ const App = () => {
     setView(ViewState.EXERCISE);
   };
 
+  const handleLevelChange = (lvl: string) => {
+    setLevel(lvl);
+    setSelectedDayId(1);
+    setDayCompletedStatus({});
+    setLessonCompleted(false);
+    setCompletedTasks([]);
+    setView(ViewState.DASHBOARD);
+    setIsInitializing(true);
+  };
+
+  const handleResetProgress = async () => {
+    setIsCheckingStatus(true);
+    try {
+      await resetUserProgress();
+      setDayCompletedStatus({});
+      setLessonCompleted(false);
+      setCompletedTasks([]);
+      setSelectedDayId(1);
+      setView(ViewState.DASHBOARD);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
+
   const handleNextStep = async () => {
     // Add current step to completed if not already
     if (!completedTasks.includes(activityStep)) {
@@ -495,42 +527,91 @@ const App = () => {
       <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-5 flex-1 pt-8">
       {/* 1. Header */}
         <div className="flex flex-col gap-1.5 z-10 flex-none">
-          <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="relative" ref={langMenuRef}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center">
-                <div className="w-full h-full bg-gradient-to-tr from-brand-primary to-brand-primaryLight flex items-center justify-center text-[11px] font-bold text-white">ME</div>
-              </div>
-        <div>
-               <button 
-                 onClick={() => setShowLangMenu((v) => !v)}
-                  className="relative text-left"
-                 aria-label="Change language"
-               >
-                  <span className="text-xs font-medium text-gray-600">{copy.header.greeting}</span>
-                  <div className="text-2xl font-semibold leading-tight text-slate-900">
-                    {studyPlanFirst} {studyPlanRest && <span className="font-bold text-brand-primary">{studyPlanRest}</span>}
-                  </div>
-               </button>
-           </div>
-        </div>
-
-        {showLangMenu && (
-          <div 
-            ref={langMenuRef} 
-                className="absolute top-14 left-0 bg-white border border-gray-200 rounded-xl shadow-lg p-2 w-40"
-          >
-            {languages.map((lang) => (
-              <button
-                key={lang.code}
-                onClick={() => { setLanguage(lang.code); setShowLangMenu(false); }}
-                className={`w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 text-sm font-medium ${language === lang.code ? 'bg-brand-primary/10 text-brand-primary' : 'text-slate-900'}`}
+              <div
+                className="w-10 h-10 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center cursor-pointer"
+                onClick={() => setShowLangMenu((v) => !v)}
               >
-                {lang.label}
+                <div className="w-full h-full bg-gradient-to-tr from-brand-primary to-brand-primaryLight flex items-center justify-center text-[11px] font-bold text-white">
+                  ME
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-medium text-gray-600">{copy.header.greeting}</div>
+                <div className="text-2xl font-semibold leading-tight text-slate-900">
+                  {studyPlanFirst} {studyPlanRest && <span className="font-bold text-brand-primary">{studyPlanRest}</span>}
+                </div>
+              </div>
+            </div>
+
+            {showLangMenu && (
+              <div
+                className="absolute top-14 left-0 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-64 space-y-3"
+              >
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
+              Профиль
+            </div>
+            <div className="text-sm font-semibold text-slate-900 break-all">
+              {userEmail || 'user@example.com'}
+            </div>
+            <div className="h-px bg-gray-100" />
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
+              Язык интерфейса
+            </div>
+            <div className="space-y-1">
+              {languages.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => {
+                    setLanguage(lang.code);
+                    setShowLangMenu(false);
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 text-sm font-medium ${
+                    language === lang.code ? 'bg-brand-primary/10 text-brand-primary' : 'text-slate-900'
+                  }`}
+                >
+                  {lang.label}
+                </button>
+              ))}
+            </div>
+            <div className="h-px bg-gray-100" />
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
+              Уровень
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {['A1', 'A2', 'B1'].map((lvl) => (
+                <button
+                  key={lvl}
+                  onClick={() => { handleLevelChange(lvl); setShowLangMenu(false); }}
+                  className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition ${
+                    level === lvl ? 'bg-brand-primary text-white border-brand-primary' : 'border-gray-200 text-slate-800 hover:border-brand-primary/40'
+                  }`}
+                >
+                  {lvl}
+                </button>
+              ))}
+            </div>
+            <div className="h-px bg-gray-100" />
+            <div className="space-y-2">
+              <button
+                onClick={() => { handleResetProgress(); setShowLangMenu(false); }}
+                className="w-full text-left px-3 py-2 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 text-sm font-semibold"
+              >
+                Начать уровень сначала
               </button>
-            ))}
+              <button
+                onClick={() => { onSignOut(); setShowLangMenu(false); }}
+                className="w-full text-left px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-semibold"
+              >
+                Выйти
+              </button>
+            </div>
           </div>
         )}
-      </div>
+          </div>
+        </div>
         </div>
 
         {/* 2. Start Lesson Block */}
@@ -793,6 +874,96 @@ const App = () => {
         )}
     </>
   );
+};
+
+const App = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [showIntro, setShowIntro] = useState(true);
+  const [hasLoggedIn, setHasLoggedIn] = useState(false);
+
+  useEffect(() => {
+    const storedLogged = localStorage.getItem('has_logged_in') === '1';
+    setHasLoggedIn(storedLogged);
+    if (storedLogged) {
+      setShowIntro(false);
+    }
+
+    const initSession = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('[Auth] getSession error:', error);
+      }
+      const currentSession = data.session ?? null;
+      setSession(currentSession);
+      if (currentSession) {
+        setHasLoggedIn(true);
+        localStorage.setItem('has_logged_in', '1');
+        setShowIntro(false);
+      }
+      setAuthLoading(false);
+    };
+
+    initSession();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+       if (newSession) {
+         setHasLoggedIn(true);
+         localStorage.setItem('has_logged_in', '1');
+         setShowIntro(false);
+       }
+      setAuthLoading(false);
+    });
+
+    return () => {
+      listener?.subscription?.unsubscribe();
+    };
+  }, []);
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="h-12 w-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-gray-600 font-semibold">Загружаем профиль...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session) {
+    if (showIntro && !hasLoggedIn) {
+      return (
+        <IntroScreen
+          onNext={() => {
+            setShowIntro(false);
+          }}
+        />
+      );
+    }
+
+    // Если уже логинился ранее — сразу форма входа, без интро
+    return (
+      <AuthScreen
+        onAuthSuccess={async () => {
+          const { data } = await supabase.auth.getSession();
+          setSession(data.session ?? null);
+          setHasLoggedIn(true);
+          localStorage.setItem('has_logged_in', '1');
+          setShowIntro(false);
+        }}
+      />
+    );
+  }
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setShowIntro(false);
+  };
+
+  return <AppContent userEmail={session.user?.email || undefined} onSignOut={handleSignOut} />;
 };
 
 export default App;

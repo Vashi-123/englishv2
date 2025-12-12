@@ -3,7 +3,7 @@ import { DayPlan } from '../types';
 import { supabase } from '../services/supabaseClient';
 
 // План берём из lesson_scripts (level = 'A1'), подписываемся на realtime.
-export const useDayPlans = () => {
+export const useDayPlans = (level: string = 'A1') => {
   const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
   const [planLoading, setPlanLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -14,7 +14,7 @@ export const useDayPlans = () => {
       const { data, error: fetchError } = await supabase
         .from('lesson_scripts')
         .select('day, lesson, theme, level')
-        .eq('level', 'A1')
+        .eq('level', level)
         .order('day', { ascending: true })
         .order('lesson', { ascending: true });
         
@@ -46,10 +46,10 @@ export const useDayPlans = () => {
     loadPlans();
 
     const channel = supabase
-      .channel('lesson_scripts_a1')
+      .channel(`lesson_scripts_${level}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'lesson_scripts', filter: 'level=eq.A1' },
+        { event: '*', schema: 'public', table: 'lesson_scripts', filter: `level=eq.${level}` },
         () => loadPlans()
       )
       .subscribe();
@@ -57,7 +57,7 @@ export const useDayPlans = () => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [level]);
 
   return {
     dayPlans,

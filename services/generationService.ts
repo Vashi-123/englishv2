@@ -661,3 +661,18 @@ export const subscribeChatProgress = async (
     supabase.removeChannel(channel);
   };
 };
+
+/**
+ * Сбросить прогресс пользователя (сообщения и флаги)
+ */
+export const resetUserProgress = async (): Promise<void> => {
+  try {
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) return;
+
+    await supabase.from('chat_messages').delete().eq('local_user_id', localUserId);
+    await supabase.from('chat_progress').delete().eq('local_user_id', localUserId);
+  } catch (error) {
+    console.error('[resetUserProgress] Error:', error);
+  }
+};
