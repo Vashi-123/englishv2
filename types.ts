@@ -92,7 +92,95 @@ export interface ChatMessage {
   translation?: string; // перевод на русский (для сообщений модели)
   moduleId?: string; // ID модуля, к которому относится сообщение
   messageOrder?: number;
+  currentStepSnapshot?: DialogueStep | null;
 }
+
+export type DialogueStep = {
+  type?: string;
+  index?: number;
+} & Record<string, unknown>;
+
+export type AudioQueueItem = {
+  text: string;
+  lang: string;
+  kind: string;
+};
+
+export type VocabWord = {
+  word: string;
+  translation?: string;
+  context: string;
+  context_translation?: string;
+};
+
+export type GoalPayload = {
+  type: 'goal';
+  goal: string;
+};
+
+export type WordsListPayload = {
+  type: 'words_list';
+  words: VocabWord[];
+};
+
+export type SectionPayload = {
+  type: 'section';
+  title?: string;
+  content?: string;
+};
+
+export type GrammarPayload = {
+  type: 'grammar';
+  title?: string;
+  content?: string;
+};
+
+export type AudioExercisePayload = {
+  type: 'audio_exercise';
+  content?: string;
+  autoPlay?: boolean;
+  audioQueue?: AudioQueueItem[];
+};
+
+export type TextExercisePayload = {
+  type: 'text_exercise';
+  content?: string;
+};
+
+export type WordPayload = {
+  type: 'word';
+  goal?: string;
+  data?: {
+    word?: string;
+    context?: string;
+    context_translation?: string;
+  };
+};
+
+export type ModelPayload =
+  | GoalPayload
+  | WordsListPayload
+  | SectionPayload
+  | GrammarPayload
+  | AudioExercisePayload
+  | TextExercisePayload
+  | WordPayload;
+
+export type LessonScript = {
+  constructor?: {
+    instruction?: string;
+    tasks?: Array<{
+      words: string[];
+      note?: string;
+    }>;
+  };
+  find_the_mistake?: {
+    instruction?: string;
+    tasks?: Array<{
+      options: string[];
+    }>;
+  };
+} & Record<string, unknown>;
 
 // Gemini Response Schemas
 export interface VocabResponse {

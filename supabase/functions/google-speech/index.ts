@@ -45,12 +45,18 @@ Deno.serve(async (req: Request) => {
     let mimeType = "audio/webm";
     
     let contextText = "";
+    let taskText = "";
+    let requestedLang = "";
+    const readFormString = (value: FormDataEntryValue | null) =>
+      typeof value === "string" ? value : "";
     
     if (contentType.includes("multipart/form-data")) {
       // Парсим FormData
       const formData = await req.formData();
       const audioFile = formData.get("audio") as File;
-      const context = formData.get("context") as string;
+      const context = readFormString(formData.get("context"));
+      taskText = readFormString(formData.get("task"));
+      requestedLang = readFormString(formData.get("lang"));
       
       if (!audioFile) {
         console.error("[google-speech] No audio file in form data");
@@ -65,6 +71,8 @@ Deno.serve(async (req: Request) => {
       contextText = context || "";
       console.log("[google-speech] Audio file size:", audioBlob.size, "type:", mimeType);
       console.log("[google-speech] Context text length:", contextText.length);
+      console.log("[google-speech] Task text length:", taskText.length);
+      console.log("[google-speech] Requested lang:", requestedLang || "(not set)");
     } else {
       // Принимаем аудио как Blob напрямую
       audioBlob = await req.blob();
@@ -164,15 +172,19 @@ Deno.serve(async (req: Request) => {
       return Array.from(phrasesSet).slice(0, 20);
     };
 
-    const contextPhrases = extractPhrases(contextText);
+    const hintsText = taskText || contextText;
+    const contextPhrases = extractPhrases(hintsText);
     console.log("[google-speech] Extracted context phrases:", contextPhrases.length, contextPhrases.slice(0, 5));
+
+    const allowedLangs = new Set(["en-US", "ru-RU"]);
+    const languageCode = allowedLangs.has(requestedLang) ? requestedLang : "en-US";
 
     // Формируем конфигурацию с speechContexts если есть контекст
     const config: any = {
       encoding: encoding,
       sampleRateHertz: sampleRate,
-      languageCode: "en-US",
-      alternativeLanguageCodes: ["ru-RU"],
+      languageCode,
+      alternativeLanguageCodes: languageCode === "en-US" ? ["ru-RU"] : ["en-US"],
       enableAutomaticPunctuation: true,
     };
 

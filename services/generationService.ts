@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { VocabResponse, GrammarResponse, GrammarRow, CorrectionResponse, ChatMessage } from "../types";
+import { VocabResponse, GrammarResponse, GrammarRow, CorrectionResponse, ChatMessage, DialogueStep } from "../types";
 import { supabase } from "./supabaseClient";
 import { getOrCreateLocalUser } from "./userService";
 
@@ -223,41 +223,67 @@ export const generateCorrections = async (focus: string, theme: string): Promise
  * Step 4: Dialogue - Chat Initialization
  * Инициализирует диалог через Groq edge функцию
  */
-export const startDialogueSession = async (
-  uiLang?: string,
-  lessonScript?: string
-): Promise<{ text: string; translation: string }> => {
+// Новый диалог: groq-lesson-v2
+export const getLessonIdForDayLesson = async (day: number, lesson: number): Promise<string> => {
+  const { data, error } = await supabase
+    .from("lesson_scripts")
+    .select("lesson_id")
+    .eq("day", day)
+    .eq("lesson", lesson)
+    .single();
+  if (error || !data?.lesson_id) {
+    throw new Error("Не найден lesson id для day/lesson");
+  }
+  return data.lesson_id as string;
+};
+
+export const startDialogueSessionV2 = async (
+  day: number,
+  lesson: number,
+  uiLang?: string
+): Promise<{ text: string; isCorrect: boolean; feedback: string; nextStep: DialogueStep | null }> => {
   try {
-    if (!lessonScript) {
-      throw new Error("lessonScript is required");
-    }
-    
-    const { data, error } = await supabase.functions.invoke("groq-dialogue", {
+    const lessonId = await getLessonIdForDayLesson(day, lesson);
+    const userId = await getOrCreateLocalUser();
+
+    console.log("[startDialogueSessionV2] invoking groq-lesson-v2", { lessonId, userId, day, lesson, uiLang });
+    const { data, error } = await supabase.functions.invoke("groq-lesson-v2", {
       body: {
-        messages: [],
+        lessonId,
+        userId,
         uiLang: uiLang || "ru",
-        isFirstMessage: true,
-        lessonScript,
       },
     });
 
     if (error) {
-      console.error("Groq dialogue function error:", error);
-      return { 
+      console.error("groq-lesson-v2 start error:", error, { lessonId, userId });
+      return {
         text: "Техническая ошибка или нет соединения. Попробуй еще раз.",
-        translation: ""
+        isCorrect: true,
+        feedback: "",
+        nextStep: null,
       };
     }
 
+    console.log("[startDialogueSessionV2] groq-lesson-v2 response:", {
+      hasResponse: Boolean(data?.response),
+      responsePreview: String(data?.response || "").slice(0, 120),
+      nextStep: data?.nextStep ?? null,
+    });
+
     return {
       text: data?.response || "Техническая ошибка или нет соединения. Попробуй еще раз.",
-      translation: data?.translation || "",
+      isCorrect: data?.isCorrect ?? true,
+      feedback: data?.feedback ?? "",
+      nextStep: data?.nextStep ?? null,
     };
   } catch (error) {
-    console.error("Error starting dialogue session:", error);
-    return { 
+    console.error("startDialogueSessionV2 exception:", error);
+    return {
       text: "Техническая ошибка или нет соединения. Попробуй еще раз.",
-      translation: ""
+      isCorrect: true,
+      feedback: "",
+      nextStep: null,
     };
   }
 };
@@ -265,47 +291,103 @@ export const startDialogueSession = async (
 /**
  * Send message in dialogue session
  */
-export const sendDialogueMessage = async (
-  messages: ChatMessage[],
+export const sendDialogueMessageV2 = async (
+  day: number,
+  lesson: number,
+  lastUserMessageContent: string | null,
+  currentStep: DialogueStep | null,
   uiLang?: string,
-  lessonScript?: string
-): Promise<{ text: string; translation: string }> => {
+  opts?: { choice?: "A" | "B"; suppressUserMessage?: boolean }
+): Promise<{ text: string; isCorrect: boolean; feedback: string; nextStep: DialogueStep | null }> => {
   try {
-    if (!lessonScript) {
-      throw new Error("lessonScript is required");
-    }
-    
-    const { data, error } = await supabase.functions.invoke("groq-dialogue", {
+    const lessonId = await getLessonIdForDayLesson(day, lesson);
+    const userId = await getOrCreateLocalUser();
+
+    console.log("[sendDialogueMessageV2] invoking groq-lesson-v2", {
+      lessonId,
+      userId,
+      currentStep,
+      lastUserMessageContent,
+      uiLang
+    });
+    const { data, error } = await supabase.functions.invoke("groq-lesson-v2", {
       body: {
-        messages: messages.map(msg => ({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.text,
-        })),
+        lessonId,
+        userId,
         uiLang: uiLang || "ru",
-        isFirstMessage: false,
-        lessonScript,
+        currentStep,
+        lastUserMessageContent,
+        choice: opts?.choice,
+        suppressUserMessage: opts?.suppressUserMessage,
       },
     });
 
     if (error) {
-      console.error("Groq dialogue function error:", error);
+      console.error("groq-lesson-v2 send error:", error, { lessonId, userId });
       return { 
         text: "Техническая проблема или нет соединения. Попробуй отправить снова.",
-        translation: ""
+        isCorrect: false,
+        feedback: "Попробуй еще раз",
+        nextStep: currentStep,
       };
     }
 
+    console.log("[sendDialogueMessageV2] groq-lesson-v2 response:", {
+      hasResponse: Boolean(data?.response),
+      responsePreview: String(data?.response || "").slice(0, 120),
+      nextStep: data?.nextStep ?? currentStep,
+    });
+
     return {
       text: data?.response || "Техническая проблема или нет соединения. Попробуй отправить снова.",
-      translation: data?.translation || "",
+      isCorrect: data?.isCorrect ?? false,
+      feedback: data?.feedback ?? "",
+      nextStep: data?.nextStep ?? currentStep,
     };
   } catch (error) {
-    console.error("Error sending dialogue message:", error);
+    console.error("sendDialogueMessageV2 exception:", error);
     return { 
       text: "Техническая проблема или нет соединения. Попробуй отправить снова.",
-      translation: ""
+      isCorrect: false,
+      feedback: "Попробуй еще раз",
+      nextStep: currentStep,
     };
   }
+};
+
+/**
+ * Validate a student's answer for the current step using groq-lesson-v2 in validateOnly mode.
+ * Client can then advance the lesson locally without asking the edge function for the next message.
+ */
+export const validateDialogueAnswerV2 = async (params: {
+  lessonId: string;
+  userId: string;
+  currentStep: DialogueStep;
+  studentAnswer: string;
+  uiLang?: string;
+  choice?: "A" | "B";
+}): Promise<{ isCorrect: boolean; feedback: string }> => {
+  const { data, error } = await supabase.functions.invoke("groq-lesson-v2", {
+    body: {
+      lessonId: params.lessonId,
+      userId: params.userId,
+      uiLang: params.uiLang || "ru",
+      currentStep: params.currentStep,
+      lastUserMessageContent: params.studentAnswer,
+      choice: params.choice,
+      validateOnly: true,
+    },
+  });
+
+  if (error) {
+    console.error("[validateDialogueAnswerV2] groq-lesson-v2 error:", error);
+    return { isCorrect: false, feedback: "Не удалось проверить ответ. Попробуй еще раз." };
+  }
+
+  return {
+    isCorrect: Boolean(data?.isCorrect),
+    feedback: String(data?.feedback || ""),
+  };
 };
 
 export const generateGeminiResponse = async (prompt: string, context?: any) => {
@@ -350,27 +432,51 @@ export const saveLessonCompleted = async (
       return;
     }
 
-    // Сохраняем только флаг завершения урока (practice_completed используется как индикатор)
-    const { error } = await supabase
-      .from('chat_progress')
-      .upsert({
+    // Some environments may have an older/newer chat_progress schema.
+    // Try the full row first; if PostgREST reports missing columns, fall back to minimal fields.
+    const attemptFull = await supabase.from('chat_progress').upsert(
+      {
         local_user_id: localUserId,
         day,
         lesson,
-        current_module: 'practice', // Для обратной совместимости с БД
+        current_module: 'practice',
         vocab_completed: completed,
         grammar_completed: completed,
         correction_completed: completed,
-        practice_completed: completed, // Используем как флаг завершения урока
+        practice_completed: completed,
         messages_count: 0,
-      }, {
-        onConflict: 'local_user_id,day,lesson'
-      });
+      },
+      { onConflict: 'local_user_id,day,lesson' }
+    );
 
-    if (error) {
-      console.error("[saveLessonCompleted] Error saving lesson completion:", error);
-    } else {
+    if (!attemptFull.error) {
       console.log("[saveLessonCompleted] Lesson completion saved:", completed);
+      return;
+    }
+
+    const err: any = attemptFull.error;
+    const looksLikeMissingColumn = err?.code === 'PGRST204' || String(err?.message || '').includes('Could not find');
+    if (!looksLikeMissingColumn) {
+      console.error("[saveLessonCompleted] Error saving lesson completion:", err);
+      return;
+    }
+
+    const attemptMinimal = await supabase
+      .from('chat_progress')
+      .upsert(
+        {
+          local_user_id: localUserId,
+          day,
+          lesson,
+          practice_completed: completed,
+        },
+        { onConflict: 'local_user_id,day,lesson' }
+      );
+
+    if (attemptMinimal.error) {
+      console.error("[saveLessonCompleted] Error saving lesson completion (minimal):", attemptMinimal.error);
+    } else {
+      console.log("[saveLessonCompleted] Lesson completion saved (minimal):", completed);
     }
   } catch (error) {
     console.error("[saveLessonCompleted] Exception saving lesson completion:", error);
@@ -391,15 +497,16 @@ export const loadChatProgress = async (
       return null;
     }
 
-    const { data, error } = await supabase
+    const primary = await supabase
       .from('chat_progress')
       .select('current_module, vocab_completed, grammar_completed, correction_completed, practice_completed')
       .eq('local_user_id', localUserId)
       .eq('day', day)
       .eq('lesson', lesson)
-      .single();
+      .maybeSingle();
 
-    if (error) {
+    if (primary.error) {
+      const error: any = primary.error;
       if (error.code === 'PGRST116') {
         // Запись не найдена - это нормально для нового урока
         return null;
@@ -409,11 +516,39 @@ export const loadChatProgress = async (
         console.log("[loadChatProgress] 406 error (likely RLS or format issue), returning null for day:", day, "lesson:", lesson);
         return null;
       }
-      console.error("[loadChatProgress] Error loading chat progress:", error);
-      return null;
+
+      const looksLikeMissingColumn = error.code === '42703' || String(error.message || '').includes('does not exist');
+      if (!looksLikeMissingColumn) {
+        console.error("[loadChatProgress] Error loading chat progress:", error);
+        return null;
+      }
+
+      // Fallback: minimal schema (only practice_completed may exist)
+      const fallback = await supabase
+        .from('chat_progress')
+        .select('practice_completed')
+        .eq('local_user_id', localUserId)
+        .eq('day', day)
+        .eq('lesson', lesson)
+        .maybeSingle();
+
+      if (fallback.error) {
+        if (fallback.error.code === 'PGRST116') return null;
+        console.error("[loadChatProgress] Error loading chat progress (fallback):", fallback.error);
+        return null;
+      }
+
+      const practiceCompleted = Boolean((fallback.data as any)?.practice_completed);
+      return {
+        current_module: 'practice',
+        vocab_completed: false,
+        grammar_completed: false,
+        correction_completed: false,
+        practice_completed: practiceCompleted,
+      };
     }
 
-    return data;
+    return primary.data;
   } catch (error) {
     console.error("[loadChatProgress] Exception loading chat progress:", error);
     return null;
@@ -428,7 +563,7 @@ export const saveChatMessage = async (
   lesson: number,
   role: 'user' | 'model',
   text: string,
-  translation?: string
+  currentStepSnapshot?: DialogueStep | null
 ): Promise<void> => {
   try {
     // Валидация параметров
@@ -449,45 +584,41 @@ export const saveChatMessage = async (
       return;
     }
 
+    const lessonId = await getLessonIdForDayLesson(day, lesson);
+
     console.log("[saveChatMessage] Attempting to save:", { 
       localUserId, 
-      day, 
-      lesson, 
+      lessonId,
       role, 
       textLength: text.length 
     });
 
-    // Получаем текущий порядковый номер сообщения
-    const { count, error: countError } = await supabase
+    // Получаем последний message_order (быстрее и меньше шансов на гонки, чем count)
+    const { data: lastRow, error: lastOrderError } = await supabase
       .from('chat_messages')
-      .select('*', { count: 'exact', head: true })
+      .select('message_order')
       .eq('local_user_id', localUserId)
-      .eq('day', day)
-      .eq('lesson', lesson);
+      .eq('lesson_id', lessonId)
+      .order('message_order', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (countError) {
-      console.error("[saveChatMessage] Error counting messages:", countError);
-      // Продолжаем с order = 1 если ошибка
+    if (lastOrderError) {
+      console.error("[saveChatMessage] Error loading last message order:", lastOrderError);
     }
 
-    const messageOrder = (count || 0) + 1;
-
-    const insertData = {
-      local_user_id: localUserId,
-      day: Number(day),
-      lesson: Number(lesson),
-      module: 'practice', // Для обратной совместимости с БД, но логика модулей не используется
-      role: role,
-      text: text.trim(),
-      translation: translation?.trim() || null,
-      message_order: messageOrder,
-    };
-
-    console.log("[saveChatMessage] Insert data:", insertData);
+    const messageOrder = (lastRow?.message_order || 0) + 1;
 
     const { data: insertedData, error } = await supabase
       .from('chat_messages')
-      .insert(insertData)
+      .insert({
+        local_user_id: localUserId,
+        lesson_id: lessonId,
+        role,
+        text: text.trim(),
+        message_order: messageOrder,
+        current_step_snapshot: currentStepSnapshot ?? null,
+      })
       .select();
 
     if (error) {
@@ -514,21 +645,21 @@ export const loadChatMessages = async (
   lesson: number
 ): Promise<ChatMessage[]> => {
   try {
-    // Получаем локального пользователя
     const localUserId = await getOrCreateLocalUser();
     if (!localUserId) {
       console.log("[loadChatMessages] No local user ID found");
       return [];
     }
 
-    console.log("[loadChatMessages] Loading messages for day:", day, "lesson:", lesson, "localUserId:", localUserId);
+    const lessonId = await getLessonIdForDayLesson(day, lesson);
+
+    console.log("[loadChatMessages] Loading messages for lessonId:", lessonId, "localUserId:", localUserId);
 
     const { data, error } = await supabase
       .from('chat_messages')
-      .select('id, role, text, translation, module, message_order')
+      .select('id, role, text, message_order, current_step_snapshot')
       .eq('local_user_id', localUserId)
-      .eq('day', day)
-      .eq('lesson', lesson)
+      .eq('lesson_id', lessonId)
       .order('message_order', { ascending: true });
 
     if (error) {
@@ -550,9 +681,10 @@ export const loadChatMessages = async (
       id: msg.id,
       role: msg.role as 'user' | 'model',
       text: msg.text,
-      translation: msg.translation || undefined,
-      moduleId: msg.module || undefined,
+      translation: undefined,
+      moduleId: undefined,
       messageOrder: msg.message_order || undefined,
+      currentStepSnapshot: msg.current_step_snapshot,
     }));
   } catch (error) {
     console.error("[loadChatMessages] Exception loading chat messages:", error);
@@ -570,7 +702,7 @@ export const loadLessonScript = async (
   try {
     const { data, error } = await supabase
       .from('lesson_scripts')
-      .select('script_text')
+      .select('script_text, script')
       .eq('day', day)
       .eq('lesson', lesson)
       .single();
@@ -585,7 +717,18 @@ export const loadLessonScript = async (
       return null;
     }
 
-    return data?.script_text || null;
+    // IMPORTANT: Prefer the JSON column `script` (v2), because `script_text` might contain a legacy/plain-text script.
+    const raw =
+      (data as any)?.script != null
+        ? JSON.stringify((data as any).script)
+        : typeof (data as any)?.script_text === "string"
+          ? (data as any).script_text
+          : null;
+
+    if (typeof raw !== "string") return null;
+
+    // Some DB rows may contain a leading BOM/zero-width characters which break JSON.parse on the client.
+    return raw.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, "");
   } catch (error) {
     console.error("[loadLessonScript] Exception loading lesson script:", error);
     return null;
@@ -602,24 +745,36 @@ export const subscribeChatMessages = async (
 ): Promise<() => void> => {
   const localUserId = await getOrCreateLocalUser();
   if (!localUserId) return () => {};
+  const lessonId = await getLessonIdForDayLesson(day, lesson);
+
+  const emitRow = (row: any) => {
+    if (!row) return;
+    if (row.lesson_id !== lessonId) return;
+    onMessage({
+      id: row.id,
+      role: row.role,
+      text: row.text,
+      translation: undefined,
+      moduleId: undefined,
+      messageOrder: row.message_order || undefined,
+      currentStepSnapshot: row.current_step_snapshot,
+    });
+  };
 
   const channel = supabase
-    .channel(`chat_messages_${localUserId}_${day}_${lesson}`)
+    .channel(`chat_messages_${localUserId}_${lessonId}`)
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `local_user_id=eq.${localUserId}` },
       (payload) => {
-        const row: any = payload.new;
-        if (!row) return;
-        if (row.day !== Number(day) || row.lesson !== Number(lesson)) return;
-        onMessage({
-          id: row.id,
-          role: row.role,
-          text: row.text,
-          translation: row.translation || undefined,
-          moduleId: row.module || undefined,
-          messageOrder: row.message_order || undefined,
-        });
+        emitRow((payload as any).new);
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'chat_messages', filter: `local_user_id=eq.${localUserId}` },
+      (payload) => {
+        emitRow((payload as any).new);
       }
     )
     .subscribe();
@@ -644,11 +799,15 @@ export const subscribeChatProgress = async (
     .channel(`chat_progress_${localUserId}_${day}_${lesson}`)
     .on(
       'postgres_changes',
-      { event: '*', schema: 'public', table: 'chat_progress', filter: `local_user_id=eq.${localUserId}` },
+      {
+        event: '*',
+        schema: 'public',
+        table: 'chat_progress',
+        filter: `local_user_id=eq.${localUserId},day=eq.${day},lesson=eq.${lesson}`,
+      },
       (payload) => {
         const row: any = payload.new;
         if (!row) return;
-        if (row.day !== Number(day) || row.lesson !== Number(lesson)) return;
         onProgress({
           practice_completed: row.practice_completed,
           current_module: row.current_module,
@@ -663,6 +822,30 @@ export const subscribeChatProgress = async (
 };
 
 /**
+ * Очистить сообщения и прогресс для конкретного урока
+ */
+export const resetLessonDialogue = async (day: number, lesson: number): Promise<void> => {
+  try {
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) return;
+    const lessonId = await getLessonIdForDayLesson(day, lesson);
+
+    await supabase
+      .from('chat_messages')
+      .delete()
+      .eq('local_user_id', localUserId)
+      .eq('lesson_id', lessonId);
+
+    // Also reset progress flags so the main menu reflects the restart immediately.
+    // chat_progress is keyed by (local_user_id, day, lesson) in this app.
+    await saveLessonCompleted(day, lesson, false);
+  } catch (error) {
+    console.error('[resetLessonDialogue] Error:', error);
+    throw error;
+  }
+};
+
+/**
  * Сбросить прогресс пользователя (сообщения и флаги)
  */
 export const resetUserProgress = async (): Promise<void> => {
@@ -671,7 +854,6 @@ export const resetUserProgress = async (): Promise<void> => {
     if (!localUserId) return;
 
     await supabase.from('chat_messages').delete().eq('local_user_id', localUserId);
-    await supabase.from('chat_progress').delete().eq('local_user_id', localUserId);
   } catch (error) {
     console.error('[resetUserProgress] Error:', error);
   }

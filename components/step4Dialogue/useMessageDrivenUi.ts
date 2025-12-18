@@ -1,0 +1,194 @@
+import { useEffect, useRef } from 'react';
+import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import type { ChatMessage } from '../../types';
+import { tryParseJsonMessage, type InputMode } from './messageParsing';
+
+export function useMessageDrivenUi({
+  messages,
+  determineInputMode,
+  processAudioQueue,
+  vocabProgressStorageKey,
+  grammarGateHydrated,
+  grammarGateRevision,
+  gatedGrammarSectionIdsRef,
+  goalSeenRef,
+  isInitializing,
+  isInitializingRef,
+  restoredVocabIndexRef,
+  appliedVocabRestoreKeyRef,
+  setInputMode,
+  setShowVocab,
+  setVocabWords,
+  setVocabIndex,
+  setPendingVocabPlay,
+}: {
+  messages: ChatMessage[];
+  determineInputMode: (parsed: any, msg: ChatMessage) => InputMode;
+  processAudioQueue: (queue: Array<{ text: string; lang: string; kind: string }>, messageId?: string) => void;
+  vocabProgressStorageKey: string;
+  grammarGateHydrated: boolean;
+  grammarGateRevision: number;
+  gatedGrammarSectionIdsRef: MutableRefObject<Set<string>>;
+  goalSeenRef: MutableRefObject<boolean>;
+  isInitializing: boolean;
+  isInitializingRef: MutableRefObject<boolean>;
+  restoredVocabIndexRef: MutableRefObject<number | null>;
+  appliedVocabRestoreKeyRef: MutableRefObject<string | null>;
+  setInputMode: Dispatch<SetStateAction<InputMode>>;
+  setShowVocab: Dispatch<SetStateAction<boolean>>;
+  setVocabWords: Dispatch<SetStateAction<any[]>>;
+  setVocabIndex: Dispatch<SetStateAction<number>>;
+  setPendingVocabPlay: Dispatch<SetStateAction<boolean>>;
+}) {
+  const goalVocabTimerRef = useRef<number | null>(null);
+
+  // Watch for messages with audioQueue and decide which input to show
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg.role !== 'model' || !lastMsg.text) return;
+
+    // Если в истории уже есть скрытые сообщения после грамматики,
+    // не запускаем автопроигрывание/показ ввода до нажатия «Далее».
+    const shouldGateAfterGrammar = (() => {
+      const unlocked = gatedGrammarSectionIdsRef.current;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (msg.role !== 'model') continue;
+        const text = msg.text || '';
+        if (!text.trim().startsWith('{')) continue;
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = null;
+        }
+        const isGrammar =
+          parsed?.type === 'section' &&
+          typeof parsed.title === 'string' &&
+          /граммат|grammar/i.test(parsed.title);
+        if (!isGrammar) continue;
+        const stableId = msg.id ?? (msg.messageOrder != null ? `order-${msg.messageOrder}` : `idx-${i}-${msg.role}`);
+
+        let ordinal = -1;
+        let count = 0;
+        for (let j = 0; j <= i; j++) {
+          const t = messages[j]?.text || '';
+          if (!t.trim().startsWith('{')) continue;
+          try {
+            const p = JSON.parse(t);
+            const isGr =
+              p?.type === 'section' &&
+              typeof p.title === 'string' &&
+              /граммат|grammar/i.test(p.title);
+            if (isGr) {
+              ordinal = count;
+              count += 1;
+            }
+          } catch {
+            // ignore
+          }
+        }
+        const ordinalKey = ordinal >= 0 ? `grammar-ordinal-${ordinal}` : null;
+        if (unlocked.has(stableId) || (ordinalKey && unlocked.has(ordinalKey))) return false;
+        return i < messages.length - 1;
+      }
+      return false;
+    })();
+    if (shouldGateAfterGrammar) {
+      setInputMode('hidden');
+      return;
+    }
+
+    let parsed: any = null;
+    parsed = tryParseJsonMessage(lastMsg.text);
+
+    if (parsed?.type === 'goal') {
+      goalSeenRef.current = true;
+      setShowVocab(false);
+      if (goalVocabTimerRef.current != null) window.clearTimeout(goalVocabTimerRef.current);
+      goalVocabTimerRef.current = window.setTimeout(() => setShowVocab(true), 2000);
+      setInputMode('hidden');
+      return;
+    }
+
+    if (parsed?.type === 'words_list' && Array.isArray(parsed.words)) {
+      setVocabWords(parsed.words || []);
+      const desired = isInitializingRef.current ? restoredVocabIndexRef.current : null;
+      const maxIdx = Math.max((parsed.words?.length || 0) - 1, 0);
+      setVocabIndex(typeof desired === 'number' ? Math.min(Math.max(desired, 0), maxIdx) : 0);
+      appliedVocabRestoreKeyRef.current = vocabProgressStorageKey;
+      setPendingVocabPlay(true);
+      setInputMode('hidden');
+      return;
+    }
+
+    if (parsed?.autoPlay && parsed.audioQueue && Array.isArray(parsed.audioQueue)) {
+      const msgId = lastMsg.id || `temp-${messages.length}-${lastMsg.text.substring(0, 20)}`;
+      processAudioQueue(parsed.audioQueue, msgId);
+    }
+
+    const nextMode = determineInputMode(parsed, lastMsg);
+    setInputMode(nextMode);
+  }, [
+    messages,
+    vocabProgressStorageKey,
+    grammarGateHydrated,
+    grammarGateRevision,
+    determineInputMode,
+    processAudioQueue,
+    gatedGrammarSectionIdsRef,
+    goalSeenRef,
+    isInitializingRef,
+    restoredVocabIndexRef,
+    appliedVocabRestoreKeyRef,
+    setInputMode,
+    setShowVocab,
+    setVocabWords,
+    setVocabIndex,
+    setPendingVocabPlay,
+  ]);
+
+  // If we loaded chat history and the last message isn't words_list, restore vocab progress from history.
+  useEffect(() => {
+    if (!isInitializing) return;
+    if (!messages.length) return;
+    if (appliedVocabRestoreKeyRef.current === vocabProgressStorageKey) return;
+
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== 'model') continue;
+      const raw = m.text || '';
+      try {
+        const p = tryParseJsonMessage(raw);
+        if (!p) continue;
+        if (p?.type === 'words_list' && Array.isArray(p.words)) {
+          setVocabWords(p.words || []);
+          const desired = restoredVocabIndexRef.current;
+          const maxIdx = Math.max((p.words?.length || 0) - 1, 0);
+          setVocabIndex(typeof desired === 'number' ? Math.min(Math.max(desired, 0), maxIdx) : 0);
+          appliedVocabRestoreKeyRef.current = vocabProgressStorageKey;
+          setPendingVocabPlay(false);
+          break;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [
+    appliedVocabRestoreKeyRef,
+    isInitializing,
+    messages,
+    restoredVocabIndexRef,
+    setPendingVocabPlay,
+    setVocabIndex,
+    setVocabWords,
+    vocabProgressStorageKey,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (goalVocabTimerRef.current != null) window.clearTimeout(goalVocabTimerRef.current);
+    };
+  }, []);
+}

@@ -12,6 +12,7 @@ interface Props {
   grammarData: GrammarResponse | null;
   correctionData: CorrectionResponse | null;
   currentDayPlan: DayPlan | undefined;
+  lessonProgress?: any | null;
   onComplete: () => void;
   onBack: () => void;
   copy: Translations;
@@ -23,6 +24,7 @@ export const ExerciseView: React.FC<Props> = ({
   grammarData,
   correctionData,
   currentDayPlan,
+  lessonProgress,
   onComplete,
   onBack,
   copy,
@@ -60,6 +62,7 @@ export const ExerciseView: React.FC<Props> = ({
             <Step4Dialogue 
               day={currentDayPlan.day}
               lesson={currentDayPlan.lesson}
+              initialLessonProgress={lessonProgress}
               onFinish={onComplete}
               onBack={onBack}
               copy={copy.dialogue}
@@ -70,4 +73,3 @@ export const ExerciseView: React.FC<Props> = ({
     </div>
   );
 };
-

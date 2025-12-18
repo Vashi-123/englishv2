@@ -7,7 +7,7 @@ import { useContentGeneration } from './hooks/useContentGeneration';
 import { ExerciseView } from './components/Exercise/ExerciseView';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
-import { loadChatProgress, loadChatMessages, saveLessonCompleted, startDialogueSession, loadLessonScript, saveChatMessage, subscribeChatProgress, resetUserProgress } from './services/generationService';
+import { loadChatProgress, loadChatMessages, saveLessonCompleted, startDialogueSessionV2, saveChatMessage, subscribeChatProgress, resetUserProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
 import { 
   X, 
@@ -89,41 +89,8 @@ const AppContent: React.FC<{
       if (!currentDayPlan) return;
 
       try {
-        // Проверяем, есть ли уже сообщения для этого урока
-        const existingMessages = await loadChatMessages(currentDayPlan.day, currentDayPlan.lesson);
-        
-        // Если сообщений нет, генерируем первое сообщение на фоне
-        if (existingMessages.length === 0) {
-          console.log("[App] Preloading first message for day:", currentDayPlan.day, "lesson:", currentDayPlan.lesson);
-          
-          // Загружаем скрипт урока
-          const script = await loadLessonScript(currentDayPlan.day, currentDayPlan.lesson);
-          if (!script) {
-            console.log("[App] No lesson script found, skipping preload");
-            return;
-          }
-
-          // Генерируем первое сообщение
-          const firstMessage = await startDialogueSession(language, script);
-          
-          // Очищаем теги из текста
-          const cleanText = firstMessage.text
-            ?.replace(/<lesson_complete>/i, '')
-            .replace(/<audio_input>/i, '')
-            .trim() || '';
-
-          // Сохраняем первое сообщение в БД
-          if (cleanText) {
-            await saveChatMessage(
-              currentDayPlan.day,
-              currentDayPlan.lesson,
-              'model',
-              cleanText,
-              firstMessage.translation
-            );
-            console.log("[App] First message preloaded and saved");
-          }
-        }
+        // Раньше здесь прелоадили первое сообщение и сохраняли его.
+        // Теперь не делаем этого, чтобы избежать дублей — диалог инициируется из Step4Dialogue.
       } catch (error) {
         console.error("[App] Error preloading first message:", error);
         // Не показываем ошибку пользователю, это фоновая операция

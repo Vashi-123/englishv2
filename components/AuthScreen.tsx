@@ -11,6 +11,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpRequested, setOtpRequested] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -24,29 +26,59 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     setLoading(true);
 
     try {
-      if (!email || !password) {
-        setError('Заполни email и пароль');
-        return;
-      }
-
       if (mode === 'login') {
+        if (!email || !password) {
+          setError('Заполни email и пароль');
+          return;
+        }
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (signInError) throw signInError;
       } else {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-        if (signUpError) throw signUpError;
-        setMessage('Проверь почту и подтверди регистрацию.');
+        // Signup via email OTP (code from email) + сразу просим пароль
+        if (!email) {
+          setError('Заполни email');
+          return;
+        }
+
+        if (!otpRequested) {
+          if (!password || password.length < 6) {
+            setError('Придумай пароль (мин. 6 символов)');
+            return;
+          }
+        }
+
+        if (!otpRequested) {
+          const { error: otpError } = await supabase.auth.signInWithOtp({
+            email,
+            options: {
+              shouldCreateUser: true,
+              emailRedirectTo: redirectTo,
+            },
+          });
+          if (otpError) throw otpError;
+          setOtpRequested(true);
+          setMessage('Мы отправили код на почту. Введи его ниже.');
+        } else {
+          if (!otp) {
+            setError('Введи код из письма');
+            return;
+          }
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            email,
+            token: otp,
+            type: 'email',
+          });
+          if (verifyError) throw verifyError;
+          // Сохраняем пароль сразу после успешного OTP
+          const { error: updateError } = await supabase.auth.updateUser({ password });
+          if (updateError) throw updateError;
+        }
       }
 
-      if (onAuthSuccess) {
-        onAuthSuccess();
-      }
+      if (onAuthSuccess) onAuthSuccess();
     } catch (err: any) {
       setError(err?.message || 'Не удалось выполнить запрос');
     } finally {
@@ -85,7 +117,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             {mode === 'login' ? copy.auth.noAccount : copy.auth.haveAccount}{' '}
             <button
               className="text-brand-primary font-semibold hover:underline"
-              onClick={() => setMode((prev) => (prev === 'login' ? 'signup' : 'login'))}
+              onClick={() => {
+                setMode((prev) => (prev === 'login' ? 'signup' : 'login'));
+                setOtpRequested(false);
+                setOtp('');
+                setPassword('');
+                setError(null);
+                setMessage(null);
+              }}
             >
               {mode === 'login' ? copy.auth.create : copy.auth.signIn}
             </button>
@@ -137,26 +176,49 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                 placeholder={copy.auth.emailPlaceholder}
                 autoComplete="email"
                 required
+                disabled={otpRequested}
               />
             </div>
           </label>
 
-          <label className="block space-y-2">
-            <div className="text-sm font-semibold text-slate-800">{copy.auth.passwordLabel}</div>
-            <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:border-brand-primary/60 focus-within:ring-2 focus-within:ring-brand-primary/10 transition">
-              <Lock className="w-4 h-4 text-gray-400" />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-transparent outline-none text-sm"
-                placeholder={copy.auth.passwordPlaceholder}
-                minLength={6}
-                autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-                required
-              />
-            </div>
-          </label>
+          {(mode === 'login' || mode === 'signup') && (
+            <label className="block space-y-2">
+              <div className="text-sm font-semibold text-slate-800">
+                {mode === 'signup' ? 'Придумай пароль' : copy.auth.passwordLabel}
+              </div>
+              <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:border-brand-primary/60 focus-within:ring-2 focus-within:ring-brand-primary/10 transition">
+                <Lock className="w-4 h-4 text-gray-400" />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-transparent outline-none text-sm"
+                  placeholder={mode === 'signup' ? 'Минимум 6 символов' : copy.auth.passwordPlaceholder}
+                  minLength={6}
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  required
+                />
+              </div>
+            </label>
+          )}
+
+          {mode === 'signup' && otpRequested && (
+            <label className="block space-y-2">
+              <div className="text-sm font-semibold text-slate-800">Код из письма</div>
+              <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:border-brand-primary/60 focus-within:ring-2 focus-within:ring-brand-primary/10 transition">
+                <Lock className="w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  className="w-full bg-transparent outline-none text-sm"
+                  placeholder="Введите код"
+                  autoComplete="one-time-code"
+                />
+              </div>
+            </label>
+          )}
 
           {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">{error}</div>}
           {message && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">{message}</div>}
@@ -179,7 +241,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             ) : (
               <>
                 <UserPlus className="w-4 h-4" />
-                {copy.auth.submitSignup}
+                {otpRequested ? 'Подтвердить код' : copy.auth.submitSignup}
               </>
             )}
           </button>
