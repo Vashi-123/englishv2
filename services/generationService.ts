@@ -432,6 +432,42 @@ export const saveLessonCompleted = async (
       return;
     }
 
+    const getMergedProgress = async () => {
+      try {
+        const existing = await supabase
+          .from('chat_progress')
+          .select('progress')
+          .eq('local_user_id', localUserId)
+          .eq('day', day)
+          .eq('lesson', lesson)
+          .maybeSingle();
+        const prev = (existing.data as any)?.progress;
+        const base = prev && typeof prev === 'object' && !Array.isArray(prev) ? prev : {};
+        return { ...base, practice_completed: completed };
+      } catch {
+        return { practice_completed: completed };
+      }
+    };
+
+    // Newer schema: jsonb progress (do not overwrite other keys).
+    const mergedProgress = await getMergedProgress();
+    const attemptJsonb = await supabase
+      .from('chat_progress')
+      .upsert(
+        {
+          local_user_id: localUserId,
+          day,
+          lesson,
+          progress: mergedProgress,
+        },
+        { onConflict: 'local_user_id,day,lesson' }
+      );
+
+    if (!attemptJsonb.error) {
+      console.log("[saveLessonCompleted] Lesson completion saved (progress jsonb):", completed);
+      return;
+    }
+
     // Some environments may have an older/newer chat_progress schema.
     // Try the full row first; if PostgREST reports missing columns, fall back to minimal fields.
     const attemptFull = await supabase.from('chat_progress').upsert(
@@ -489,7 +525,14 @@ export const saveLessonCompleted = async (
 export const loadChatProgress = async (
   day: number,
   lesson: number
-): Promise<{ current_module: string; vocab_completed: boolean; grammar_completed: boolean; correction_completed: boolean; practice_completed: boolean } | null> => {
+): Promise<{
+  current_module: string;
+  vocab_completed: boolean;
+  grammar_completed: boolean;
+  correction_completed: boolean;
+  practice_completed: boolean;
+  progress?: any;
+} | null> => {
   try {
     const localUserId = await getOrCreateLocalUser();
     if (!localUserId) {
@@ -497,16 +540,42 @@ export const loadChatProgress = async (
       return null;
     }
 
-    const primary = await supabase
+    const derive = (row: any) => {
+      const progress = row?.progress && typeof row.progress === 'object' && !Array.isArray(row.progress) ? row.progress : undefined;
+      const practiceCompleted =
+        typeof row?.practice_completed === 'boolean' ? row.practice_completed : Boolean((progress as any)?.practice_completed);
+      const currentModule =
+        typeof row?.current_module === 'string'
+          ? row.current_module
+          : typeof (progress as any)?.current_module === 'string'
+            ? (progress as any).current_module
+            : 'practice';
+      return {
+        current_module: currentModule,
+        vocab_completed: Boolean(row?.vocab_completed),
+        grammar_completed: Boolean(row?.grammar_completed),
+        correction_completed: Boolean(row?.correction_completed),
+        practice_completed: practiceCompleted,
+        progress,
+      };
+    };
+
+    // Prefer the jsonb schema (progress) to avoid schema-cache 400/42703 spam.
+    const primaryJsonb = await supabase
       .from('chat_progress')
-      .select('current_module, vocab_completed, grammar_completed, correction_completed, practice_completed')
+      .select('progress')
       .eq('local_user_id', localUserId)
       .eq('day', day)
       .eq('lesson', lesson)
       .maybeSingle();
 
-    if (primary.error) {
-      const error: any = primary.error;
+    if (!primaryJsonb.error) {
+      if (!primaryJsonb.data) return null;
+      return derive(primaryJsonb.data);
+    }
+
+    const error: any = primaryJsonb.error;
+    if (error) {
       if (error.code === 'PGRST116') {
         // Запись не найдена - это нормально для нового урока
         return null;
@@ -517,38 +586,25 @@ export const loadChatProgress = async (
         return null;
       }
 
-      const looksLikeMissingColumn = error.code === '42703' || String(error.message || '').includes('does not exist');
-      if (!looksLikeMissingColumn) {
-        console.error("[loadChatProgress] Error loading chat progress:", error);
-        return null;
-      }
-
-      // Fallback: minimal schema (only practice_completed may exist)
-      const fallback = await supabase
+      // Fallback: older schema with boolean flags.
+      const primaryLegacy = await supabase
         .from('chat_progress')
-        .select('practice_completed')
+        .select('current_module, vocab_completed, grammar_completed, correction_completed, practice_completed')
         .eq('local_user_id', localUserId)
         .eq('day', day)
         .eq('lesson', lesson)
         .maybeSingle();
 
-      if (fallback.error) {
-        if (fallback.error.code === 'PGRST116') return null;
-        console.error("[loadChatProgress] Error loading chat progress (fallback):", fallback.error);
+      if (primaryLegacy.error) {
+        if (primaryLegacy.error.code === 'PGRST116') return null;
+        console.error("[loadChatProgress] Error loading chat progress:", primaryLegacy.error);
         return null;
       }
 
-      const practiceCompleted = Boolean((fallback.data as any)?.practice_completed);
-      return {
-        current_module: 'practice',
-        vocab_completed: false,
-        grammar_completed: false,
-        correction_completed: false,
-        practice_completed: practiceCompleted,
-      };
+      return derive(primaryLegacy.data);
     }
 
-    return primary.data;
+    return null;
   } catch (error) {
     console.error("[loadChatProgress] Exception loading chat progress:", error);
     return null;
@@ -808,9 +864,16 @@ export const subscribeChatProgress = async (
       (payload) => {
         const row: any = payload.new;
         if (!row) return;
+        const progress = row?.progress && typeof row.progress === 'object' && !Array.isArray(row.progress) ? row.progress : undefined;
         onProgress({
-          practice_completed: row.practice_completed,
-          current_module: row.current_module,
+          practice_completed:
+            typeof row.practice_completed === 'boolean' ? row.practice_completed : Boolean((progress as any)?.practice_completed),
+          current_module:
+            typeof row.current_module === 'string'
+              ? row.current_module
+              : typeof (progress as any)?.current_module === 'string'
+                ? (progress as any).current_module
+                : undefined,
         });
       }
     )

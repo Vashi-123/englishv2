@@ -253,11 +253,8 @@ export const advanceLesson = (params: {
     if (!params.isCorrect) {
       const fb = params.feedback || "Пожалуйста, попробуй еще раз.";
       const inputType = script.grammar?.audio_exercise?.expected ? "<audio_input>" : "<text_input>";
-      const retryTask =
-        script.grammar?.text_exercise?.instruction
-          ? buildTextExerciseContent({ explanation: script.grammar.explanation, instruction: script.grammar.text_exercise.instruction })
-          : extractAssignmentSection(script.grammar?.explanation) || "";
-      const retryText = `🤔 Попробуй еще раз. ${fb}\n\n${script.grammar?.explanation || ""}${retryTask ? `\n\n${retryTask}` : ""} ${inputType}`;
+      // Keep the input mode active by including the input tag, but don't repeat the whole grammar explanation.
+      const retryText = `🤔 Попробуй еще раз. ${fb}\n\n${inputType}`;
       return {
         messages: [{ role: "model", text: retryText, currentStepSnapshot: { type: "grammar", index: 1, subIndex: 0 } }],
         nextStep: { type: "grammar", index: 1, subIndex: 0 },
@@ -527,4 +524,3 @@ export const advanceLesson = (params: {
 
   return { messages: [], nextStep: null };
 };
-

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Bot } from 'lucide-react';
+import { CardHeading } from './CardHeading';
 
 type Option = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -32,12 +33,15 @@ export function MatchingGameCard({
       className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-4 w-full md:max-w-2xl"
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="p-2 rounded-full bg-brand-primary/10 text-brand-primary">
-            <Bot className="w-4 h-4" />
-          </div>
-          <div className="text-sm font-semibold text-gray-700">Соедини слово с переводом</div>
-        </div>
+        <CardHeading
+          icon={
+            <div className="p-2 rounded-full bg-brand-primary/10 text-brand-primary">
+              <Bot className="w-4 h-4" />
+            </div>
+          }
+        >
+          Соедини слово с переводом
+        </CardHeading>
         {matchesComplete && <span className="text-xs font-bold text-green-600">Готово!</span>}
       </div>
 
@@ -89,4 +93,3 @@ export function MatchingGameCard({
     </div>
   );
 }
-

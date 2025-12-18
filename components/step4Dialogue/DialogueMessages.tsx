@@ -54,6 +54,8 @@ export function DialogueMessages({
   findMistakeUI,
   setFindMistakeUI,
   findMistakeStorageKey,
+  constructorUI,
+  setConstructorUI,
 
   isLoading,
   setIsLoading,
@@ -115,6 +117,9 @@ export function DialogueMessages({
   setFindMistakeUI: Dispatch<SetStateAction<Record<string, { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean }>>>;
   findMistakeStorageKey: string;
 
+  constructorUI: Record<string, { pickedWordIndices?: number[]; completed?: boolean }>;
+  setConstructorUI: Dispatch<SetStateAction<Record<string, { pickedWordIndices?: number[]; completed?: boolean }>>>;
+
   isLoading: boolean;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
 
@@ -171,6 +176,19 @@ export function DialogueMessages({
           parsed = tryParseJsonMessage(msg.text);
           isVocabulary = parsed?.type === 'words_list';
         }
+
+        const isTaskPayload =
+          msg.role === 'model' &&
+          (parsed?.type === 'goal' ||
+            parsed?.type === 'words_list' ||
+            parsed?.type === 'audio_exercise' ||
+            parsed?.type === 'text_exercise' ||
+            parsed?.type === 'word' ||
+            parsed?.type === 'find_the_mistake' ||
+            parsed?.type === 'situation' ||
+            parsed?.type === 'section' ||
+            msg.currentStepSnapshot?.type === 'constructor' ||
+            msg.currentStepSnapshot?.type === 'find_the_mistake');
 
         const looksLikeSituationPlain =
           /Ситуация:\s*/i.test(baseMessageContent) ||
@@ -255,6 +273,7 @@ export function DialogueMessages({
             msgStableId={msgStableId}
             isVocabulary={isVocabulary}
             isSituationCard={isSituationCard}
+            isTaskCard={Boolean(isTaskPayload && !isSituationCard && !isVocabulary && !isSeparatorOnly)}
             isSeparatorOnly={Boolean(isSeparatorOnly)}
             showSeparatorTitle={Boolean(showSeparator)}
             separatorTitle={parsed?.title}
@@ -314,6 +333,8 @@ export function DialogueMessages({
               findMistakeUI={findMistakeUI}
               setFindMistakeUI={setFindMistakeUI}
               findMistakeStorageKey={findMistakeStorageKey}
+              constructorUI={constructorUI}
+              setConstructorUI={setConstructorUI}
               isLoading={isLoading}
               setIsLoading={setIsLoading}
               handleStudentAnswer={handleStudentAnswer}

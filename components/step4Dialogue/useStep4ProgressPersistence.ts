@@ -41,6 +41,10 @@ export function useStep4ProgressPersistence({
   findMistakeHydratedRef,
   findMistakeUI,
   setFindMistakeUI,
+  constructorStorageKey,
+  constructorHydratedRef,
+  constructorUI,
+  setConstructorUI,
 }: {
   day?: number;
   lesson?: number;
@@ -81,6 +85,13 @@ export function useStep4ProgressPersistence({
   findMistakeUI: Record<string, { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean }>;
   setFindMistakeUI: Dispatch<
     SetStateAction<Record<string, { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean }>>
+  >;
+
+  constructorStorageKey: string;
+  constructorHydratedRef: MutableRefObject<boolean>;
+  constructorUI: Record<string, { pickedWordIndices?: number[]; completed?: boolean }>;
+  setConstructorUI: Dispatch<
+    SetStateAction<Record<string, { pickedWordIndices?: number[]; completed?: boolean }>>
   >;
 }) {
   const debugFind = isStep4DebugEnabled('find_the_mistake');
@@ -171,16 +182,24 @@ export function useStep4ProgressPersistence({
         setFindMistakeUI(fromDb);
       }
 
+      // constructor
+      const ctorFromDb = step4?.constructorUI;
+      if (ctorFromDb && typeof ctorFromDb === 'object' && !Array.isArray(ctorFromDb)) {
+        setConstructorUI(ctorFromDb);
+      }
+
       // Also seed localStorage as cache (non-blocking)
       try {
         const cache: any = {};
         if (typeof step4?.vocabIndex === 'number') cache.vocabIndex = step4.vocabIndex;
         if (step4?.findMistakeUI) cache.findMistakeUI = step4.findMistakeUI;
+        if (step4?.constructorUI) cache.constructorUI = step4.constructorUI;
         if (Array.isArray(step4?.grammarGateUnlocked)) cache.grammarGateUnlocked = step4.grammarGateUnlocked;
         if (step4?.matching) cache.matching = step4.matching;
         // keep existing keys so current localStorage-based code still works
         if (typeof step4?.vocabIndex === 'number') localStorage.setItem(vocabProgressStorageKey, JSON.stringify({ vocabIndex: step4.vocabIndex }));
         if (step4?.findMistakeUI) localStorage.setItem(findMistakeStorageKey, JSON.stringify(step4.findMistakeUI));
+        if (step4?.constructorUI) localStorage.setItem(constructorStorageKey, JSON.stringify(step4.constructorUI));
         if (Array.isArray(step4?.grammarGateUnlocked)) localStorage.setItem(grammarGateStorageKey, JSON.stringify(step4.grammarGateUnlocked));
         if (step4?.matching) localStorage.setItem(matchingProgressStorageKey, JSON.stringify(step4.matching));
         void cache;
@@ -211,6 +230,8 @@ export function useStep4ProgressPersistence({
     setShowMatching,
     setTranslationOptions,
     setWordOptions,
+    setConstructorUI,
+    constructorStorageKey,
     vocabProgressStorageKey,
   ]);
 
@@ -342,6 +363,23 @@ export function useStep4ProgressPersistence({
     }
   }, [findMistakeStorageKey, findMistakeHydratedRef, setFindMistakeUI]);
 
+  // Restore persisted constructor selections (so refresh keeps built sentences)
+  useEffect(() => {
+    constructorHydratedRef.current = false;
+    try {
+      const raw = localStorage.getItem(constructorStorageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        setConstructorUI(parsed);
+      }
+    } catch {
+      // ignore
+    } finally {
+      constructorHydratedRef.current = true;
+    }
+  }, [constructorStorageKey, constructorHydratedRef, setConstructorUI]);
+
   useEffect(() => {
     try {
       if (!findMistakeHydratedRef.current) {
@@ -361,6 +399,15 @@ export function useStep4ProgressPersistence({
       // ignore
     }
   }, [findMistakeUI, findMistakeStorageKey, findMistakeHydratedRef]);
+
+  useEffect(() => {
+    try {
+      if (!constructorHydratedRef.current) return;
+      localStorage.setItem(constructorStorageKey, JSON.stringify(constructorUI));
+    } catch {
+      // ignore
+    }
+  }, [constructorUI, constructorStorageKey, constructorHydratedRef]);
 
   useEffect(() => {
     if (!vocabWordsLength) return;

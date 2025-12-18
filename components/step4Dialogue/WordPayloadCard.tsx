@@ -1,4 +1,5 @@
 import React from 'react';
+import { CardHeading } from './CardHeading';
 
 type Props = {
   goal?: string;
@@ -9,8 +10,8 @@ type Props = {
 
 export function WordPayloadCard({ goal, word, context, contextTranslation }: Props) {
   return (
-    <div className="space-y-2">
-      {goal && <div className="text-xs uppercase text-gray-500 font-semibold">🎯 {goal}</div>}
+    <div className="space-y-4">
+      {goal && <CardHeading>🎯 {goal}</CardHeading>}
       {word && <div className="text-lg font-bold text-gray-900">{word}</div>}
       {context && (
         <div className="text-sm text-gray-800">
@@ -21,4 +22,3 @@ export function WordPayloadCard({ goal, word, context, contextTranslation }: Pro
     </div>
   );
 }
-

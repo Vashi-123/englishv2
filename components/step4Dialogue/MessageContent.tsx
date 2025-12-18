@@ -6,9 +6,9 @@ import { ExerciseCard } from './ExerciseCard';
 import { WordPayloadCard } from './WordPayloadCard';
 import { ConstructorCard } from './ConstructorCard';
 import { FindTheMistakeCard } from './FindTheMistakeCard';
-import { SituationCard } from './SituationCard';
 import { SituationThreadCard } from './SituationThreadCard';
 import { parseSituationMessage } from './situationParsing';
+import { CardHeading } from './CardHeading';
 
 type Props = {
   msg: ChatMessage;
@@ -40,6 +40,11 @@ type Props = {
     React.SetStateAction<Record<string, { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean }>>
   >;
   findMistakeStorageKey: string;
+
+  constructorUI: Record<string, { pickedWordIndices?: number[]; completed?: boolean }>;
+  setConstructorUI: React.Dispatch<
+    React.SetStateAction<Record<string, { pickedWordIndices?: number[]; completed?: boolean }>>
+  >;
 
   isLoading: boolean;
   setIsLoading: (v: boolean) => void;
@@ -78,6 +83,8 @@ export function MessageContent({
   findMistakeUI,
   setFindMistakeUI,
   findMistakeStorageKey,
+  constructorUI,
+  setConstructorUI,
   isLoading,
   setIsLoading,
   handleStudentAnswer,
@@ -146,9 +153,9 @@ export function MessageContent({
     if (parsed.type === 'goal') {
       return (
         <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="text-xs uppercase text-gray-500 font-semibold">🎯 Цель</div>
-            <div className="text-base font-semibold text-gray-900">{parsed.goal}</div>
+          <div className="p-5 rounded-3xl border border-gray-100 bg-white shadow-sm space-y-3 w-full">
+            <div className="text-xs uppercase font-semibold tracking-widest text-gray-500">🎯 Цель урока</div>
+            <div className="text-lg font-semibold text-gray-900 leading-relaxed">{parsed.goal}</div>
           </div>
         </div>
       );
@@ -215,16 +222,48 @@ export function MessageContent({
           ? String((task as any).words.join(' ')).trim()
           : words.join(' ');
 
+    const constructorKey = `task-${stepIndex}`;
+    const ctorState = constructorUI?.[constructorKey] || {};
+    const isActive =
+      currentStep?.type === msg.currentStepSnapshot?.type && currentStep?.index === msg.currentStepSnapshot?.index;
+
+    const onConstructorStateChange = React.useCallback(
+      ({ pickedWordIndices, completed }: { pickedWordIndices: number[]; completed: boolean }) => {
+        const sameArray = (a?: number[], b?: number[]) => {
+          if (a === b) return true;
+          if (!a || !b) return false;
+          if (a.length !== b.length) return false;
+          for (let i = 0; i < a.length; i++) {
+            if (a[i] !== b[i]) return false;
+          }
+          return true;
+        };
+
+        setConstructorUI((prev) => {
+          const base = prev || {};
+          const existing = base[constructorKey] || {};
+          const nextEntry = { pickedWordIndices, completed };
+          if (existing.completed === completed && sameArray(existing.pickedWordIndices, pickedWordIndices)) return base;
+          return { ...base, [constructorKey]: nextEntry };
+        });
+      },
+      [constructorKey, setConstructorUI]
+    );
+
     return (
       <ConstructorCard
         instruction={instructionText || ''}
         note={task?.note}
         words={words.length ? words : (task?.words || [])}
+        expected={correctSentence}
         translation={translationVisible ? translationContent : undefined}
         renderMarkdown={renderMarkdown}
         isLoading={isLoading}
+        initialPickedWordIndices={Array.isArray(ctorState.pickedWordIndices) ? ctorState.pickedWordIndices : undefined}
+        initialCompleted={typeof ctorState.completed === 'boolean' ? ctorState.completed : undefined}
+        onStateChange={onConstructorStateChange}
         onComplete={
-          typeof msg.currentStepSnapshot?.type === 'string'
+          isActive && typeof msg.currentStepSnapshot?.type === 'string'
             ? async () => {
                 setIsLoading(true);
                 try {
@@ -258,11 +297,9 @@ export function MessageContent({
           {structuredSections.map((section, i) => (
             <div
               key={`${section.title}-${i}`}
-              className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-2"
+              className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-4"
             >
-              <div className="text-[11px] font-bold uppercase tracking-wider text-brand-primary">
-                {section.title}
-              </div>
+              <CardHeading>{section.title}</CardHeading>
               <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
                 {renderMarkdown(section.body)}
               </div>
@@ -443,20 +480,23 @@ export function MessageContent({
     }
   }
 
-  if (parsed && parsed.type === 'situation') {
-    const title: string = typeof (parsed as any).title === 'string' ? (parsed as any).title : '';
-    const situation: string = typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '';
-    const task: string = typeof (parsed as any).task === 'string' ? (parsed as any).task : '';
-    const ai: string = typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '';
-    const feedback: string = typeof (parsed as any).feedback === 'string' ? (parsed as any).feedback : '';
+  if (isSituationCard) {
+    const group = situationGroupMessages && situationGroupMessages.length > 0 ? situationGroupMessages : [msg];
+    const firstModel = group.find((m) => m.role === 'model');
 
-    return <SituationCard title={title} situation={situation} task={task} ai={ai} feedback={feedback || undefined} renderMarkdown={renderMarkdown} />;
-  }
+    const parsedSituation =
+      parsed && parsed.type === 'situation'
+        ? {
+            title: typeof (parsed as any).title === 'string' ? (parsed as any).title : '',
+            situation: typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '',
+            task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
+            ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
+          }
+        : firstModel
+          ? parseSituationMessage(firstModel.text || '', stripModuleTag)
+          : {};
 
-  if (isSituationCard && situationGroupMessages && situationGroupMessages.length > 0) {
-    const firstModel = situationGroupMessages.find((m) => m.role === 'model');
-    const parsedSituation = firstModel ? parseSituationMessage(firstModel.text || '', stripModuleTag) : {};
-    const items = situationGroupMessages
+    const items = group
       .filter((m) => m.role === 'user' || (m.role === 'model' && stripModuleTag(m.text || '').trim().startsWith('{')))
       .map((m) => {
         if (m.role === 'user') return { kind: 'user' as const, text: stripModuleTag(m.text || '') };
@@ -474,10 +514,10 @@ export function MessageContent({
 
     return (
       <SituationThreadCard
-        title={parsedSituation.title}
-        situation={parsedSituation.situation}
-        task={parsedSituation.task}
-        ai={parsedSituation.ai}
+        title={(parsedSituation as any).title}
+        situation={(parsedSituation as any).situation}
+        task={(parsedSituation as any).task}
+        ai={(parsedSituation as any).ai}
         completedCorrect={situationCompletedCorrect}
         items={items}
         renderMarkdown={renderMarkdown}
@@ -492,11 +532,9 @@ export function MessageContent({
         {structuredSections.map((section, i) => (
           <div
             key={`${section.title}-${i}`}
-            className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-2"
+            className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-4"
           >
-            <div className="text-[11px] font-bold uppercase tracking-wider text-brand-primary">
-              {section.title}
-            </div>
+            <CardHeading>{section.title}</CardHeading>
             <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
               {renderMarkdown(section.body)}
             </div>

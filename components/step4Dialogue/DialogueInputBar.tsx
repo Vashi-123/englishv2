@@ -77,12 +77,9 @@ export function DialogueInputBar({
             </button>
           </form>
         ) : (
-          <div className="text-center text-sm text-gray-400 py-2">
-            Следуй инструкциям — ввод появится в следующем задании
-          </div>
+          <div className="py-2" />
         )}
       </div>
     </div>
   );
 }
-

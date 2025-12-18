@@ -211,6 +211,22 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
   });
   const findMistakeHydratedRef = useRef<boolean>(false);
 
+  const [constructorUI, setConstructorUI] = useState<Record<string, { pickedWordIndices?: number[]; completed?: boolean }>>(
+    () => {
+      try {
+        if (typeof window === 'undefined') return {};
+        const key = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${language || 'ru'}`;
+        const raw = window.localStorage.getItem(key);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+  );
+  const constructorHydratedRef = useRef<boolean>(false);
+
   const [vocabWords, setVocabWords] = useState<any[]>([]);
   const [vocabIndex, setVocabIndex] = useState(0);
   const [showVocab, setShowVocab] = useState(true);
@@ -289,6 +305,10 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
     () => `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${language || 'ru'}`,
     [day, lesson, language]
   );
+  const constructorStorageKey = useMemo(
+    () => `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${language || 'ru'}`,
+    [day, lesson, language]
+  );
 
   const { persistGrammarGateOpened } = useStep4ProgressPersistence({
     day,
@@ -326,6 +346,10 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
     findMistakeHydratedRef,
     findMistakeUI,
     setFindMistakeUI,
+    constructorStorageKey,
+    constructorHydratedRef,
+    constructorUI,
+    setConstructorUI,
   });
 
   const { grammarGate, visibleMessages, separatorTitlesBefore, consumedSeparatorIndices, situationGrouping } =
@@ -393,6 +417,7 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
     },
     vocab: { setVocabWords, setVocabIndex, setShowVocab, setPendingVocabPlay },
     findMistake: { setFindMistakeUI },
+    constructor: { setConstructorUI },
     vocabRestoreRefs: { restoredVocabIndexRef, appliedVocabRestoreKeyRef },
     setGrammarGateSectionId: () => {},
     setGrammarGateOpen: () => {},
@@ -403,6 +428,7 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
       vocabProgressStorageKey,
       matchingProgressStorageKey,
       findMistakeStorageKey,
+      constructorStorageKey,
     },
     initializeChat,
   });
@@ -462,6 +488,80 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
   const effectiveInputMode: InputMode = grammarGate.gated ? 'hidden' : inputMode;
   const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
 
+  const lessonProgress = useMemo(() => {
+    const getScriptWordsCount = (script: any | null): number => {
+      if (!script) return 0;
+      const words = (script as any).words;
+      if (!words) return 0;
+      if (Array.isArray(words)) return words.length;
+      if (typeof words === 'object' && Array.isArray((words as any).items)) return (words as any).items.length;
+      return 0;
+    };
+
+    const vocabWordsCount = (vocabWords?.length || 0) > 0 ? vocabWords.length : getScriptWordsCount(lessonScript);
+    // VOCABULARY is a single task regardless of words count.
+    const vocabTaskCount = vocabWordsCount > 0 ? 1 : 0;
+    const matchingCount = vocabWordsCount > 0 ? 1 : 0;
+    const grammarCount =
+      lessonScript?.grammar?.audio_exercise?.expected || lessonScript?.grammar?.text_exercise?.expected ? 1 : 0;
+    const constructorCount = lessonScript?.constructor?.tasks?.length || 0;
+    const findMistakeCount = lessonScript?.find_the_mistake?.tasks?.length || 0;
+    const situationsCount = lessonScript?.situations?.scenarios?.length || 0;
+
+    const total =
+      vocabTaskCount + matchingCount + grammarCount + constructorCount + findMistakeCount + situationsCount;
+    if (!total) return { percent: 0, label: '' };
+
+    const clamp = (value: number) => Math.max(0, Math.min(total, value));
+
+    const prefixAfterWords = vocabTaskCount + matchingCount;
+    const prefixAfterGrammar = prefixAfterWords + grammarCount;
+    const prefixAfterConstructor = prefixAfterGrammar + constructorCount;
+    const prefixAfterFindMistake = prefixAfterConstructor + findMistakeCount;
+
+    const stepType = String(currentStep?.type || '');
+    const stepIndex = Number.isFinite(currentStep?.index) ? Number(currentStep.index) : 0;
+
+    let completed = 0;
+    if (!stepType || stepType === 'goal') {
+      completed = 0;
+    } else if (stepType === 'words') {
+      const vocabDone = !showVocab || (vocabWordsCount > 0 && vocabIndex >= vocabWordsCount - 1);
+      const vocabProgress = vocabTaskCount ? (vocabDone ? 1 : 0) : 0;
+      const matchingProgress = matchingCount && (showMatching || matchesComplete) ? 1 : 0;
+      completed = vocabProgress + matchingProgress;
+    } else if (stepType === 'grammar') {
+      const inPractice = (Number.isFinite(currentStep?.index) ? Number(currentStep.index) : 0) >= 1;
+      completed = prefixAfterWords + (inPractice ? 1 : 0);
+    } else if (stepType === 'constructor') {
+      const within = Math.min(Math.max(0, stepIndex) + 1, constructorCount);
+      completed = prefixAfterGrammar + within;
+    } else if (stepType === 'find_the_mistake') {
+      const within = Math.min(Math.max(0, stepIndex) + 1, findMistakeCount);
+      completed = prefixAfterConstructor + within;
+    } else if (stepType === 'situations') {
+      const within = Math.min(Math.max(0, stepIndex) + 1, situationsCount);
+      completed = prefixAfterFindMistake + within;
+    } else if (stepType === 'completion') {
+      completed = total;
+    } else {
+      completed = 0;
+    }
+
+    const safeCompleted = clamp(completed);
+    const percent = Math.round((safeCompleted / total) * 100);
+    return { percent, label: `${safeCompleted}/${total}` };
+  }, [
+    currentStep?.index,
+    currentStep?.type,
+    lessonScript,
+    matchesComplete,
+    showMatching,
+    showVocab,
+    vocabIndex,
+    vocabWords,
+  ]);
+
   void onFinish;
 
   return (
@@ -469,7 +569,8 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
       <div className="flex flex-col h-full bg-white relative w-full">
         <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
           <DialogueHeader
-            activeLabel={copy.active}
+            progressPercent={lessonProgress.percent}
+            progressLabel={lessonProgress.label}
             onBack={onBack}
             onRestart={() => setShowRestartConfirm(true)}
             isLoading={isLoading}
@@ -502,6 +603,8 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
             findMistakeUI={findMistakeUI}
             setFindMistakeUI={setFindMistakeUI}
             findMistakeStorageKey={findMistakeStorageKey}
+            constructorUI={constructorUI}
+            setConstructorUI={setConstructorUI}
             isLoading={isLoading}
             setIsLoading={setIsLoading}
             handleStudentAnswer={handleStudentAnswer}

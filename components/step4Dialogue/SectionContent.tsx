@@ -1,4 +1,5 @@
 import React from 'react';
+import { CardHeading } from './CardHeading';
 
 type Structured = { title: string; body: string };
 
@@ -16,11 +17,9 @@ export function SectionContent({ content, extractStructuredSections, renderMarkd
         {structured.map((section, i) => (
           <div
             key={`${section.title}-${i}`}
-            className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-2"
+            className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-4"
           >
-            <div className="text-[11px] font-bold uppercase tracking-wider text-brand-primary">
-              {section.title}
-            </div>
+            <CardHeading>{section.title}</CardHeading>
             <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
               {renderMarkdown(section.body)}
             </div>
@@ -36,4 +35,3 @@ export function SectionContent({ content, extractStructuredSections, renderMarkd
     </div>
   );
 }
-

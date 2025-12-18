@@ -22,6 +22,7 @@ export function useLessonRestart({
   matching,
   vocab,
   findMistake,
+  constructor,
   vocabRestoreRefs,
 
   setGrammarGateSectionId,
@@ -67,6 +68,10 @@ export function useLessonRestart({
     setFindMistakeUI: Dispatch<SetStateAction<Record<string, { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean }>>>;
   };
 
+  constructor: {
+    setConstructorUI: Dispatch<SetStateAction<Record<string, { pickedWordIndices?: number[]; completed?: boolean }>>>;
+  };
+
   vocabRestoreRefs: {
     restoredVocabIndexRef: MutableRefObject<number | null>;
     appliedVocabRestoreKeyRef: MutableRefObject<string | null>;
@@ -82,6 +87,7 @@ export function useLessonRestart({
     vocabProgressStorageKey: string;
     matchingProgressStorageKey: string;
     findMistakeStorageKey: string;
+    constructorStorageKey: string;
   };
 
   initializeChat: (force?: boolean) => Promise<void>;
@@ -116,6 +122,7 @@ export function useLessonRestart({
       vocab.setPendingVocabPlay(false);
 
       findMistake.setFindMistakeUI({});
+      constructor.setConstructorUI({});
 
       // Important: on restart we must not reuse the old restored vocab progress from refs
       vocabRestoreRefs.restoredVocabIndexRef.current = null;
@@ -133,6 +140,7 @@ export function useLessonRestart({
         localStorage.removeItem(storageKeys.vocabProgressStorageKey);
         localStorage.removeItem(storageKeys.matchingProgressStorageKey);
         localStorage.removeItem(storageKeys.findMistakeStorageKey);
+        localStorage.removeItem(storageKeys.constructorStorageKey);
       } catch {
         // ignore
       }
@@ -146,6 +154,7 @@ export function useLessonRestart({
     }
   }, [
     day,
+    constructor,
     findMistake,
     gatedGrammarSectionIdsRef,
     goalSeenRef,
@@ -165,6 +174,7 @@ export function useLessonRestart({
     setLessonCompletedPersisted,
     setMessages,
     storageKeys.grammarGateStorageKey,
+    storageKeys.constructorStorageKey,
     storageKeys.findMistakeStorageKey,
     storageKeys.matchingProgressStorageKey,
     storageKeys.vocabProgressStorageKey,

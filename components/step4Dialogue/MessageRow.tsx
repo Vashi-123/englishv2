@@ -22,6 +22,7 @@ type Props = {
   msgStableId: string;
   isVocabulary: boolean;
   isSituationCard: boolean;
+  isTaskCard: boolean;
   isSeparatorOnly: boolean;
   showSeparatorTitle: boolean;
   separatorTitle?: string;
@@ -42,6 +43,7 @@ export const MessageRow: React.FC<Props> = ({
   msgStableId,
   isVocabulary,
   isSituationCard,
+  isTaskCard,
   isSeparatorOnly,
   showSeparatorTitle,
   separatorTitle,
@@ -55,6 +57,8 @@ export const MessageRow: React.FC<Props> = ({
   showGrammarGateButton,
   onPressGrammarNext,
 }) => {
+  const isFullCard = isTaskCard || isVocabulary;
+
   if (isSeparatorOnly) {
     return (
       <>
@@ -93,23 +97,23 @@ export const MessageRow: React.FC<Props> = ({
       <div
         ref={(el) => onRegisterMessageEl(idx, el)}
         data-message-index={idx}
-        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+        className={`flex ${msg.role === 'user' ? 'justify-end' : isFullCard ? 'justify-center' : 'justify-start'}`}
       >
         <div
           className={`flex ${
-            isVocabulary ? 'w-full' : isSituationCard ? 'w-full md:max-w-2xl' : 'max-w-[85%]'
+            isFullCard ? 'w-full md:max-w-2xl' : isSituationCard ? 'w-full md:max-w-2xl' : 'max-w-[85%]'
           } ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-end gap-3`}
         >
-          {msg.role === 'model' && !isSituationCard && (
+          {msg.role === 'model' && !isSituationCard && !isFullCard && (
             <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">
               <Bot className="w-4 h-4" />
             </div>
           )}
 
-          <div className={`relative group ${isVocabulary || isSituationCard ? 'w-full' : ''}`}>
+          <div className={`relative group ${isVocabulary || isSituationCard || isTaskCard ? 'w-full' : ''}`}>
             <div
               className={`px-5 py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
-                isSituationCard
+                isSituationCard || isTaskCard || isVocabulary
                   ? 'bg-transparent text-gray-900 p-0 rounded-none'
                   : msg.role === 'user'
                     ? 'bg-brand-primary/10 text-brand-primary font-bold rounded-br-sm'

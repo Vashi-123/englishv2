@@ -1,5 +1,6 @@
 import React from 'react';
 import { Bot } from 'lucide-react';
+import { CardHeading } from './CardHeading';
 
 type Item =
   | { kind: 'user'; text: string }
@@ -31,7 +32,7 @@ export function SituationThreadCard({
           completedCorrect ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100 shadow-sm'
         }`}
       >
-        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Ситуация</div>
+        <CardHeading>Ситуация</CardHeading>
         {title && <div className="text-xl font-bold text-gray-900">{title}</div>}
 
         <div className="space-y-4">
@@ -39,9 +40,7 @@ export function SituationThreadCard({
             <div className="space-y-3">
               {situation && (
                 <div className="space-y-1.5">
-                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">
-                    Контекст
-                  </div>
+                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Контекст</div>
                   <div className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed">
                     {renderMarkdown(situation)}
                   </div>
@@ -49,9 +48,7 @@ export function SituationThreadCard({
               )}
               {task && (
                 <div className="space-y-1.5">
-                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">
-                    Твоя задача
-                  </div>
+                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Твоя задача</div>
                   <div className="text-base font-semibold text-gray-900 whitespace-pre-wrap leading-relaxed">
                     {renderMarkdown(task)}
                   </div>
@@ -63,7 +60,7 @@ export function SituationThreadCard({
           <div className="pt-6">
             <div className="flex items-center gap-3">
               <div className="h-px bg-gray-100 flex-1" />
-              <div className="text-[10px] font-extrabold uppercase tracking-widest text-gray-400">Диалог</div>
+              <CardHeading className="text-[10px] text-gray-400">Диалог</CardHeading>
               <div className="h-px bg-gray-100 flex-1" />
             </div>
           </div>
@@ -110,4 +107,3 @@ export function SituationThreadCard({
     </div>
   );
 }
-

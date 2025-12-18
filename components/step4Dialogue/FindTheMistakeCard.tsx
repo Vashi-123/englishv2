@@ -1,4 +1,5 @@
 import React from 'react';
+import { CardHeading } from './CardHeading';
 
 type UiState = { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean };
 
@@ -27,9 +28,7 @@ export function FindTheMistakeCard({
   return (
     <div className="space-y-4">
       <div className="p-5 rounded-3xl border border-gray-100 bg-white shadow-sm space-y-4">
-        <div className="flex items-center gap-2 text-xs uppercase font-semibold tracking-widest text-gray-500">
-          Найди ошибку
-        </div>
+        <CardHeading>Найди ошибку</CardHeading>
         {instruction && <div className="text-sm text-gray-600">{instruction}</div>}
         <div className="space-y-3">
           {twoOptions.map((optionText, optionIdx) => {

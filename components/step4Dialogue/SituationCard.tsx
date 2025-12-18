@@ -1,4 +1,5 @@
 import React from 'react';
+import { CardHeading } from './CardHeading';
 
 type Props = {
   title?: string;
@@ -13,7 +14,7 @@ export function SituationCard({ title, situation, task, ai, feedback, renderMark
   return (
     <div className="w-full">
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-5">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Ситуация</div>
+        <CardHeading>Ситуация</CardHeading>
         {title && <div className="text-xl font-bold text-gray-900">{title}</div>}
 
         <div className="space-y-4">
@@ -21,9 +22,7 @@ export function SituationCard({ title, situation, task, ai, feedback, renderMark
             <div className="space-y-3">
               {situation && (
                 <div className="space-y-1.5">
-                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">
-                    Контекст
-                  </div>
+                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Контекст</div>
                   <div className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed">
                     {renderMarkdown(situation)}
                   </div>
@@ -31,9 +30,7 @@ export function SituationCard({ title, situation, task, ai, feedback, renderMark
               )}
               {task && (
                 <div className="space-y-1.5">
-                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">
-                    Твоя задача
-                  </div>
+                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Твоя задача</div>
                   <div className="text-base font-semibold text-gray-900 whitespace-pre-wrap leading-relaxed">
                     {renderMarkdown(task)}
                   </div>
@@ -63,4 +60,3 @@ export function SituationCard({ title, situation, task, ai, feedback, renderMark
     </div>
   );
 }
-

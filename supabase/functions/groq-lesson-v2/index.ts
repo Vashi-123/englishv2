@@ -363,8 +363,15 @@ const makeGroqRequest = async (requestMessages: any[]): Promise<{ text: string; 
 - Если ответ по смыслу/грамматике верный, ставь isCorrect=true даже если стиль не идеален.
 - Считай неверным только если смысл/грамматика/слово реально неправильные (например, ошибка в написании ключевого слова).`;
 
+      const expectedRules = `Правила для expected-шаблонов (важно):
+- expected может содержать плейсхолдеры в квадратных скобках, например: "I am [name]."
+- Это означает: обязательные слова (например "I am") должны присутствовать и быть в правильном порядке; плейсхолдер можно заменить любым подходящим словом/именем.
+- Разрешай сокращения, если они эквивалентны правилу (например "I'm" == "I am").
+- Не принимай ответы, которые пропускают ключевое слово из правила (например "I Usman" НЕ равно "I am [name]").`;
+
       const validatorUserPrompt = `Шаг: ${params.step}
 ${globalLeniencyRules}
+${expectedRules}
 ${constructorRules ? `\n${constructorRules}\n` : "\n"}Ожидается: ${params.expected}
 Ответ ученика: ${params.studentAnswer}
 ${params.extra ? `Контекст: ${params.extra}` : ""}`;
@@ -447,7 +454,7 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        extra = `Пояснение: ${script.grammar?.explanation || ""}`;
+        extra = `Задание/правило: ${script.grammar?.explanation || ""}`;
       } else if (currentStep.type === "constructor") {
         const task = script.constructor?.tasks?.[currentStep.index];
         if (!task?.correct) {
@@ -881,11 +888,8 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
             }
           } else {
             const fb = validation.feedback || "Пожалуйста, пересмотри объяснение и попробуй снова.";
-            const retryTask =
-              grammar.text_exercise?.instruction
-                ? buildTextExerciseContent({ explanation: grammar.explanation, instruction: grammar.text_exercise.instruction })
-                : extractAssignmentSection(grammar.explanation) || "";
-            currentLessonResponse.text = `🤔 Попробуй еще раз. ${fb}\n\n${grammar.explanation}${retryTask ? `\n\n${retryTask}` : ''} ${inputType}`;
+            // Keep the input marker so the UI stays in input mode, but don't resend the full grammar explanation.
+            currentLessonResponse.text = `🤔 Попробуй еще раз. ${fb}\n\n${inputType}`;
             currentLessonResponse.feedback = fb;
             newCurrentStep = { type: 'grammar', index: 1 };
             await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
