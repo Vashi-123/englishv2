@@ -8,6 +8,7 @@ type MatchingOption = { id: string; text: string; pairId: string; matched: boole
 export function useStep4ProgressPersistence({
   day,
   lesson,
+  level,
   initialLessonProgress,
   grammarGateStorageKey,
   setGrammarGateHydrated,
@@ -48,6 +49,7 @@ export function useStep4ProgressPersistence({
 }: {
   day?: number;
   lesson?: number;
+  level?: string;
   initialLessonProgress?: any | null;
   grammarGateStorageKey: string;
   setGrammarGateHydrated: Dispatch<SetStateAction<boolean>>;
@@ -108,7 +110,7 @@ export function useStep4ProgressPersistence({
           ? initialLessonProgress
           : null;
 
-      const db: any = lessonProgress ? null : await loadChatProgress(day, lesson);
+      const db: any = lessonProgress ? null : await loadChatProgress(day, lesson, level || 'A1');
       const step4 = (lessonProgress ? lessonProgress?.step4 : db?.progress?.step4) as any;
       if (!step4 || typeof step4 !== 'object' || Array.isArray(step4)) return;
       if (lessonProgress) {
@@ -218,6 +220,7 @@ export function useStep4ProgressPersistence({
     grammarGateStorageKey,
     initialLessonProgress,
     lesson,
+    level,
     matchingProgressStorageKey,
     restoredVocabIndexRef,
     setFindMistakeUI,

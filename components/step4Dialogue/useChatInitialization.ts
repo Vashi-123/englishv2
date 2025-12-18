@@ -12,6 +12,7 @@ type AppendEngineMessagesWithDelay = (messages: Array<{ role: 'user' | 'model'; 
 export function useChatInitialization({
   day,
   lesson,
+  level,
   language,
   lessonScript,
   setLessonScript,
@@ -26,6 +27,7 @@ export function useChatInitialization({
 }: {
   day?: number;
   lesson?: number;
+  level?: string;
   language: string;
   lessonScript: any | null;
   setLessonScript: Dispatch<SetStateAction<any | null>>;
@@ -51,7 +53,7 @@ export function useChatInitialization({
 
   const initializeChat = useCallback(
     async (force = false) => {
-      const initKey = `${day || 1}_${lesson || 1}_${language}`;
+      const initKey = `${day || 1}_${lesson || 1}_${level || 'A1'}_${language}`;
       if (!force && initializedKeyRef.current === initKey) {
         console.log('[Step4Dialogue] Already initialized for this key, skipping');
         return;
@@ -63,7 +65,7 @@ export function useChatInitialization({
         setIsInitializing(true);
         console.log('[Step4Dialogue] Initializing chat for day:', day, 'lesson:', lesson);
 
-        const savedMessages = await loadChatMessages(day || 1, lesson || 1);
+        const savedMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
         console.log('[Step4Dialogue] Loaded messages:', savedMessages.length);
 
         if (savedMessages && savedMessages.length > 0) {
@@ -78,7 +80,7 @@ export function useChatInitialization({
           }
 
           if (!lessonScript && day && lesson) {
-            const script = await loadLessonScript(day, lesson);
+            const script = await loadLessonScript(day, lesson, level || 'A1');
             if (script) {
               const parsed = parseJsonBestEffort(script, 'lessonScript');
               setLessonScript(parsed);
@@ -96,7 +98,7 @@ export function useChatInitialization({
 
           await new Promise((resolve) => setTimeout(resolve, 500));
 
-          const recheckMessages = await loadChatMessages(day || 1, lesson || 1);
+          const recheckMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
           if (recheckMessages && recheckMessages.length > 0) {
             console.log('[Step4Dialogue] Messages appeared after delay (preloaded), using them:', recheckMessages.length);
             setMessages(recheckMessages);
@@ -121,7 +123,7 @@ export function useChatInitialization({
         setIsInitializing(false);
       }
     },
-    [day, language, lesson, lessonScript, setCurrentStep, setIsInitializing, setIsLoading, setLessonCompletedPersisted, setLessonScript, setMessages]
+    [day, language, lesson, level, lessonScript, setCurrentStep, setIsInitializing, setIsLoading, setLessonCompletedPersisted, setLessonScript, setMessages]
   );
 
   useEffect(() => {

@@ -11,6 +11,7 @@ type EnsureLessonScript = () => Promise<any>;
 export function useLessonFlow({
   day,
   lesson,
+  level,
   language,
   messages,
   currentStep,
@@ -25,6 +26,7 @@ export function useLessonFlow({
 }: {
   day?: number;
   lesson?: number;
+  level?: string;
   language: string;
   messages: ChatMessage[];
   currentStep: any | null;
@@ -71,10 +73,10 @@ export function useLessonFlow({
       const trimmed = String(text || '').trim();
       if (!trimmed) return;
       saveChainRef.current = saveChainRef.current
-        .then(() => saveChatMessage(day || 1, lesson || 1, role, trimmed, stepSnapshot))
+        .then(() => saveChatMessage(day || 1, lesson || 1, role, trimmed, stepSnapshot, level || 'A1'))
         .catch((err) => console.error('[Step4Dialogue] saveChatMessage error:', err));
     },
-    [day, lesson]
+    [day, lesson, level]
   );
 
   const MESSAGE_BLOCK_PAUSE_MS = 1000;

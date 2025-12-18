@@ -25,6 +25,7 @@ export interface DayPlan {
   grammarRows?: GrammarRow[]; // массив грамматических тем для урока
   lesson?: number; // lesson number from a1_lessons
   wordIds?: number[]; // parsed word ids for the lesson
+  level?: string; // optional: used to disambiguate lesson_scripts rows
 }
 
 // Content rows (Supabase)

@@ -113,10 +113,10 @@ const AppContent: React.FC<{
     }
 
     try {
-      const progress = await loadChatProgress(checkingDay, checkingLesson);
+      const progress = await loadChatProgress(checkingDay, checkingLesson, level);
       const progressFlag = progress?.practice_completed === true;
 
-      const messages = await loadChatMessages(checkingDay, checkingLesson);
+      const messages = await loadChatMessages(checkingDay, checkingLesson, level);
       const hasTagInHistory = messages.some(
         (msg) => msg.text && msg.text.includes('<lesson_complete>')
       );
@@ -177,7 +177,7 @@ const AppContent: React.FC<{
       // Загружаем статусы всех дней параллельно
       const progressPromises = dayPlans.map(async (dayPlan) => {
         try {
-          const progress = await loadChatProgress(dayPlan.day, dayPlan.lesson);
+          const progress = await loadChatProgress(dayPlan.day, dayPlan.lesson, level);
           return { day: dayPlan.day, completed: progress?.practice_completed === true };
         } catch (error) {
           // Игнорируем ошибки 406 и другие - просто считаем урок незавершенным

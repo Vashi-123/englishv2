@@ -224,26 +224,39 @@ export const generateCorrections = async (focus: string, theme: string): Promise
  * Инициализирует диалог через Groq edge функцию
  */
 // Новый диалог: groq-lesson-v2
-export const getLessonIdForDayLesson = async (day: number, lesson: number): Promise<string> => {
-  const { data, error } = await supabase
-    .from("lesson_scripts")
-    .select("lesson_id")
-    .eq("day", day)
-    .eq("lesson", lesson)
-    .single();
-  if (error || !data?.lesson_id) {
-    throw new Error("Не найден lesson id для day/lesson");
-  }
-  return data.lesson_id as string;
+export const getLessonIdForDayLesson = async (
+  day: number,
+  lesson: number,
+  level: string = 'A1'
+): Promise<string> => {
+  // lesson_scripts contains multiple rows for the same (day, lesson) across levels.
+  // Avoid .single() 406 errors by filtering by level and limiting to 1 row.
+  const base = supabase
+    .from('lesson_scripts')
+    .select('lesson_id')
+    .eq('day', day)
+    .eq('lesson', lesson)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+
+  const primary = await base.eq('level', level).maybeSingle();
+  if (!primary.error && primary.data?.lesson_id) return primary.data.lesson_id as string;
+
+  // Fallback for rows that don't have level populated yet.
+  const fallback = await base.maybeSingle();
+  if (!fallback.error && fallback.data?.lesson_id) return fallback.data.lesson_id as string;
+
+  throw new Error('Не найден lesson id для day/lesson');
 };
 
 export const startDialogueSessionV2 = async (
   day: number,
   lesson: number,
-  uiLang?: string
+  uiLang?: string,
+  level: string = 'A1'
 ): Promise<{ text: string; isCorrect: boolean; feedback: string; nextStep: DialogueStep | null }> => {
   try {
-    const lessonId = await getLessonIdForDayLesson(day, lesson);
+    const lessonId = await getLessonIdForDayLesson(day, lesson, level);
     const userId = await getOrCreateLocalUser();
 
     console.log("[startDialogueSessionV2] invoking groq-lesson-v2", { lessonId, userId, day, lesson, uiLang });
@@ -297,10 +310,11 @@ export const sendDialogueMessageV2 = async (
   lastUserMessageContent: string | null,
   currentStep: DialogueStep | null,
   uiLang?: string,
-  opts?: { choice?: "A" | "B"; suppressUserMessage?: boolean }
+  opts?: { choice?: "A" | "B"; suppressUserMessage?: boolean },
+  level: string = 'A1'
 ): Promise<{ text: string; isCorrect: boolean; feedback: string; nextStep: DialogueStep | null }> => {
   try {
-    const lessonId = await getLessonIdForDayLesson(day, lesson);
+    const lessonId = await getLessonIdForDayLesson(day, lesson, level);
     const userId = await getOrCreateLocalUser();
 
     console.log("[sendDialogueMessageV2] invoking groq-lesson-v2", {
@@ -524,7 +538,8 @@ export const saveLessonCompleted = async (
  */
 export const loadChatProgress = async (
   day: number,
-  lesson: number
+  lesson: number,
+  level: string = 'A1'
 ): Promise<{
   current_module: string;
   vocab_completed: boolean;
@@ -538,6 +553,13 @@ export const loadChatProgress = async (
     if (!localUserId) {
       console.log("[loadChatProgress] No local user ID found");
       return null;
+    }
+
+    let lessonIdForLevel: string | null = null;
+    try {
+      lessonIdForLevel = await getLessonIdForDayLesson(day, lesson, level);
+    } catch {
+      lessonIdForLevel = null;
     }
 
     const derive = (row: any) => {
@@ -563,7 +585,7 @@ export const loadChatProgress = async (
     // Prefer the jsonb schema (progress) to avoid schema-cache 400/42703 spam.
     const primaryJsonb = await supabase
       .from('chat_progress')
-      .select('progress')
+      .select('progress, lesson_id')
       .eq('local_user_id', localUserId)
       .eq('day', day)
       .eq('lesson', lesson)
@@ -571,6 +593,9 @@ export const loadChatProgress = async (
 
     if (!primaryJsonb.error) {
       if (!primaryJsonb.data) return null;
+      // If the DB row belongs to a different level (different lesson_id), ignore it to avoid restoring wrong UI state.
+      const rowLessonId = (primaryJsonb.data as any)?.lesson_id;
+      if (lessonIdForLevel && rowLessonId && rowLessonId !== lessonIdForLevel) return null;
       return derive(primaryJsonb.data);
     }
 
@@ -589,7 +614,7 @@ export const loadChatProgress = async (
       // Fallback: older schema with boolean flags.
       const primaryLegacy = await supabase
         .from('chat_progress')
-        .select('current_module, vocab_completed, grammar_completed, correction_completed, practice_completed')
+        .select('current_module, vocab_completed, grammar_completed, correction_completed, practice_completed, lesson_id')
         .eq('local_user_id', localUserId)
         .eq('day', day)
         .eq('lesson', lesson)
@@ -601,6 +626,8 @@ export const loadChatProgress = async (
         return null;
       }
 
+      const rowLessonId = (primaryLegacy.data as any)?.lesson_id;
+      if (lessonIdForLevel && rowLessonId && rowLessonId !== lessonIdForLevel) return null;
       return derive(primaryLegacy.data);
     }
 
@@ -619,7 +646,8 @@ export const saveChatMessage = async (
   lesson: number,
   role: 'user' | 'model',
   text: string,
-  currentStepSnapshot?: DialogueStep | null
+  currentStepSnapshot?: DialogueStep | null,
+  level: string = 'A1'
 ): Promise<void> => {
   try {
     // Валидация параметров
@@ -640,7 +668,7 @@ export const saveChatMessage = async (
       return;
     }
 
-    const lessonId = await getLessonIdForDayLesson(day, lesson);
+    const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
     console.log("[saveChatMessage] Attempting to save:", { 
       localUserId, 
@@ -698,7 +726,8 @@ export const saveChatMessage = async (
  */
 export const loadChatMessages = async (
   day: number,
-  lesson: number
+  lesson: number,
+  level: string = 'A1'
 ): Promise<ChatMessage[]> => {
   try {
     const localUserId = await getOrCreateLocalUser();
@@ -707,7 +736,7 @@ export const loadChatMessages = async (
       return [];
     }
 
-    const lessonId = await getLessonIdForDayLesson(day, lesson);
+    const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
     console.log("[loadChatMessages] Loading messages for lessonId:", lessonId, "localUserId:", localUserId);
 
@@ -753,15 +782,21 @@ export const loadChatMessages = async (
  */
 export const loadLessonScript = async (
   day: number,
-  lesson: number
+  lesson: number,
+  level: string = 'A1'
 ): Promise<string | null> => {
   try {
-    const { data, error } = await supabase
+    const base = supabase
       .from('lesson_scripts')
       .select('script_text, script')
       .eq('day', day)
       .eq('lesson', lesson)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1);
+
+    const primary = await base.eq('level', level).maybeSingle();
+    const { data, error } =
+      !primary.error && primary.data ? primary : await base.maybeSingle();
 
     if (error) {
       if (error.code === 'PGRST116') {
@@ -797,11 +832,12 @@ export const loadLessonScript = async (
 export const subscribeChatMessages = async (
   day: number,
   lesson: number,
-  onMessage: (msg: ChatMessage) => void
+  onMessage: (msg: ChatMessage) => void,
+  level: string = 'A1'
 ): Promise<() => void> => {
   const localUserId = await getOrCreateLocalUser();
   if (!localUserId) return () => {};
-  const lessonId = await getLessonIdForDayLesson(day, lesson);
+  const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
   const emitRow = (row: any) => {
     if (!row) return;
@@ -887,11 +923,11 @@ export const subscribeChatProgress = async (
 /**
  * Очистить сообщения и прогресс для конкретного урока
  */
-export const resetLessonDialogue = async (day: number, lesson: number): Promise<void> => {
+export const resetLessonDialogue = async (day: number, lesson: number, level: string = 'A1'): Promise<void> => {
   try {
     const localUserId = await getOrCreateLocalUser();
     if (!localUserId) return;
-    const lessonId = await getLessonIdForDayLesson(day, lesson);
+    const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
     await supabase
       .from('chat_messages')
@@ -899,9 +935,27 @@ export const resetLessonDialogue = async (day: number, lesson: number): Promise<
       .eq('local_user_id', localUserId)
       .eq('lesson_id', lessonId);
 
-    // Also reset progress flags so the main menu reflects the restart immediately.
-    // chat_progress is keyed by (local_user_id, day, lesson) in this app.
-    await saveLessonCompleted(day, lesson, false);
+    // Best-effort: delete the persisted progress row for this lesson (so step4 JSON doesn't linger).
+    // Prefer lesson_id (disambiguates A1/A2); also remove any legacy rows for the same day/lesson with NULL lesson_id.
+    const delByLessonId = await supabase
+      .from('chat_progress')
+      .delete()
+      .eq('local_user_id', localUserId)
+      .eq('lesson_id', lessonId);
+    if (delByLessonId.error) {
+      console.error('[resetLessonDialogue] Error deleting chat_progress by lesson_id:', delByLessonId.error);
+    }
+
+    // Also delete by (day, lesson) to clean up older/wrong lesson_id rows (A1/A2 collisions).
+    const delByDayLesson = await supabase
+      .from('chat_progress')
+      .delete()
+      .eq('local_user_id', localUserId)
+      .eq('day', day)
+      .eq('lesson', lesson);
+    if (delByDayLesson.error) {
+      console.error('[resetLessonDialogue] Error deleting chat_progress by day/lesson:', delByDayLesson.error);
+    }
   } catch (error) {
     console.error('[resetLessonDialogue] Error:', error);
     throw error;

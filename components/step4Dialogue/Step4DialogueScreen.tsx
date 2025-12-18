@@ -34,6 +34,7 @@ import { useVocabScroll } from './useVocabScroll';
 export type Step4DialogueProps = {
   day?: number;
   lesson?: number;
+  level?: string;
   initialLessonProgress?: any | null;
   onFinish: () => void;
   onBack?: () => void;
@@ -55,8 +56,10 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFinish, onBack, copy }: Step4DialogueProps) {
+export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress, onFinish, onBack, copy }: Step4DialogueProps) {
   const { language } = useLanguage();
+  const resolvedLevel = level || 'A1';
+  const resolvedLanguage = language || 'ru';
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
@@ -90,23 +93,26 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
   const ensureLessonContext = useCallback(async () => {
     if (lessonIdRef.current && userIdRef.current) return;
     if (!day || !lesson) return;
-    lessonIdRef.current = await getLessonIdForDayLesson(day, lesson);
+    const resolvedLevel = level || 'A1';
+    lessonIdRef.current = await getLessonIdForDayLesson(day, lesson, resolvedLevel);
     userIdRef.current = await getOrCreateLocalUser();
-  }, [day, lesson]);
+  }, [day, lesson, level]);
 
   const ensureLessonScript = useCallback(async (): Promise<any> => {
     if (lessonScript) return lessonScript;
     if (!day || !lesson) throw new Error('lessonScript is required');
-    const script = await loadLessonScript(day, lesson);
+    const resolvedLevel = level || 'A1';
+    const script = await loadLessonScript(day, lesson, resolvedLevel);
     if (!script) throw new Error('lessonScript is required');
     const parsed = parseJsonBestEffort(script, 'lessonScript');
     setLessonScript(parsed);
     return parsed;
-  }, [day, lesson, lessonScript]);
+  }, [day, lesson, level, lessonScript]);
 
   const { appendEngineMessagesWithDelay, handleStudentAnswer } = useLessonFlow({
     day,
     lesson,
+    level,
     language,
     messages,
     currentStep,
@@ -123,6 +129,7 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
   const { initializeChat } = useChatInitialization({
     day,
     lesson,
+    level,
     language,
     lessonScript,
     setLessonScript,
@@ -139,6 +146,7 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
   useLessonRealtimeSubscriptions({
     day,
     lesson,
+    level,
     setMessages,
     lessonCompletedPersisted,
     setLessonCompletedPersisted,
@@ -200,10 +208,20 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
   >(() => {
     try {
       if (typeof window === 'undefined') return {};
-      const key = `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${language || 'ru'}`;
-      const raw = window.localStorage.getItem(key);
+      const legacyKey = `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${resolvedLanguage}`;
+      const key = `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+      const raw = window.localStorage.getItem(key) ?? window.localStorage.getItem(legacyKey);
       if (!raw) return {};
       const parsed = JSON.parse(raw);
+      // If we read from the legacy key, migrate to the new level-scoped key.
+      try {
+        if (!window.localStorage.getItem(key) && window.localStorage.getItem(legacyKey)) {
+          window.localStorage.setItem(key, raw);
+          window.localStorage.removeItem(legacyKey);
+        }
+      } catch {
+        // ignore
+      }
       return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
     } catch {
       return {};
@@ -215,10 +233,20 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
     () => {
       try {
         if (typeof window === 'undefined') return {};
-        const key = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${language || 'ru'}`;
-        const raw = window.localStorage.getItem(key);
+        const legacyKey = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLanguage}`;
+        const key = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+        const raw = window.localStorage.getItem(key) ?? window.localStorage.getItem(legacyKey);
         if (!raw) return {};
         const parsed = JSON.parse(raw);
+        // If we read from the legacy key, migrate to the new level-scoped key.
+        try {
+          if (!window.localStorage.getItem(key) && window.localStorage.getItem(legacyKey)) {
+            window.localStorage.setItem(key, raw);
+            window.localStorage.removeItem(legacyKey);
+          }
+        } catch {
+          // ignore
+        }
         return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
       } catch {
         return {};
@@ -290,29 +318,30 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
   }, [appendEngineMessagesWithDelay, ensureLessonScript, matchesComplete, showMatching]);
 
   const grammarGateStorageKey = useMemo(
-    () => `step4dialogue:gatedGrammar:${day || 1}:${lesson || 1}:${language || 'ru'}`,
-    [day, lesson, language]
+    () => `step4dialogue:gatedGrammar:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
+    [day, lesson, resolvedLanguage, resolvedLevel]
   );
   const vocabProgressStorageKey = useMemo(
-    () => `step4dialogue:vocabProgress:${day || 1}:${lesson || 1}:${language || 'ru'}`,
-    [day, lesson, language]
+    () => `step4dialogue:vocabProgress:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
+    [day, lesson, resolvedLanguage, resolvedLevel]
   );
   const matchingProgressStorageKey = useMemo(
-    () => `step4dialogue:matchingProgress:${day || 1}:${lesson || 1}:${language || 'ru'}`,
-    [day, lesson, language]
+    () => `step4dialogue:matchingProgress:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
+    [day, lesson, resolvedLanguage, resolvedLevel]
   );
   const findMistakeStorageKey = useMemo(
-    () => `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${language || 'ru'}`,
-    [day, lesson, language]
+    () => `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
+    [day, lesson, resolvedLanguage, resolvedLevel]
   );
   const constructorStorageKey = useMemo(
-    () => `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${language || 'ru'}`,
-    [day, lesson, language]
+    () => `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
+    [day, lesson, resolvedLanguage, resolvedLevel]
   );
 
   const { persistGrammarGateOpened } = useStep4ProgressPersistence({
     day,
     lesson,
+    level: resolvedLevel,
     initialLessonProgress,
     grammarGateStorageKey,
     setGrammarGateHydrated,
@@ -395,6 +424,7 @@ export function Step4DialogueScreen({ day, lesson, initialLessonProgress, onFini
   const { restartLesson } = useLessonRestart({
     day,
     lesson,
+    level,
     setIsLoading,
     setIsInitializing,
     goalSeenRef,

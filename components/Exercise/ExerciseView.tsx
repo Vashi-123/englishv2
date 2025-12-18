@@ -62,6 +62,7 @@ export const ExerciseView: React.FC<Props> = ({
             <Step4Dialogue 
               day={currentDayPlan.day}
               lesson={currentDayPlan.lesson}
+              level={currentDayPlan.level}
               initialLessonProgress={lessonProgress}
               onFinish={onComplete}
               onBack={onBack}

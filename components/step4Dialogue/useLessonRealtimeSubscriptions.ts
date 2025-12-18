@@ -57,6 +57,7 @@ function sortByMessageOrderStable(messages: ChatMessage[]) {
 export function useLessonRealtimeSubscriptions({
   day,
   lesson,
+  level,
   setMessages,
   lessonCompletedPersisted,
   setLessonCompletedPersisted,
@@ -64,6 +65,7 @@ export function useLessonRealtimeSubscriptions({
 }: {
   day?: number;
   lesson?: number;
+  level?: string;
   setMessages: Dispatch<SetStateAction<ChatMessage[]>>;
   lessonCompletedPersisted: boolean;
   setLessonCompletedPersisted: Dispatch<SetStateAction<boolean>>;
@@ -122,7 +124,7 @@ export function useLessonRealtimeSubscriptions({
           }
           return sortByMessageOrderStable(next);
         });
-      });
+      }, level || 'A1');
 
       unsubProgress = await subscribeChatProgress(day || 1, lesson || 1, (progress) => {
         if (typeof progress.practice_completed !== 'boolean') return;
@@ -157,5 +159,5 @@ export function useLessonRealtimeSubscriptions({
       if (unsubMessages) unsubMessages();
       if (unsubProgress) unsubProgress();
     };
-  }, [day, lesson, setLessonCompletedPersisted, setMessages, hasRecordedLessonCompleteRef]);
+  }, [day, lesson, level, setLessonCompletedPersisted, setMessages, hasRecordedLessonCompleteRef]);
 }

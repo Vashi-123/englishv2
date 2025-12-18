@@ -8,6 +8,7 @@ import type { MatchOption } from './useMatchingGame';
 export function useLessonRestart({
   day,
   lesson,
+  level,
   setIsLoading,
   setIsInitializing,
   goalSeenRef,
@@ -35,6 +36,7 @@ export function useLessonRestart({
 }: {
   day?: number;
   lesson?: number;
+  level?: string;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
   setIsInitializing: Dispatch<SetStateAction<boolean>>;
   goalSeenRef: MutableRefObject<boolean>;
@@ -92,6 +94,9 @@ export function useLessonRestart({
 
   initializeChat: (force?: boolean) => Promise<void>;
 }) {
+  const resolvedLevel = level || 'A1';
+  const legacyKeyFor = (key: string) => key.replace(`:${resolvedLevel}:`, ':');
+
   const restartLesson = useCallback(async () => {
     if (!day || !lesson) return;
     try {
@@ -136,16 +141,23 @@ export function useLessonRestart({
       gatedGrammarSectionIdsRef.current.clear();
 
       try {
-        localStorage.removeItem(storageKeys.grammarGateStorageKey);
-        localStorage.removeItem(storageKeys.vocabProgressStorageKey);
-        localStorage.removeItem(storageKeys.matchingProgressStorageKey);
-        localStorage.removeItem(storageKeys.findMistakeStorageKey);
-        localStorage.removeItem(storageKeys.constructorStorageKey);
+        const keys = [
+          storageKeys.grammarGateStorageKey,
+          storageKeys.vocabProgressStorageKey,
+          storageKeys.matchingProgressStorageKey,
+          storageKeys.findMistakeStorageKey,
+          storageKeys.constructorStorageKey,
+        ];
+        for (const k of keys) {
+          localStorage.removeItem(k);
+          const legacy = legacyKeyFor(k);
+          if (legacy !== k) localStorage.removeItem(legacy);
+        }
       } catch {
         // ignore
       }
 
-      await resetLessonDialogue(day || 1, lesson || 1);
+      await resetLessonDialogue(day || 1, lesson || 1, level || 'A1');
       await initializeChat(true);
     } catch (error) {
       console.error('[Step4Dialogue] Error restarting lesson:', error);
@@ -154,6 +166,7 @@ export function useLessonRestart({
     }
   }, [
     day,
+    level,
     constructor,
     findMistake,
     gatedGrammarSectionIdsRef,

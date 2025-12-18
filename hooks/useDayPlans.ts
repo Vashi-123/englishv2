@@ -29,6 +29,7 @@ export const useDayPlans = (level: string = 'A1') => {
         isCompleted: false,
         grammarFocus: '',
         wordIds: [],
+        level: row.level,
       }));
 
       setDayPlans(plans);
@@ -66,4 +67,3 @@ export const useDayPlans = (level: string = 'A1') => {
     setDayPlans,
   };
 };
-
