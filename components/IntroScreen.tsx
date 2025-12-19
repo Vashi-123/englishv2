@@ -47,7 +47,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   const showCard = !isMobile || step === 1;
 
   return (
-    <div className="min-h-screen h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 relative overflow-hidden flex">
+    <div className="min-h-[100dvh] h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 relative overflow-hidden flex">
       <div className="absolute inset-0 pointer-events-none">
         <div
           className="absolute -top-24 -right-24 bg-brand-primary/10 rounded-full blur-3xl"
@@ -59,7 +59,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         />
       </div>
 
-      <div className="w-full max-w-5xl mx-auto px-6 sm:px-10 lg:px-16 py-6 sm:py-8 lg:py-10 flex flex-col gap-10 relative z-10 flex-1 min-h-0">
+      <div className="w-full max-w-5xl mx-auto px-6 sm:px-10 lg:px-16 py-[clamp(16px,3vh,40px)] flex flex-col gap-6 sm:gap-10 relative z-10 flex-1 min-h-0">
         <div className="flex flex-col gap-2 sm:gap-3">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-gray-200 bg-white shadow-sm text-xs font-semibold text-brand-primary w-fit">
             <Sparkles className="w-4 h-4" />
@@ -84,7 +84,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
           </div>
         )}
 
-        <div className={`grid gap-10 ${isMobile ? 'grid-cols-1 place-items-center' : 'lg:grid-cols-2 items-center'}`}>
+        <div className={`grid gap-8 sm:gap-10 min-h-0 ${isMobile ? 'grid-cols-1 place-items-center' : 'lg:grid-cols-2 items-center'}`}>
           {showHero && (
             <div className="space-y-5">
               <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight">
@@ -124,7 +124,9 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
               />
 
               <div className="relative z-10 w-full">
-                <ChatDemo />
+                <div className="h-[clamp(220px,40dvh,320px)] sm:h-[clamp(260px,38dvh,360px)]">
+                  <ChatDemo />
+                </div>
               </div>
             </div>
           )}
@@ -180,4 +182,3 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     </div>
   );
 };
-

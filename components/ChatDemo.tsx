@@ -135,7 +135,7 @@ export const ChatDemo: React.FC = () => {
   };
 
   return (
-    <div className="bg-white/80 backdrop-blur shadow-xl border border-gray-200 rounded-3xl overflow-hidden w-full max-w-xl mx-auto lg:mx-0 flex flex-col h-[380px] relative">
+    <div className="bg-white/80 backdrop-blur shadow-xl border border-gray-200 rounded-3xl overflow-hidden w-full max-w-xl mx-auto lg:mx-0 flex flex-col h-full min-h-0 relative">
        <style>{`
          @keyframes fadeInUp {
            from { opacity: 0; transform: translateY(10px); }
@@ -158,7 +158,9 @@ export const ChatDemo: React.FC = () => {
              AI
           </div>
           <div>
-            <div className="text-xs text-gray-500 font-medium"><span className="font-bold text-slate-900">Тема:</span> Present Continuous</div>
+            <div className="text-[10px] text-gray-500 font-medium">
+              <span className="font-bold text-slate-900">Тема:</span> Present Continuous
+            </div>
           </div>
           <div className="ml-auto px-2 py-1 bg-brand-primary/10 text-brand-primary text-[10px] font-bold uppercase tracking-wider rounded-md">
             Demo
@@ -168,7 +170,7 @@ export const ChatDemo: React.FC = () => {
        {/* Chat Area */}
        <div 
          ref={scrollRef}
-         className="flex-1 p-6 overflow-y-hidden space-y-4 scroll-smooth no-scrollbar relative z-10"
+         className="flex-1 min-h-0 p-6 overflow-y-hidden space-y-4 scroll-smooth no-scrollbar relative z-10"
          style={{ maskImage: 'linear-gradient(to bottom, transparent, black 5%, black 95%, transparent)' }}
        >
          {/* Push content down initially so it fills from bottom-ish */}
@@ -183,7 +185,7 @@ export const ChatDemo: React.FC = () => {
                  </div>
                )}
                
-               <div className={`px-4 py-3 text-sm rounded-2xl shadow-sm leading-relaxed ${
+               <div className={`px-4 py-3 text-[11px] rounded-2xl shadow-sm leading-relaxed ${
                  msg.role === 'user' 
                    ? 'bg-brand-primary/10 text-brand-primary font-bold rounded-br-sm' 
                    : 'bg-white border border-gray-100 text-slate-800 rounded-bl-sm'
@@ -215,7 +217,7 @@ export const ChatDemo: React.FC = () => {
 
        {/* Input Area (Simulated) */}
        <div className={`p-4 bg-white/90 backdrop-blur border-t border-gray-100 z-20 flex items-center justify-end gap-3 h-12 transition-all duration-500 px-8 ${showInput || isRecording ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'}`}>
-           <span className={`text-sm font-medium text-gray-500 bg-white/50 px-3 py-1 rounded-full border border-gray-100 shadow-sm transition-opacity duration-300 ${isRecording || hasRecordedEver ? 'opacity-0' : 'opacity-100'}`}>
+           <span className={`text-xs font-medium text-gray-500 bg-white/50 px-3 py-1 rounded-full border border-gray-100 shadow-sm transition-opacity duration-300 ${isRecording || hasRecordedEver ? 'opacity-0' : 'opacity-100'}`}>
               Нажми, чтобы записать
            </span>
            

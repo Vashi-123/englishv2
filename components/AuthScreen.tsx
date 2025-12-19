@@ -104,17 +104,21 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     }
   };
 
-	  return (
-	    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center p-4">
-	      <div className="w-full max-w-lg bg-white border border-gray-100 shadow-xl rounded-3xl p-6 sm:p-8 space-y-6">
-	        <div className="flex items-center justify-between">
-	          <div>
-	            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{copy.auth.welcome}</p>
-	            <h2 className="text-2xl font-black text-slate-900 mt-1">
-	              {mode === 'login' ? copy.auth.loginTitle : copy.auth.signupTitle}
-	            </h2>
-	          </div>
-	        </div>
+  return (
+    <div className="min-h-[100dvh] h-[100dvh] overflow-hidden bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center px-4 sm:px-6">
+      <div className="w-full max-w-lg flex-1 min-h-0 py-[clamp(16px,3vh,40px)]">
+        <div className="w-full bg-white border border-gray-100 shadow-xl rounded-3xl flex flex-col min-h-0 max-h-[calc(100dvh-32px)]">
+          <div className="p-[clamp(16px,3vh,32px)] flex flex-col gap-[clamp(12px,2vh,24px)] min-h-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{copy.auth.welcome}</p>
+                <h2 className="text-2xl font-black text-slate-900 mt-1">
+                  {mode === 'login' ? copy.auth.loginTitle : copy.auth.signupTitle}
+                </h2>
+              </div>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 space-y-5">
 
         {showOAuth && (
           <>
@@ -248,11 +252,14 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 	              {mode === 'login' ? copy.auth.create : copy.auth.signIn}
 	            </button>
 	          </div>
-	        </form>
+		        </form>
+            </div>
 
-	        <p className="text-xs text-gray-500">
-	          {copy.auth.tos}
-        </p>
+            <p className="text-[11px] leading-snug text-gray-500 line-clamp-3">
+              {copy.auth.tos}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
