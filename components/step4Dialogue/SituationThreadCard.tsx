@@ -28,9 +28,7 @@ export function SituationThreadCard({
   return (
     <div className="w-full">
       <div
-        className={`rounded-2xl border p-4 space-y-5 transition-colors ${
-          completedCorrect ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100 shadow-sm'
-        }`}
+        className="rounded-2xl border border-gray-200/60 bg-white p-4 space-y-5 transition-colors shadow-lg shadow-slate-900/10 w-full max-w-2xl mx-auto"
       >
         <CardHeading>Ситуация</CardHeading>
         {title && <div className="text-xl font-bold text-gray-900">{title}</div>}
@@ -85,7 +83,7 @@ export function SituationThreadCard({
               if (item.kind === 'user') {
                 return (
                   <div key={`u-${idx}`} className="flex justify-end">
-                    <div className="max-w-[80%] inline-flex rounded-full bg-brand-primary/10 text-brand-primary px-6 py-3 text-base font-bold whitespace-pre-wrap leading-relaxed shadow-sm">
+                    <div className="max-w-[80%] inline-flex rounded-2xl bg-brand-primary/10 text-brand-primary px-6 py-3 text-base font-bold whitespace-pre-wrap leading-relaxed shadow-sm">
                       {renderMarkdown(item.text)}
                     </div>
                   </div>

@@ -29,7 +29,7 @@ export function VocabularyCard({
   if (!visibleWords.length) return null;
 
   return (
-    <div className="w-full bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+    <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4">
       <div className="flex items-center justify-between mb-4 px-1">
         <CardHeading
           icon={

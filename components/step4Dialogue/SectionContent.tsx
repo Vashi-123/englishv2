@@ -17,7 +17,7 @@ export function SectionContent({ content, extractStructuredSections, renderMarkd
         {structured.map((section, i) => (
           <div
             key={`${section.title}-${i}`}
-            className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-4"
+            className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto"
           >
             <CardHeading>{section.title}</CardHeading>
             <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">

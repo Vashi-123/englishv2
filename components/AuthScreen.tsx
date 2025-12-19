@@ -18,6 +18,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [message, setMessage] = useState<string | null>(null);
   const { language, setLanguage, copy, languages } = useLanguage();
   const langLabel = languages.find((l) => l.code === language)?.label || 'Русский';
+  const showOAuth = mode === 'login' || (mode === 'signup' && !otpRequested);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,35 +104,19 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center p-4">
-      <div className="w-full max-w-lg bg-white border border-gray-100 shadow-xl rounded-3xl p-6 sm:p-8 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{copy.auth.welcome}</p>
-            <h2 className="text-2xl font-black text-slate-900 mt-1">
-              {mode === 'login' ? copy.auth.loginTitle : copy.auth.signupTitle}
-            </h2>
-          </div>
-          <div className="text-sm text-gray-600">
-            {mode === 'login' ? copy.auth.noAccount : copy.auth.haveAccount}{' '}
-            <button
-              className="text-brand-primary font-semibold hover:underline"
-              onClick={() => {
-                setMode((prev) => (prev === 'login' ? 'signup' : 'login'));
-                setOtpRequested(false);
-                setOtp('');
-                setPassword('');
-                setError(null);
-                setMessage(null);
-              }}
-            >
-              {mode === 'login' ? copy.auth.create : copy.auth.signIn}
-            </button>
-          </div>
-        </div>
+	  return (
+	    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center p-4">
+	      <div className="w-full max-w-lg bg-white border border-gray-100 shadow-xl rounded-3xl p-6 sm:p-8 space-y-6">
+	        <div className="flex items-center justify-between">
+	          <div>
+	            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{copy.auth.welcome}</p>
+	            <h2 className="text-2xl font-black text-slate-900 mt-1">
+	              {mode === 'login' ? copy.auth.loginTitle : copy.auth.signupTitle}
+	            </h2>
+	          </div>
+	        </div>
 
-        {mode === 'login' && (
+        {showOAuth && (
           <>
             <div className="grid gap-3">
               <button
@@ -223,11 +208,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">{error}</div>}
           {message && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">{message}</div>}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full h-12 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-60"
-          >
+	          <button
+	            type="submit"
+	            disabled={loading}
+	            className="w-full h-12 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-60"
+	          >
             {loading ? (
               <>
                 <span className="h-4 w-4 border-2 border-white/50 border-t-transparent rounded-full animate-spin" />
@@ -244,14 +229,31 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                 {otpRequested ? 'Подтвердить код' : copy.auth.submitSignup}
               </>
             )}
-          </button>
-        </form>
+	          </button>
 
-        <p className="text-xs text-gray-500">
-          {copy.auth.tos}
+	          <div className="text-sm text-gray-600 text-center">
+	            {mode === 'login' ? copy.auth.noAccount : copy.auth.haveAccount}{' '}
+	            <button
+	              type="button"
+	              className="text-brand-primary font-semibold hover:underline"
+	              onClick={() => {
+	                setMode((prev) => (prev === 'login' ? 'signup' : 'login'));
+	                setOtpRequested(false);
+	                setOtp('');
+	                setPassword('');
+	                setError(null);
+	                setMessage(null);
+	              }}
+	            >
+	              {mode === 'login' ? copy.auth.create : copy.auth.signIn}
+	            </button>
+	          </div>
+	        </form>
+
+	        <p className="text-xs text-gray-500">
+	          {copy.auth.tos}
         </p>
       </div>
     </div>
   );
 };
-

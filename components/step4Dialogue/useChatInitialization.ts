@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
-import { loadChatMessages, loadLessonScript, saveLessonCompleted } from '../../services/generationService';
+import { loadChatMessages, loadLessonScript } from '../../services/generationService';
 import { createInitialLessonMessages, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { parseJsonBestEffort } from './lessonScriptUtils';
 
@@ -68,7 +68,7 @@ export function useChatInitialization({
         const savedMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
         console.log('[Step4Dialogue] Loaded messages:', savedMessages.length);
 
-        if (savedMessages && savedMessages.length > 0) {
+        if (!force && savedMessages && savedMessages.length > 0) {
           console.log('[Step4Dialogue] Restoring chat history');
           setMessages(savedMessages);
           setIsLoading(false);
@@ -91,20 +91,20 @@ export function useChatInitialization({
           if (hasLessonCompleteTag) {
             console.log('[Step4Dialogue] Found lesson_complete tag in history, saving flag');
             setLessonCompletedPersisted(true);
-            await saveLessonCompleted(day || 1, lesson || 1, true);
           }
         } else {
           console.log('[Step4Dialogue] No history found, starting new chat');
 
-          await new Promise((resolve) => setTimeout(resolve, 500));
-
-          const recheckMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
-          if (recheckMessages && recheckMessages.length > 0) {
-            console.log('[Step4Dialogue] Messages appeared after delay (preloaded), using them:', recheckMessages.length);
-            setMessages(recheckMessages);
-            setIsLoading(false);
-            setIsInitializing(false);
-            return;
+          if (!force) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            const recheckMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
+            if (recheckMessages && recheckMessages.length > 0) {
+              console.log('[Step4Dialogue] Messages appeared after delay (preloaded), using them:', recheckMessages.length);
+              setMessages(recheckMessages);
+              setIsLoading(false);
+              setIsInitializing(false);
+              return;
+            }
           }
 
           console.log('[Step4Dialogue] Seeding first messages locally (v2)...');

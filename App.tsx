@@ -7,7 +7,7 @@ import { useContentGeneration } from './hooks/useContentGeneration';
 import { ExerciseView } from './components/Exercise/ExerciseView';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
-import { loadChatProgress, loadChatMessages, saveLessonCompleted, startDialogueSessionV2, saveChatMessage, subscribeChatProgress, resetUserProgress } from './services/generationService';
+import { loadChatMessages, resetUserProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
 import { 
   X, 
@@ -113,27 +113,12 @@ const AppContent: React.FC<{
     }
 
     try {
-      const progress = await loadChatProgress(checkingDay, checkingLesson, level);
-      const progressFlag = progress?.practice_completed === true;
-
       const messages = await loadChatMessages(checkingDay, checkingLesson, level);
       const hasTagInHistory = messages.some(
         (msg) => msg.text && msg.text.includes('<lesson_complete>')
       );
 
-      // Приоритет у флага в БД (practice_completed), так как тег может быть удален из текста
-      // Если флаг установлен в БД - урок завершен
-      // Если тег есть в истории, но флага нет - устанавливаем флаг
-      let resolvedCompleted = progressFlag;
-      
-      if (hasTagInHistory && !progressFlag) {
-        // Тег есть, но флага нет - синхронизируем
-        resolvedCompleted = true;
-        await saveLessonCompleted(checkingDay, checkingLesson, true);
-      } else if (!hasTagInHistory && progressFlag) {
-        // Флаг есть, но тега нет (нормально, тег удаляется) - оставляем как есть
-        resolvedCompleted = true;
-      }
+      const resolvedCompleted = hasTagInHistory;
 
       // Проверяем, что день не изменился перед установкой статуса
       if (currentDayPlan && currentDayPlan.day === checkingDay && currentDayPlan.lesson === checkingLesson) {
@@ -154,7 +139,6 @@ const AppContent: React.FC<{
         day: checkingDay,
         lesson: checkingLesson,
         completed: resolvedCompleted,
-        progressFlag,
         tag: hasTagInHistory,
         currentDay: currentDayPlan?.day,
         stillValid: currentDayPlan && currentDayPlan.day === checkingDay,
@@ -177,8 +161,9 @@ const AppContent: React.FC<{
       // Загружаем статусы всех дней параллельно
       const progressPromises = dayPlans.map(async (dayPlan) => {
         try {
-          const progress = await loadChatProgress(dayPlan.day, dayPlan.lesson, level);
-          return { day: dayPlan.day, completed: progress?.practice_completed === true };
+          const msgs = await loadChatMessages(dayPlan.day, dayPlan.lesson, level);
+          const completed = msgs.some((m) => m.text && m.text.includes('<lesson_complete>'));
+          return { day: dayPlan.day, completed };
         } catch (error) {
           // Игнорируем ошибки 406 и другие - просто считаем урок незавершенным
           console.log("[App] Error loading progress for day", dayPlan.day, "- treating as incomplete");
@@ -236,45 +221,7 @@ const AppContent: React.FC<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDayPlan, view, isInitializing]);
 
-  // Realtime подписка на изменения прогресса урока
-  useEffect(() => {
-    if (!currentDayPlan) return;
-
-    let unsubProgress: (() => void) | null = null;
-
-    const initRealtime = async () => {
-      unsubProgress = await subscribeChatProgress(
-        currentDayPlan.day,
-        currentDayPlan.lesson,
-        (progress) => {
-          if (typeof progress.practice_completed === 'boolean') {
-            console.log("[App] Realtime progress update:", {
-              day: currentDayPlan.day,
-              lesson: currentDayPlan.lesson,
-              practice_completed: progress.practice_completed,
-            });
-            setLessonCompleted(progress.practice_completed);
-            
-            // Обновляем статус дня
-            setDayCompletedStatus(prev => ({
-              ...prev,
-              [currentDayPlan.day]: progress.practice_completed
-            }));
-            
-            // Убрали автоматический переход - пользователь может повторить урок
-          }
-        }
-      );
-    };
-
-    initRealtime();
-
-    return () => {
-      if (unsubProgress) {
-        unsubProgress();
-      }
-    };
-  }, [currentDayPlan]);
+  // Realtime прогресс больше не используем: статус урока определяется по chat_messages (<lesson_complete>).
 
   const renderPlanState = () => {
     if (planLoading || (dayPlans.length === 0) || isInitializing) {
@@ -581,102 +528,8 @@ const AppContent: React.FC<{
         </div>
         </div>
 
-        {/* 2. Start Lesson Block */}
-        <button
-          onClick={() => handleTaskClick(chatTask.id, chatLocked)}
-          disabled={chatLocked}
-          className={`
-            w-full rounded-3xl p-5
-            transition-all duration-300 text-left relative overflow-hidden
-            ${chatLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
-            ${lessonCompleted 
-              ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_24px_80px_rgba(251,191,36,0.4)] hover:shadow-[0_30px_100px_rgba(251,191,36,0.5)] hover:-translate-y-1' 
-              : 'bg-white border border-gray-200 shadow-[0_24px_80px_rgba(99,102,241,0.28)] hover:shadow-[0_30px_100px_rgba(99,102,241,0.38)] hover:-translate-y-1'
-            }
-          `}
-        >
-            {/* Анимированный фон для завершенного урока */}
-            {lessonCompleted && (
-              <>
-                <div className="absolute inset-0 opacity-40">
-                  <div className="absolute top-0 left-0 w-40 h-40 bg-gradient-to-br from-amber-400/60 to-orange-400/60 rounded-full blur-3xl animate-pulse"></div>
-                  <div className="absolute bottom-0 right-0 w-48 h-48 bg-gradient-to-br from-rose-400/60 to-pink-400/60 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-                </div>
-                <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 via-orange-400/10 to-rose-400/10 pointer-events-none" />
-              </>
-            )}
-            {!lessonCompleted && (
-              <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-brand-secondary/10 to-transparent pointer-events-none" />
-            )}
-            <div className="relative flex flex-col gap-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <span className="inline-flex w-fit px-3 py-1 rounded-full border border-gray-300 text-[11px] font-bold uppercase tracking-widest text-gray-600">
-                    Тема урока
-                  </span>
-                  <p className="text-base text-gray-900 font-semibold leading-snug">
-                    {currentDayPlan?.theme}
-                  </p>
-                </div>
-                <div
-                  className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl flex-shrink-0 whitespace-nowrap transition-all overflow-hidden ${
-                    lessonCompleted
-                      ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
-                      : 'bg-white/80 border border-gray-200 text-slate-900 shadow-xs'
-                  }`}
-                >
-                  {lessonCompleted && (
-                    <>
-                      <div
-                        className="absolute inset-[-4px] rounded-2xl bg-[conic-gradient(at_top,_#fbbf24,_#fb7185,_#6366f1,_#fbbf24)] animate-spin opacity-60"
-                        style={{ animationDuration: '6s' }}
-                      />
-                      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/15 via-white/5 to-white/15 blur-md opacity-70" />
-                    </>
-                  )}
-                  <div className="relative flex items-center gap-1.5">
-                    <GraduationCap className={`w-4 h-4 ${lessonCompleted ? 'text-white drop-shadow-sm' : 'text-brand-primary'}`} />
-                    <span className="text-[11px] font-bold uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.15)]">
-                      {copy.header.dayLabel} {selectedDayId}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="relative flex items-center justify-between gap-4">
-                <div className="flex-1">
-                <h3 className={`text-2xl font-extrabold leading-tight mb-2 ${
-                  lessonCompleted 
-                    ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent' 
-                    : 'text-slate-900'
-                }`}>
-                  {lessonCompleted ? 'Урок завершен' : 'Начать урок'}
-                </h3>
-                </div>
-                <div className="relative flex-shrink-0">
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className={`rounded-full animate-ping ${lessonCompleted ? 'w-14 h-14 border-2 border-amber-400/80' : 'w-12 h-12 border-2 border-brand-primary/60'}`} style={{ animationDuration: '2s' }} />
-                    <div className={`absolute rounded-full animate-ping ${lessonCompleted ? 'w-14 h-14 border-2 border-orange-400/60' : 'w-12 h-12 border-2 border-brand-secondary/40'}`} style={{ animationDuration: '2s', animationDelay: '0.5s' }} />
-                    {lessonCompleted && (
-                      <div className="absolute w-14 h-14 rounded-full border-2 border-rose-400/40 animate-ping" style={{ animationDuration: '2s', animationDelay: '1s' }} />
-                    )}
-                  </div>
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white animate-pulse relative z-10 ${
-                    lessonCompleted
-                      ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-[0_0_30px_rgba(251,191,36,0.8),0_0_60px_rgba(251,146,60,0.6)] ring-4 ring-amber-300/60'
-                      : 'bg-black shadow-[0_0_20px_rgba(99,102,241,0.6),0_0_40px_rgba(99,102,241,0.4)] ring-4 ring-brand-primary/50'
-                  }`}>
-                    <Play className="w-5 h-5 fill-white" />
-                  </div>
-                </div>
-              </div>
-            </div>
-        </button>
-
-        {/* 3. Course Progress and Insight - Side by side on large screens */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          {/* Course Progress - Left */}
-          <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-4 flex flex-col gap-3">
+        {/* 2. Course Progress */}
+        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-4 flex flex-col gap-3 w-full">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{copy.progress.title}</span>
@@ -711,15 +564,19 @@ const AppContent: React.FC<{
                     disabled={isLocked}
                     className={`
                       min-w-[50px] flex flex-col items-center gap-1.5 px-2 py-2 rounded-3xl border-2 transition-all duration-200 relative overflow-hidden
-                      ${isDayCompleted && !isSelected
-                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
-                        : isSelected 
-                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-brand-primary/40 hover:shadow-sm hover:scale-[1.02]'
-                      }
-                      ${isLocked ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-                    `}
-                >
+	                      ${isDayCompleted && !isSelected
+	                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
+	                        : isSelected 
+	                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
+	                        : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
+	                      }
+	                      ${
+	                        isLocked
+	                          ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
+	                          : 'cursor-pointer'
+	                      }
+	                    `}
+	                >
                     {/* Анимированный фон для завершенного дня */}
                     {isDayCompleted && !isSelected && (
                       <>
@@ -739,14 +596,16 @@ const AppContent: React.FC<{
                         {label}
                     </span>
                     <div className={`
-                      w-8 h-8 rounded-xl flex items-center justify-center transition-all relative z-10
-                      ${isDayCompleted && !isSelected
-                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
-                        : isSelected 
-                        ? 'bg-white text-brand-primary shadow-md' 
-                        : 'bg-gray-50 text-gray-700'
-                      }
-                    `}>
+	                      w-8 h-8 rounded-xl flex items-center justify-center transition-all relative z-10
+	                      ${isDayCompleted && !isSelected
+	                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+	                        : isSelected 
+	                        ? 'bg-white text-brand-primary shadow-md' 
+	                        : isLocked
+	                          ? 'bg-gray-50 text-gray-700'
+	                          : 'bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/25'
+	                      }
+	                    `}>
                       {isDayCompleted ? (
                         <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-white drop-shadow-sm'}`} />
                       ) : isPast ? (
@@ -762,35 +621,143 @@ const AppContent: React.FC<{
                 </button>
             )
           })}
-          </div>
-        </div>
+	          </div>
+	        </div>
 
-          {/* Insight - Right */}
-          <div 
-            onClick={() => setShowInsightPopup(true)}
-            className="bg-white border border-gray-200 rounded-3xl p-5 relative overflow-hidden group hover:border-brand-primary/20 transition-all cursor-pointer shadow-sm"
-          >
-            <div className="absolute top-[-30px] right-[-30px] w-28 h-28 bg-brand-primary/10 rounded-full blur-2xl pointer-events-none"></div>
-            <div className="flex items-start gap-4 relative z-10">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/30 flex items-center justify-center border border-brand-primary/20 shadow-lg shrink-0 group-hover:scale-110 transition-transform duration-500">
-                <Sparkles className={`w-5 h-5 ${aiContent.color}`} />
+        {/* 3. Insight */}
+        <div
+          onClick={() => setShowInsightPopup(true)}
+          className="bg-white border border-gray-200 rounded-3xl p-5 relative overflow-hidden group hover:border-brand-primary/20 transition-all cursor-pointer shadow-sm w-full"
+        >
+          <div className="absolute top-[-30px] right-[-30px] w-28 h-28 bg-brand-primary/10 rounded-full blur-2xl pointer-events-none"></div>
+          <div className="flex items-start gap-4 relative z-10">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/30 flex items-center justify-center border border-brand-primary/20 shadow-lg shrink-0 group-hover:scale-110 transition-transform duration-500">
+              <Sparkles className={`w-5 h-5 ${aiContent.color}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1 min-w-0">
+                <h3 className={`font-bold text-sm ${aiContent.color} whitespace-nowrap overflow-hidden text-ellipsis`}>
+                  {aiContent.status}
+                </h3>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 min-w-0">
-                  <h3 className={`font-bold text-sm ${aiContent.color} whitespace-nowrap overflow-hidden text-ellipsis`}>
-                    {aiContent.status}
-                  </h3>
-                </div>
-                <p className="text-slate-900 text-sm font-medium leading-relaxed line-clamp-2 opacity-90">
-                  {aiContent.assessment}
-                </p>
-              </div>
-              <div className="text-gray-400 group-hover:text-brand-primary transition-colors">
-                <ChevronRight className="w-5 h-5" /> 
-              </div>
+              <p className="text-slate-900 text-sm font-medium leading-relaxed line-clamp-2 opacity-90">
+                {aiContent.assessment}
+              </p>
+            </div>
+            <div className="text-gray-400 group-hover:text-brand-primary transition-colors">
+              <ChevronRight className="w-5 h-5" />
             </div>
           </div>
         </div>
+
+        {/* 4. Start Lesson Block */}
+        <button
+          onClick={() => handleTaskClick(chatTask.id, chatLocked)}
+          disabled={chatLocked}
+          className={`
+            w-full rounded-3xl p-5
+            transition-all duration-300 text-left relative overflow-hidden
+            ${chatLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
+            ${lessonCompleted
+              ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_24px_80px_rgba(251,191,36,0.4)] hover:shadow-[0_30px_100px_rgba(251,191,36,0.5)] hover:-translate-y-1'
+              : 'bg-white border border-gray-200 shadow-[0_24px_80px_rgba(99,102,241,0.28)] hover:shadow-[0_30px_100px_rgba(99,102,241,0.38)] hover:-translate-y-1'
+            }
+          `}
+        >
+          {/* Анимированный фон для завершенного урока */}
+          {lessonCompleted && (
+            <>
+              <div className="absolute inset-0 opacity-40">
+                <div className="absolute top-0 left-0 w-40 h-40 bg-gradient-to-br from-amber-400/60 to-orange-400/60 rounded-full blur-3xl animate-pulse"></div>
+                <div className="absolute bottom-0 right-0 w-48 h-48 bg-gradient-to-br from-rose-400/60 to-pink-400/60 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 via-orange-400/10 to-rose-400/10 pointer-events-none" />
+            </>
+          )}
+          {!lessonCompleted && (
+            <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-brand-secondary/10 to-transparent pointer-events-none" />
+          )}
+          <div className="relative flex flex-col gap-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="inline-flex w-fit px-3 py-1 rounded-full border border-gray-300 text-[11px] font-bold uppercase tracking-widest text-gray-600">
+                  Тема урока
+                </span>
+                <p className="text-base text-gray-900 font-semibold leading-snug">
+                  {currentDayPlan?.theme}
+                </p>
+              </div>
+              <div
+                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl flex-shrink-0 whitespace-nowrap transition-all overflow-hidden ${
+                  lessonCompleted
+                    ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+                    : 'bg-white/80 border border-gray-200 text-slate-900 shadow-xs'
+                }`}
+              >
+                {lessonCompleted && (
+                  <>
+                    <div
+                      className="absolute inset-[-4px] rounded-2xl bg-[conic-gradient(at_top,_#fbbf24,_#fb7185,_#6366f1,_#fbbf24)] animate-spin opacity-60"
+                      style={{ animationDuration: '6s' }}
+                    />
+                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/15 via-white/5 to-white/15 blur-md opacity-70" />
+                  </>
+                )}
+                <div className="relative flex items-center gap-1.5">
+                  <GraduationCap className={`w-4 h-4 ${lessonCompleted ? 'text-white drop-shadow-sm' : 'text-brand-primary'}`} />
+                  <span className="text-[11px] font-bold uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.15)]">
+                    {copy.header.dayLabel} {selectedDayId}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="relative flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <h3
+                  className={`text-2xl font-extrabold leading-tight mb-2 ${
+                    lessonCompleted
+                      ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent'
+                      : 'text-slate-900'
+                  }`}
+                >
+                  {lessonCompleted ? 'Урок завершен' : 'Начать урок'}
+                </h3>
+              </div>
+              <div className="relative flex-shrink-0">
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <div
+                    className={`rounded-full animate-ping ${
+                      lessonCompleted ? 'w-14 h-14 border-2 border-amber-400/80' : 'w-12 h-12 border-2 border-brand-primary/60'
+                    }`}
+                    style={{ animationDuration: '2s' }}
+                  />
+                  <div
+                    className={`absolute rounded-full animate-ping ${
+                      lessonCompleted ? 'w-14 h-14 border-2 border-orange-400/60' : 'w-12 h-12 border-2 border-brand-secondary/40'
+                    }`}
+                    style={{ animationDuration: '2s', animationDelay: '0.5s' }}
+                  />
+                  {lessonCompleted && (
+                    <div
+                      className="absolute w-14 h-14 rounded-full border-2 border-rose-400/40 animate-ping"
+                      style={{ animationDuration: '2s', animationDelay: '1s' }}
+                    />
+                  )}
+                </div>
+                <div
+                  className={`w-12 h-12 rounded-full flex items-center justify-center text-white animate-pulse relative z-10 ${
+                    lessonCompleted
+                      ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-[0_0_30px_rgba(251,191,36,0.8),0_0_60px_rgba(251,146,60,0.6)] ring-4 ring-amber-300/60'
+                      : 'bg-black shadow-[0_0_20px_rgba(99,102,241,0.6),0_0_40px_rgba(99,102,241,0.4)] ring-4 ring-brand-primary/50'
+                  }`}
+                >
+                  <Play className="w-5 h-5 fill-white" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </button>
       </div>
     </div>
   );};

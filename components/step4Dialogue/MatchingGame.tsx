@@ -33,7 +33,7 @@ export const MatchingGame = React.forwardRef<HTMLDivElement, Props>(function Mat
   return (
     <div
       ref={ref}
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-4 w-full md:max-w-2xl mt-4"
+      className="bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto mt-4"
     >
       <div className="flex items-center justify-between">
         <CardHeading

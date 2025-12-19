@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
-import { subscribeChatMessages, subscribeChatProgress } from '../../services/generationService';
+import { subscribeChatMessages } from '../../services/generationService';
 
 function insertMessageByOrder(prev: ChatMessage[], msg: ChatMessage) {
   const order = msg.messageOrder;
@@ -78,7 +78,7 @@ export function useLessonRealtimeSubscriptions({
 
   useEffect(() => {
     let unsubMessages: (() => void) | null = null;
-    let unsubProgress: (() => void) | null = null;
+	    let unsubProgress: (() => void) | null = null;
 
     const initRealtime = async () => {
       unsubMessages = await subscribeChatMessages(day || 1, lesson || 1, (msg) => {
@@ -126,38 +126,15 @@ export function useLessonRealtimeSubscriptions({
         });
       }, level || 'A1');
 
-      unsubProgress = await subscribeChatProgress(day || 1, lesson || 1, (progress) => {
-        if (typeof progress.practice_completed !== 'boolean') return;
-
-        console.log('[Step4Dialogue] Realtime progress update:', {
-          day: day || 1,
-          lesson: lesson || 1,
-          practice_completed: progress.practice_completed,
-          currentState: lessonCompletedRef.current,
-        });
-
-        const wasCompleted = lessonCompletedRef.current;
-        const isNowCompleted = progress.practice_completed;
-
-        lessonCompletedRef.current = isNowCompleted;
-        setLessonCompletedPersisted(isNowCompleted);
-
-        if (isNowCompleted) {
-          hasRecordedLessonCompleteRef.current = true;
-          if (!wasCompleted && isNowCompleted) {
-            console.log('[Step4Dialogue] Lesson completed via realtime! Showing dopamine effect.');
-          }
-        } else {
-          hasRecordedLessonCompleteRef.current = false;
-        }
-      });
-    };
+	      // chat_progress removed: completion state is derived from chat_messages (<lesson_complete> tag).
+	      unsubProgress = null;
+	    };
 
     initRealtime();
 
-    return () => {
-      if (unsubMessages) unsubMessages();
-      if (unsubProgress) unsubProgress();
-    };
-  }, [day, lesson, level, setLessonCompletedPersisted, setMessages, hasRecordedLessonCompleteRef]);
-}
+	    return () => {
+	      if (unsubMessages) unsubMessages();
+	      if (unsubProgress) unsubProgress();
+	    };
+	  }, [day, lesson, level, setLessonCompletedPersisted, setMessages, hasRecordedLessonCompleteRef]);
+	}

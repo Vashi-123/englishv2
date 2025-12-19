@@ -20,6 +20,9 @@ type Props = {
   isSituationCard: boolean;
   situationGroupMessages: ChatMessage[] | null;
   situationCompletedCorrect: boolean;
+  showGoalGateCta: boolean;
+  goalGateLabel: string;
+  onGoalGateAcknowledge: () => void;
   showVocab: boolean;
   vocabWords: VocabWord[];
   vocabIndex: number;
@@ -67,6 +70,9 @@ export function MessageContent({
   isSituationCard,
   situationGroupMessages,
   situationCompletedCorrect,
+  showGoalGateCta,
+  goalGateLabel,
+  onGoalGateAcknowledge,
   showVocab,
   vocabWords,
   vocabIndex,
@@ -153,9 +159,18 @@ export function MessageContent({
     if (parsed.type === 'goal') {
       return (
         <div className="space-y-4">
-          <div className="p-5 rounded-3xl border border-gray-100 bg-white shadow-sm space-y-3 w-full">
+          <div className="p-5 rounded-3xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 space-y-3 w-full max-w-2xl mx-auto">
             <div className="text-xs uppercase font-semibold tracking-widest text-gray-500">🎯 Цель урока</div>
             <div className="text-lg font-semibold text-gray-900 leading-relaxed">{parsed.goal}</div>
+            {showGoalGateCta && (
+              <button
+                type="button"
+                onClick={onGoalGateAcknowledge}
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition"
+              >
+                {goalGateLabel}
+              </button>
+            )}
           </div>
         </div>
       );
@@ -297,7 +312,7 @@ export function MessageContent({
           {structuredSections.map((section, i) => (
             <div
               key={`${section.title}-${i}`}
-              className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-4"
+              className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto"
             >
               <CardHeading>{section.title}</CardHeading>
               <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
@@ -370,6 +385,7 @@ export function MessageContent({
         explanation={explanation}
         ui={ui}
         isLoading={isLoading}
+        renderMarkdown={renderMarkdown}
         onPick={(picked) => {
           if (!answer) return;
           const isCorrect = picked === answer;
@@ -445,6 +461,7 @@ export function MessageContent({
               explanation={explanation}
               ui={ui}
               isLoading={isLoading}
+              renderMarkdown={renderMarkdown}
               onPick={(picked) => {
                 if (!answer) return;
                 const isCorrect = picked === answer;
@@ -532,7 +549,7 @@ export function MessageContent({
         {structuredSections.map((section, i) => (
           <div
             key={`${section.title}-${i}`}
-            className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4 space-y-4"
+            className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto"
           >
             <CardHeading>{section.title}</CardHeading>
             <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">

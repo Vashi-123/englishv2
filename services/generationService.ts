@@ -439,98 +439,10 @@ export const saveLessonCompleted = async (
   lesson: number,
   completed: boolean
 ): Promise<void> => {
-  try {
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) {
-      console.error("[saveLessonCompleted] Failed to get local user ID");
-      return;
-    }
-
-    const getMergedProgress = async () => {
-      try {
-        const existing = await supabase
-          .from('chat_progress')
-          .select('progress')
-          .eq('local_user_id', localUserId)
-          .eq('day', day)
-          .eq('lesson', lesson)
-          .maybeSingle();
-        const prev = (existing.data as any)?.progress;
-        const base = prev && typeof prev === 'object' && !Array.isArray(prev) ? prev : {};
-        return { ...base, practice_completed: completed };
-      } catch {
-        return { practice_completed: completed };
-      }
-    };
-
-    // Newer schema: jsonb progress (do not overwrite other keys).
-    const mergedProgress = await getMergedProgress();
-    const attemptJsonb = await supabase
-      .from('chat_progress')
-      .upsert(
-        {
-          local_user_id: localUserId,
-          day,
-          lesson,
-          progress: mergedProgress,
-        },
-        { onConflict: 'local_user_id,day,lesson' }
-      );
-
-    if (!attemptJsonb.error) {
-      console.log("[saveLessonCompleted] Lesson completion saved (progress jsonb):", completed);
-      return;
-    }
-
-    // Some environments may have an older/newer chat_progress schema.
-    // Try the full row first; if PostgREST reports missing columns, fall back to minimal fields.
-    const attemptFull = await supabase.from('chat_progress').upsert(
-      {
-        local_user_id: localUserId,
-        day,
-        lesson,
-        current_module: 'practice',
-        vocab_completed: completed,
-        grammar_completed: completed,
-        correction_completed: completed,
-        practice_completed: completed,
-        messages_count: 0,
-      },
-      { onConflict: 'local_user_id,day,lesson' }
-    );
-
-    if (!attemptFull.error) {
-      console.log("[saveLessonCompleted] Lesson completion saved:", completed);
-      return;
-    }
-
-    const err: any = attemptFull.error;
-    const looksLikeMissingColumn = err?.code === 'PGRST204' || String(err?.message || '').includes('Could not find');
-    if (!looksLikeMissingColumn) {
-      console.error("[saveLessonCompleted] Error saving lesson completion:", err);
-      return;
-    }
-
-    const attemptMinimal = await supabase
-      .from('chat_progress')
-      .upsert(
-        {
-          local_user_id: localUserId,
-          day,
-          lesson,
-          practice_completed: completed,
-        },
-        { onConflict: 'local_user_id,day,lesson' }
-      );
-
-    if (attemptMinimal.error) {
-      console.error("[saveLessonCompleted] Error saving lesson completion (minimal):", attemptMinimal.error);
-    } else {
-      console.log("[saveLessonCompleted] Lesson completion saved (minimal):", completed);
-    }
-  } catch (error) {
-    console.error("[saveLessonCompleted] Exception saving lesson completion:", error);
-  }
+  // chat_progress removed: completion is derived from chat_messages (<lesson_complete> tag).
+  void day;
+  void lesson;
+  void completed;
 };
 
 /**
@@ -548,94 +460,11 @@ export const loadChatProgress = async (
   practice_completed: boolean;
   progress?: any;
 } | null> => {
-  try {
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) {
-      console.log("[loadChatProgress] No local user ID found");
-      return null;
-    }
-
-    let lessonIdForLevel: string | null = null;
-    try {
-      lessonIdForLevel = await getLessonIdForDayLesson(day, lesson, level);
-    } catch {
-      lessonIdForLevel = null;
-    }
-
-    const derive = (row: any) => {
-      const progress = row?.progress && typeof row.progress === 'object' && !Array.isArray(row.progress) ? row.progress : undefined;
-      const practiceCompleted =
-        typeof row?.practice_completed === 'boolean' ? row.practice_completed : Boolean((progress as any)?.practice_completed);
-      const currentModule =
-        typeof row?.current_module === 'string'
-          ? row.current_module
-          : typeof (progress as any)?.current_module === 'string'
-            ? (progress as any).current_module
-            : 'practice';
-      return {
-        current_module: currentModule,
-        vocab_completed: Boolean(row?.vocab_completed),
-        grammar_completed: Boolean(row?.grammar_completed),
-        correction_completed: Boolean(row?.correction_completed),
-        practice_completed: practiceCompleted,
-        progress,
-      };
-    };
-
-    // Prefer the jsonb schema (progress) to avoid schema-cache 400/42703 spam.
-    const primaryJsonb = await supabase
-      .from('chat_progress')
-      .select('progress, lesson_id')
-      .eq('local_user_id', localUserId)
-      .eq('day', day)
-      .eq('lesson', lesson)
-      .maybeSingle();
-
-    if (!primaryJsonb.error) {
-      if (!primaryJsonb.data) return null;
-      // If the DB row belongs to a different level (different lesson_id), ignore it to avoid restoring wrong UI state.
-      const rowLessonId = (primaryJsonb.data as any)?.lesson_id;
-      if (lessonIdForLevel && rowLessonId && rowLessonId !== lessonIdForLevel) return null;
-      return derive(primaryJsonb.data);
-    }
-
-    const error: any = primaryJsonb.error;
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // Запись не найдена - это нормально для нового урока
-        return null;
-      }
-      // Ошибка 406 (Not Acceptable) может возникать при проблемах с RLS или форматом запроса
-      if (error.message?.includes('406') || error.message?.includes('Not Acceptable')) {
-        console.log("[loadChatProgress] 406 error (likely RLS or format issue), returning null for day:", day, "lesson:", lesson);
-        return null;
-      }
-
-      // Fallback: older schema with boolean flags.
-      const primaryLegacy = await supabase
-        .from('chat_progress')
-        .select('current_module, vocab_completed, grammar_completed, correction_completed, practice_completed, lesson_id')
-        .eq('local_user_id', localUserId)
-        .eq('day', day)
-        .eq('lesson', lesson)
-        .maybeSingle();
-
-      if (primaryLegacy.error) {
-        if (primaryLegacy.error.code === 'PGRST116') return null;
-        console.error("[loadChatProgress] Error loading chat progress:", primaryLegacy.error);
-        return null;
-      }
-
-      const rowLessonId = (primaryLegacy.data as any)?.lesson_id;
-      if (lessonIdForLevel && rowLessonId && rowLessonId !== lessonIdForLevel) return null;
-      return derive(primaryLegacy.data);
-    }
-
-    return null;
-  } catch (error) {
-    console.error("[loadChatProgress] Exception loading chat progress:", error);
-    return null;
-  }
+  // chat_progress removed: keep API for compatibility (always null).
+  void day;
+  void lesson;
+  void level;
+  return null;
 };
 
 /**
@@ -884,40 +713,11 @@ export const subscribeChatProgress = async (
   lesson: number,
   onProgress: (progress: { practice_completed?: boolean; current_module?: string }) => void
 ): Promise<() => void> => {
-  const localUserId = await getOrCreateLocalUser();
-  if (!localUserId) return () => {};
-
-  const channel = supabase
-    .channel(`chat_progress_${localUserId}_${day}_${lesson}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'chat_progress',
-        filter: `local_user_id=eq.${localUserId},day=eq.${day},lesson=eq.${lesson}`,
-      },
-      (payload) => {
-        const row: any = payload.new;
-        if (!row) return;
-        const progress = row?.progress && typeof row.progress === 'object' && !Array.isArray(row.progress) ? row.progress : undefined;
-        onProgress({
-          practice_completed:
-            typeof row.practice_completed === 'boolean' ? row.practice_completed : Boolean((progress as any)?.practice_completed),
-          current_module:
-            typeof row.current_module === 'string'
-              ? row.current_module
-              : typeof (progress as any)?.current_module === 'string'
-                ? (progress as any).current_module
-                : undefined,
-        });
-      }
-    )
-    .subscribe();
-
-  return () => {
-    supabase.removeChannel(channel);
-  };
+  // chat_progress removed: no realtime progress channel.
+  void day;
+  void lesson;
+  void onProgress;
+  return () => {};
 };
 
 /**
@@ -929,32 +729,13 @@ export const resetLessonDialogue = async (day: number, lesson: number, level: st
     if (!localUserId) return;
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
-    await supabase
+    const delMessages = await supabase
       .from('chat_messages')
       .delete()
       .eq('local_user_id', localUserId)
       .eq('lesson_id', lessonId);
-
-    // Best-effort: delete the persisted progress row for this lesson (so step4 JSON doesn't linger).
-    // Prefer lesson_id (disambiguates A1/A2); also remove any legacy rows for the same day/lesson with NULL lesson_id.
-    const delByLessonId = await supabase
-      .from('chat_progress')
-      .delete()
-      .eq('local_user_id', localUserId)
-      .eq('lesson_id', lessonId);
-    if (delByLessonId.error) {
-      console.error('[resetLessonDialogue] Error deleting chat_progress by lesson_id:', delByLessonId.error);
-    }
-
-    // Also delete by (day, lesson) to clean up older/wrong lesson_id rows (A1/A2 collisions).
-    const delByDayLesson = await supabase
-      .from('chat_progress')
-      .delete()
-      .eq('local_user_id', localUserId)
-      .eq('day', day)
-      .eq('lesson', lesson);
-    if (delByDayLesson.error) {
-      console.error('[resetLessonDialogue] Error deleting chat_progress by day/lesson:', delByDayLesson.error);
+    if (delMessages.error) {
+      console.error('[resetLessonDialogue] Error deleting chat_messages:', delMessages.error);
     }
   } catch (error) {
     console.error('[resetLessonDialogue] Error:', error);

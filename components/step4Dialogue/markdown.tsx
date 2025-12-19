@@ -55,7 +55,11 @@ export function parseMarkdown(text: string): React.ReactNode {
     });
   }
 
-  const blueTagRegex = /<b>(.*?)<b>/g;
+  // Support custom highlight tags used by the lesson scripts:
+  // - legacy form: <b>text<b>, <o>text<o>
+  // - html-like form: <b>text</b>, <o>text</o>
+  // Use [\\s\\S] so it works across newlines.
+  const blueTagRegex = /<b>([\s\S]*?)(?:<b>|<\/b>)/gi;
   const blueTagMatches: Array<{ start: number; end: number; text: string }> = [];
 
   while ((match = blueTagRegex.exec(text)) !== null) {
@@ -66,7 +70,7 @@ export function parseMarkdown(text: string): React.ReactNode {
     });
   }
 
-  const orangeTagRegex = /<o>(.*?)<o>/g;
+  const orangeTagRegex = /<o>([\s\S]*?)(?:<o>|<\/o>)/gi;
   const orangeTagMatches: Array<{ start: number; end: number; text: string }> = [];
 
   while ((match = orangeTagRegex.exec(text)) !== null) {
@@ -151,4 +155,3 @@ export function parseMarkdown(text: string): React.ReactNode {
 
   return <>{parts}</>;
 }
-

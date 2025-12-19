@@ -102,7 +102,7 @@ export function AchievementCard() {
             <h3 className="text-2xl font-extrabold bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent mb-3 animate-text-shimmer">
               Отличная работа!
             </h3>
-            <p className="text-sm font-medium text-gray-700 text-center max-w-xs">
+            <p className="text-sm font-medium text-amber-700 text-center max-w-xs">
               Продолжай в том же духе
             </p>
           </div>
@@ -177,4 +177,3 @@ export function AchievementCard() {
     </div>
   );
 }
-

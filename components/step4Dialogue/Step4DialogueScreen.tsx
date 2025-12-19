@@ -257,8 +257,21 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
 
   const [vocabWords, setVocabWords] = useState<any[]>([]);
   const [vocabIndex, setVocabIndex] = useState(0);
-  const [showVocab, setShowVocab] = useState(true);
+  const [showVocab, setShowVocab] = useState(false);
   const [pendingVocabPlay, setPendingVocabPlay] = useState(false);
+  const [goalGatePending, setGoalGatePending] = useState(false);
+  const goalAckStorageKey = useMemo(
+    () => `step4dialogue:goalAck:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
+    [day, lesson, resolvedLanguage, resolvedLevel]
+  );
+  const [goalGateAcknowledged, setGoalGateAcknowledged] = useState<boolean>(() => {
+    try {
+      if (typeof window === 'undefined') return false;
+      return window.localStorage.getItem(goalAckStorageKey) === '1';
+    } catch {
+      return false;
+    }
+  });
   const vocabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   const restoredVocabIndexRef = useRef<number | null>(null);
   const appliedVocabRestoreKeyRef = useRef<string | null>(null);
@@ -272,6 +285,12 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
   const [selectedWord, setSelectedWord] = useState<string | null>(null);
   const [selectedTranslation, setSelectedTranslation] = useState<string | null>(null);
   const [matchesComplete, setMatchesComplete] = useState(false);
+  const [matchingMismatchAttempt, setMatchingMismatchAttempt] = useState<{
+    wordId: string;
+    translationId: string;
+    nonce: number;
+  } | null>(null);
+  const matchingMismatchTimerRef = useRef<number | null>(null);
   const matchingHydratedRef = useRef<boolean>(false);
   const matchingRef = useRef<HTMLDivElement | null>(null);
 
@@ -281,12 +300,33 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
       const word = wordOptions.find((w) => w.id === wordId);
       const tr = translationOptions.find((t) => t.id === translationId);
       if (!word || !tr || word.matched || tr.matched) return;
+
+      if (matchingMismatchTimerRef.current != null) {
+        window.clearTimeout(matchingMismatchTimerRef.current);
+        matchingMismatchTimerRef.current = null;
+      }
+
       if (word.pairId === tr.pairId) {
+        setMatchingMismatchAttempt(null);
         setWordOptions((prev) => prev.map((w) => (w.id === word.id ? { ...w, matched: true } : w)));
         setTranslationOptions((prev) => prev.map((t) => (t.id === tr.id ? { ...t, matched: true } : t)));
+        setSelectedWord(null);
+        setSelectedTranslation(null);
+        return;
       }
-      setSelectedWord(null);
-      setSelectedTranslation(null);
+      const nonce = Date.now();
+      setMatchingMismatchAttempt({ wordId, translationId, nonce });
+      try {
+        window.navigator?.vibrate?.(60);
+      } catch {
+        // ignore
+      }
+      matchingMismatchTimerRef.current = window.setTimeout(() => {
+        setSelectedWord(null);
+        setSelectedTranslation(null);
+        setMatchingMismatchAttempt(null);
+        matchingMismatchTimerRef.current = null;
+      }, 650);
     },
     [translationOptions, wordOptions]
   );
@@ -401,6 +441,8 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
     grammarGateRevision,
     gatedGrammarSectionIdsRef,
     goalSeenRef,
+    goalGatePending,
+    goalGateAcknowledged,
     isInitializing,
     isInitializingRef,
     restoredVocabIndexRef,
@@ -410,7 +452,24 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
     setVocabWords,
     setVocabIndex,
     setPendingVocabPlay,
+    setGoalGatePending,
   });
+
+  // Start the first vocab audio only after the vocab block is shown.
+  useEffect(() => {
+    if (!showVocab) return;
+    if (!pendingVocabPlay) return;
+    if (!vocabWords.length) return;
+    const first = vocabWords[0];
+    if (!first) return;
+    const queue = [
+      { text: String(first.word || ''), lang: 'en', kind: 'word' },
+      { text: String(first.context || ''), lang: 'en', kind: 'example' },
+    ].filter((x) => x.text.trim().length > 0);
+    if (!queue.length) return;
+    processAudioQueue(queue);
+    setPendingVocabPlay(false);
+  }, [pendingVocabPlay, processAudioQueue, setPendingVocabPlay, showVocab, vocabWords]);
 
   useAutoScrollToEnd({
     deps: [visibleMessages.length, showMatching, isAwaitingModelReply, lessonCompletedPersisted],
@@ -421,47 +480,49 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
 
   useVocabScroll({ showVocab, vocabIndex, vocabRefs });
 
-  const { restartLesson } = useLessonRestart({
-    day,
-    lesson,
-    level,
-    setIsLoading,
-    setIsInitializing,
-    goalSeenRef,
-    hasRecordedLessonCompleteRef,
-    setLessonCompletedPersisted,
-    setMessages,
-    setCurrentStep,
-    setInput,
-    setInputMode,
-    resetTtsState,
-    matching: {
-      setShowMatching,
-      setMatchingPersisted,
-      setMatchingEverStarted,
-      setMatchingInsertIndex,
-      setWordOptions,
-      setTranslationOptions,
-      setSelectedWord,
-      setSelectedTranslation,
-    },
-    vocab: { setVocabWords, setVocabIndex, setShowVocab, setPendingVocabPlay },
-    findMistake: { setFindMistakeUI },
-    constructor: { setConstructorUI },
-    vocabRestoreRefs: { restoredVocabIndexRef, appliedVocabRestoreKeyRef },
-    setGrammarGateSectionId: () => {},
-    setGrammarGateOpen: () => {},
-    setGrammarGateRevision,
-    gatedGrammarSectionIdsRef,
-    storageKeys: {
-      grammarGateStorageKey,
-      vocabProgressStorageKey,
-      matchingProgressStorageKey,
-      findMistakeStorageKey,
-      constructorStorageKey,
-    },
-    initializeChat,
-  });
+	  const { restartLesson } = useLessonRestart({
+	    day,
+	    lesson,
+	    level,
+	    setIsLoading,
+	    setIsInitializing,
+	    goalSeenRef,
+	    hasRecordedLessonCompleteRef,
+	    setLessonCompletedPersisted,
+	    setMessages,
+	    setCurrentStep,
+	    setInput,
+	    setInputMode,
+	    resetTtsState,
+	    matching: {
+	      setShowMatching,
+	      setMatchingPersisted,
+	      setMatchingEverStarted,
+	      setMatchingInsertIndex,
+	      setWordOptions,
+	      setTranslationOptions,
+	      setSelectedWord,
+	      setSelectedTranslation,
+	    },
+	    vocab: { setVocabWords, setVocabIndex, setShowVocab, setPendingVocabPlay },
+	    findMistake: { setFindMistakeUI },
+	    constructor: { setConstructorUI },
+	    vocabRestoreRefs: { restoredVocabIndexRef, appliedVocabRestoreKeyRef },
+	    setGrammarGateSectionId: () => {},
+	    setGrammarGateOpen: () => {},
+	    setGrammarGateRevision,
+	    gatedGrammarSectionIdsRef,
+	    goalGate: { setGoalGatePending, setGoalGateAcknowledged },
+	    storageKeys: {
+	      goalAckStorageKey,
+	      grammarGateStorageKey,
+	      vocabProgressStorageKey,
+	      matchingProgressStorageKey,
+	      findMistakeStorageKey,
+	      constructorStorageKey,
+	    },
+	    initializeChat,
+	  });
 
   const matchingInsertIndexSafe = useMemo(() => {
     if (matchingInsertIndex === null) return null;
@@ -515,8 +576,35 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
     window.setTimeout(() => matchingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }, [messages.length, vocabWords]);
 
-  const effectiveInputMode: InputMode = grammarGate.gated ? 'hidden' : inputMode;
-  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
+	  const effectiveInputMode: InputMode = grammarGate.gated ? 'hidden' : inputMode;
+	  const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
+	  const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
+	  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
+	  const acknowledgeGoalGate = useCallback(async () => {
+	    try {
+	      window.localStorage.setItem(goalAckStorageKey, '1');
+	    } catch {
+	      // ignore
+	    }
+	    setGoalGateAcknowledged(true);
+	    setGoalGatePending(false);
+	    setIsLoading(true);
+	    try {
+	      const script = (await ensureLessonScript()) as LessonScriptV2;
+	      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
+	      if (out.messages?.length) {
+	        await appendEngineMessagesWithDelay(out.messages, 0);
+	      }
+	      setCurrentStep(out.nextStep || null);
+	      // Make the transition feel immediate even if effects run later.
+	      setShowVocab(true);
+	      setPendingVocabPlay(true);
+	    } catch (err) {
+	      console.error('[Step4Dialogue] Failed to advance from goal:', err);
+	    } finally {
+	      setIsLoading(false);
+	    }
+	  }, [appendEngineMessagesWithDelay, ensureLessonScript, goalAckStorageKey]);
 
   const lessonProgress = useMemo(() => {
     const getScriptWordsCount = (script: any | null): number => {
@@ -597,7 +685,7 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
   return (
     <>
       <div className="flex flex-col h-full bg-white relative w-full">
-        <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
+	        <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
           <DialogueHeader
             progressPercent={lessonProgress.percent}
             progressLabel={lessonProgress.label}
@@ -606,7 +694,7 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
             isLoading={isLoading}
           />
 
-          <DialogueMessages
+	          <DialogueMessages
             scrollContainerRef={scrollContainerRef}
             messagesEndRef={messagesEndRef}
             messageRefs={messageRefs}
@@ -647,21 +735,25 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
             matchesComplete={matchesComplete}
             wordOptions={wordOptions}
             translationOptions={translationOptions}
-            selectedWord={selectedWord}
-            selectedTranslation={selectedTranslation}
-            setSelectedWord={setSelectedWord}
-            setSelectedTranslation={setSelectedTranslation}
-            tryMatch={tryMatch}
-            shouldShowVocabCheckButton={shouldShowVocabCheckButton}
-            handleCheckVocabulary={handleCheckVocabulary}
-            isAwaitingModelReply={isAwaitingModelReply}
-            lessonCompletedPersisted={lessonCompletedPersisted}
-          />
+	            selectedWord={selectedWord}
+	            selectedTranslation={selectedTranslation}
+	            setSelectedWord={setSelectedWord}
+	            setSelectedTranslation={setSelectedTranslation}
+	            tryMatch={tryMatch}
+	            matchingMismatchAttempt={matchingMismatchAttempt}
+	            shouldShowVocabCheckButton={shouldShowVocabCheckButton}
+		            handleCheckVocabulary={handleCheckVocabulary}
+		            isAwaitingModelReply={isAwaitingModelReply}
+		            lessonCompletedPersisted={lessonCompletedPersisted}
+		            showGoalGateCta={showGoalGateCta}
+	            goalGateLabel={goalGateLabel}
+	            onGoalGateAcknowledge={acknowledgeGoalGate}
+	          />
 
-          <DialogueInputBar
-            inputMode={effectiveInputMode}
-            input={input}
-            onInputChange={setInput}
+	          <DialogueInputBar
+	            inputMode={effectiveInputMode}
+	            input={input}
+	            onInputChange={setInput}
             onSend={handleSend}
             placeholder={copy.placeholder}
             isLoading={isLoading}

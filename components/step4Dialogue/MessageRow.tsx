@@ -12,6 +12,7 @@ type MatchingProps = {
   translationOptions: Array<{ id: string; text: string; pairId: string; matched: boolean }>;
   selectedWord: string | null;
   selectedTranslation: string | null;
+  mismatchAttempt: { wordId: string; translationId: string; nonce: number } | null;
   onPickWord: (wordId: string) => void;
   onPickTranslation: (translationId: string) => void;
 };
@@ -57,7 +58,7 @@ export const MessageRow: React.FC<Props> = ({
   showGrammarGateButton,
   onPressGrammarNext,
 }) => {
-  const isFullCard = isTaskCard || isVocabulary;
+  const isFullCard = isTaskCard || isVocabulary || isSituationCard;
 
   if (isSeparatorOnly) {
     return (
@@ -84,7 +85,13 @@ export const MessageRow: React.FC<Props> = ({
         <ModuleSeparatorHeading key={`separator-${msgStableId}-${sepIdx}`} title={title} />
       ))}
 
-      {shouldInsertMatchingHere && <MatchingGameCard {...matching} />}
+      {shouldInsertMatchingHere && (
+        <div className="w-full flex justify-center">
+          <div className="w-full max-w-2xl">
+            <MatchingGameCard {...matching} />
+          </div>
+        </div>
+      )}
 
       {showSeparatorTitle && typeof separatorTitle === 'string' && (
         <div className="w-full flex items-center justify-center my-8">
@@ -101,8 +108,8 @@ export const MessageRow: React.FC<Props> = ({
       >
         <div
           className={`flex ${
-            isFullCard ? 'w-full md:max-w-2xl' : isSituationCard ? 'w-full md:max-w-2xl' : 'max-w-[85%]'
-          } ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-end gap-3`}
+            isFullCard ? 'w-full max-w-2xl' : 'max-w-[85%]'
+          } ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-end gap-3 min-w-0`}
         >
           {msg.role === 'model' && !isSituationCard && !isFullCard && (
             <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">

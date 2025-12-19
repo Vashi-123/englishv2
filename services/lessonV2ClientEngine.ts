@@ -151,32 +151,15 @@ const makeSeparator = (title: string, step: DialogueStep): EngineMessage => ({
 });
 
 export const createInitialLessonMessages = (script: LessonScriptV2): { messages: EngineMessage[]; nextStep: DialogueStep } => {
-  const wordsModule = extractWordsData(script.words);
-  const wordsAudioQueue = (wordsModule.items || []).flatMap((w) => [
-    { text: w.word, lang: "en", kind: "word" },
-    { text: w.context, lang: "en", kind: "example" },
-  ]);
-
   const goalMsg: EngineMessage = {
     role: "model",
     text: JSON.stringify({ type: "goal", goal: script.goal }),
     currentStepSnapshot: { type: "goal", index: 0 },
   };
 
-  const wordsMsg: EngineMessage = {
-    role: "model",
-    text: JSON.stringify({
-      type: "words_list",
-      instruction: wordsModule.instruction,
-      words: wordsModule.items || [],
-      audioQueue: wordsAudioQueue,
-      autoPlay: true,
-      autoNext: true,
-    }),
-    currentStepSnapshot: { type: "words", index: 0 },
-  };
-
-  return { messages: [goalMsg, wordsMsg], nextStep: { type: "words", index: 0 } };
+  // Start with the goal only; the UI will ask the learner to confirm ("Начинаем"),
+  // then advance to the vocabulary module.
+  return { messages: [goalMsg], nextStep: { type: "goal", index: 0 } };
 };
 
 export const advanceLesson = (params: {
@@ -192,6 +175,29 @@ export const advanceLesson = (params: {
 
   if (!stepType) {
     return { messages: [], nextStep: null };
+  }
+
+  if (stepType === "goal") {
+    const wordsModule = extractWordsData(script.words);
+    const wordsAudioQueue = (wordsModule.items || []).flatMap((w) => [
+      { text: w.word, lang: "en", kind: "word" },
+      { text: w.context, lang: "en", kind: "example" },
+    ]);
+    const wordsStep: DialogueStep = { type: "words", index: 0 };
+    const separator = makeSeparator("Слова", wordsStep);
+    const wordsMsg: EngineMessage = {
+      role: "model",
+      text: JSON.stringify({
+        type: "words_list",
+        instruction: wordsModule.instruction,
+        words: wordsModule.items || [],
+        audioQueue: wordsAudioQueue,
+        autoPlay: true,
+        autoNext: true,
+      }),
+      currentStepSnapshot: wordsStep,
+    };
+    return { messages: [separator, wordsMsg], nextStep: wordsStep };
   }
 
   if (stepType === "words") {

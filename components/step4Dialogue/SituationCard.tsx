@@ -13,7 +13,7 @@ type Props = {
 export function SituationCard({ title, situation, task, ai, feedback, renderMarkdown }: Props) {
   return (
     <div className="w-full">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 space-y-5">
+      <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4 space-y-5">
         <CardHeading>Ситуация</CardHeading>
         {title && <div className="text-xl font-bold text-gray-900">{title}</div>}
 

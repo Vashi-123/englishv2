@@ -76,13 +76,17 @@ export function DialogueMessages({
   setSelectedWord,
   setSelectedTranslation,
   tryMatch,
+  matchingMismatchAttempt,
 
   shouldShowVocabCheckButton,
   handleCheckVocabulary,
 
-  isAwaitingModelReply,
-  lessonCompletedPersisted,
-}: {
+	  isAwaitingModelReply,
+	  lessonCompletedPersisted,
+	  showGoalGateCta,
+	  goalGateLabel,
+	  onGoalGateAcknowledge,
+	}: {
   scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
   messageRefs: MutableRefObject<Map<number, HTMLDivElement>>;
@@ -142,13 +146,17 @@ export function DialogueMessages({
   setSelectedWord: Dispatch<SetStateAction<string | null>>;
   setSelectedTranslation: Dispatch<SetStateAction<string | null>>;
   tryMatch: (wordId: string | null, translationId: string | null) => void;
+  matchingMismatchAttempt: { wordId: string; translationId: string; nonce: number } | null;
 
   shouldShowVocabCheckButton: boolean;
   handleCheckVocabulary: () => void;
 
-  isAwaitingModelReply: boolean;
-  lessonCompletedPersisted: boolean;
-}) {
+	  isAwaitingModelReply: boolean;
+	  lessonCompletedPersisted: boolean;
+	  showGoalGateCta: boolean;
+	  goalGateLabel: string;
+	  onGoalGateAcknowledge: () => void;
+	}) {
   let findMistakeOrdinal = 0;
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pt-12 space-y-6 pb-32 bg-white w-full">
@@ -167,7 +175,8 @@ export function DialogueMessages({
         const showTranslation = showTranslations[idx] && msg.translation;
         const translationVisible = Boolean(showTranslation);
         const translationContent = translationVisible ? stripModuleTag(msg.translation || '') : '';
-        const baseMessageContent = stripModuleTag(msg.text || '');
+        const rawMessageContent = String(msg.text || '');
+        const baseMessageContent = stripModuleTag(rawMessageContent);
         const displayText = translationVisible ? translationContent : baseMessageContent;
 
         let isVocabulary = false;
@@ -176,6 +185,27 @@ export function DialogueMessages({
           parsed = tryParseJsonMessage(msg.text);
           isVocabulary = parsed?.type === 'words_list';
         }
+
+        const looksLikeConstructorPrompt =
+          msg.role === 'model' &&
+          msg.currentStepSnapshot?.type === 'constructor' &&
+          /<w>/.test(rawMessageContent) &&
+          /<text_input>/.test(rawMessageContent);
+
+        const isFindMistakeMessage = (() => {
+          if (msg.role !== 'model') return false;
+          if (parsed?.type === 'find_the_mistake') return true;
+          const raw = baseMessageContent || '';
+          const a = raw.match(/A\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+          const b = raw.match(/B\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+          const parsedFromText = a && b ? [a.trim(), b.trim()] : null;
+          return Boolean(
+            (parsedFromText &&
+              (/Напиши\s*A\s*или\s*B/i.test(raw) || /Выбери.*A.*B/i.test(raw) || /Найди\s+ошибк/i.test(raw))) ||
+              (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(raw) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(raw)) &&
+                (/Найди\s+ошибк/i.test(raw) || /Выбери/i.test(raw))))
+          );
+        })();
 
         const isTaskPayload =
           msg.role === 'model' &&
@@ -187,8 +217,8 @@ export function DialogueMessages({
             parsed?.type === 'find_the_mistake' ||
             parsed?.type === 'situation' ||
             parsed?.type === 'section' ||
-            msg.currentStepSnapshot?.type === 'constructor' ||
-            msg.currentStepSnapshot?.type === 'find_the_mistake');
+            looksLikeConstructorPrompt ||
+            isFindMistakeMessage);
 
         const looksLikeSituationPlain =
           /Ситуация:\s*/i.test(baseMessageContent) ||
@@ -240,22 +270,6 @@ export function DialogueMessages({
 
         const situationCompletedCorrect = Boolean(isSituationCard && hasUserReplyInSituation && !hasFeedbackInSituation && advancedPastSituation);
 
-        const isFindMistakeMessage = (() => {
-          if (msg.role !== 'model') return false;
-          if (parsed?.type === 'find_the_mistake') return true;
-          if (msg.currentStepSnapshot?.type === 'find_the_mistake') return true;
-          const raw = baseMessageContent || '';
-          const a = raw.match(/A\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
-          const b = raw.match(/B\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
-          const parsedFromText = a && b ? [a.trim(), b.trim()] : null;
-          return Boolean(
-            (parsedFromText &&
-              (/Напиши\s*A\s*или\s*B/i.test(raw) || /Выбери.*A.*B/i.test(raw) || /Найди\s+ошибк/i.test(raw))) ||
-              (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(raw) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(raw)) &&
-                (/Найди\s+ошибк/i.test(raw) || /Выбери/i.test(raw))))
-          );
-        })();
-
         const findMistakeTaskIndexFallback = isFindMistakeMessage ? findMistakeOrdinal++ : undefined;
 
         const msgStableId = getMessageStableId(msg, idx);
@@ -287,11 +301,14 @@ export function DialogueMessages({
               translationOptions,
               selectedWord,
               selectedTranslation,
+              mismatchAttempt: matchingMismatchAttempt,
               onPickWord: (wordId) => {
+                if (matchingMismatchAttempt) return;
                 setSelectedWord(wordId);
                 tryMatch(wordId, selectedTranslation);
               },
               onPickTranslation: (translationId) => {
+                if (matchingMismatchAttempt) return;
                 setSelectedTranslation(translationId);
                 tryMatch(selectedWord, translationId);
               },
@@ -308,21 +325,24 @@ export function DialogueMessages({
               persistGrammarGateOpened([grammarGate.sectionId, grammarGate.ordinalKey].filter(Boolean) as string[]);
             }}
           >
-            <MessageContent
-              msg={msg}
-              idx={idx}
-              parsed={parsed}
-              displayText={displayText}
-              baseMessageContent={baseMessageContent}
-              msgStableId={msgStableId}
-              isSituationCard={isSituationCard}
-              situationGroupMessages={situationGroupMessages || null}
-              situationCompletedCorrect={situationCompletedCorrect}
-              showVocab={showVocab}
-              vocabWords={vocabWords}
-              vocabIndex={vocabIndex}
-              setVocabIndex={setVocabIndex}
-              currentAudioItem={currentAudioItem}
+	            <MessageContent
+	              msg={msg}
+	              idx={idx}
+	              parsed={parsed}
+	              displayText={displayText}
+	              baseMessageContent={baseMessageContent}
+	              msgStableId={msgStableId}
+	              isSituationCard={isSituationCard}
+	              situationGroupMessages={situationGroupMessages || null}
+	              situationCompletedCorrect={situationCompletedCorrect}
+	              showGoalGateCta={showGoalGateCta}
+	              goalGateLabel={goalGateLabel}
+	              onGoalGateAcknowledge={onGoalGateAcknowledge}
+	              showVocab={showVocab}
+	              vocabWords={vocabWords}
+	              vocabIndex={vocabIndex}
+	              setVocabIndex={setVocabIndex}
+	              currentAudioItem={currentAudioItem}
               vocabRefs={vocabRefs}
               processAudioQueue={processAudioQueue}
               lessonScript={lessonScript}
@@ -355,11 +375,14 @@ export function DialogueMessages({
           translationOptions={translationOptions}
           selectedWord={selectedWord}
           selectedTranslation={selectedTranslation}
+          mismatchAttempt={matchingMismatchAttempt}
           onPickWord={(wordId) => {
+            if (matchingMismatchAttempt) return;
             setSelectedWord(wordId);
             tryMatch(wordId, selectedTranslation);
           }}
           onPickTranslation={(translationId) => {
+            if (matchingMismatchAttempt) return;
             setSelectedTranslation(translationId);
             tryMatch(selectedWord, translationId);
           }}

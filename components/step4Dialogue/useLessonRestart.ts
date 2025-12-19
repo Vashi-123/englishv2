@@ -31,6 +31,7 @@ export function useLessonRestart({
   setGrammarGateRevision,
   gatedGrammarSectionIdsRef,
 
+  goalGate,
   storageKeys,
   initializeChat,
 }: {
@@ -84,7 +85,13 @@ export function useLessonRestart({
   setGrammarGateRevision: Dispatch<SetStateAction<number>>;
   gatedGrammarSectionIdsRef: MutableRefObject<Set<string>>;
 
+  goalGate?: {
+    setGoalGatePending: Dispatch<SetStateAction<boolean>>;
+    setGoalGateAcknowledged: Dispatch<SetStateAction<boolean>>;
+  };
+
   storageKeys: {
+    goalAckStorageKey: string;
     grammarGateStorageKey: string;
     vocabProgressStorageKey: string;
     matchingProgressStorageKey: string;
@@ -106,6 +113,8 @@ export function useLessonRestart({
       goalSeenRef.current = false;
       hasRecordedLessonCompleteRef.current = false;
       setLessonCompletedPersisted(false);
+      goalGate?.setGoalGatePending(false);
+      goalGate?.setGoalGateAcknowledged(false);
 
       setMessages([]);
       setCurrentStep(null);
@@ -123,7 +132,7 @@ export function useLessonRestart({
 
       vocab.setVocabWords([]);
       vocab.setVocabIndex(0);
-      vocab.setShowVocab(true);
+      vocab.setShowVocab(false);
       vocab.setPendingVocabPlay(false);
 
       findMistake.setFindMistakeUI({});
@@ -142,6 +151,7 @@ export function useLessonRestart({
 
       try {
         const keys = [
+          storageKeys.goalAckStorageKey,
           storageKeys.grammarGateStorageKey,
           storageKeys.vocabProgressStorageKey,
           storageKeys.matchingProgressStorageKey,
@@ -152,6 +162,17 @@ export function useLessonRestart({
           localStorage.removeItem(k);
           const legacy = legacyKeyFor(k);
           if (legacy !== k) localStorage.removeItem(legacy);
+        }
+
+        // Extra safety: remove any goal-ack key for this day/lesson (across level/lang variants),
+        // so the "Начинаем" button always reappears after restart.
+        const prefix = `step4dialogue:goalAck:${day || 1}:${lesson || 1}:`;
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith(prefix)) {
+            localStorage.removeItem(k);
+            i -= 1;
+          }
         }
       } catch {
         // ignore

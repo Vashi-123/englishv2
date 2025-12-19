@@ -1,6 +1,6 @@
 import { useEffect, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
-import { subscribeChatMessages, subscribeChatProgress } from '../../services/generationService';
+import { subscribeChatMessages } from '../../services/generationService';
 
 type ProgressPayload = {
   practice_completed?: boolean;
@@ -71,16 +71,8 @@ export function useDialogueRealtime({
           return;
         }
 
-        unsubProgress = await subscribeChatProgress(day, lesson, (progress: ProgressPayload) => {
-          if (typeof progress.practice_completed !== 'boolean') return;
-
-          const isNowCompleted = progress.practice_completed;
-          setLessonCompletedPersisted((wasCompleted) => {
-            if (wasCompleted === isNowCompleted) return wasCompleted;
-            hasRecordedLessonCompleteRef.current = isNowCompleted;
-            return isNowCompleted;
-          });
-        });
+        // chat_progress removed: completion is derived from chat_messages (<lesson_complete> tag).
+        unsubProgress = null;
         if (cancelled) {
           unsubProgress?.();
           unsubProgress = null;

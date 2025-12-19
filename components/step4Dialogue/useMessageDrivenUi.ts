@@ -12,6 +12,8 @@ export function useMessageDrivenUi({
   grammarGateRevision,
   gatedGrammarSectionIdsRef,
   goalSeenRef,
+  goalGatePending,
+  goalGateAcknowledged,
   isInitializing,
   isInitializingRef,
   restoredVocabIndexRef,
@@ -21,6 +23,7 @@ export function useMessageDrivenUi({
   setVocabWords,
   setVocabIndex,
   setPendingVocabPlay,
+  setGoalGatePending,
 }: {
   messages: ChatMessage[];
   determineInputMode: (parsed: any, msg: ChatMessage) => InputMode;
@@ -30,6 +33,8 @@ export function useMessageDrivenUi({
   grammarGateRevision: number;
   gatedGrammarSectionIdsRef: MutableRefObject<Set<string>>;
   goalSeenRef: MutableRefObject<boolean>;
+  goalGatePending: boolean;
+  goalGateAcknowledged: boolean;
   isInitializing: boolean;
   isInitializingRef: MutableRefObject<boolean>;
   restoredVocabIndexRef: MutableRefObject<number | null>;
@@ -39,6 +44,7 @@ export function useMessageDrivenUi({
   setVocabWords: Dispatch<SetStateAction<any[]>>;
   setVocabIndex: Dispatch<SetStateAction<number>>;
   setPendingVocabPlay: Dispatch<SetStateAction<boolean>>;
+  setGoalGatePending: Dispatch<SetStateAction<boolean>>;
 }) {
   const goalVocabTimerRef = useRef<number | null>(null);
 
@@ -100,14 +106,31 @@ export function useMessageDrivenUi({
       return;
     }
 
+    // If we have a goal in history and it's not acknowledged yet, keep the UI gated even if the last
+    // message is already words_list (goal and words_list can arrive very close to each other).
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role !== 'model') continue;
+      const parsed = tryParseJsonMessage(msg.text || '');
+      if (parsed?.type === 'goal') {
+        goalSeenRef.current = true;
+        if (!goalGateAcknowledged) {
+          if (!goalGatePending) setGoalGatePending(true);
+          setShowVocab(false);
+          setInputMode('hidden');
+          return;
+        }
+        break;
+      }
+    }
+
     let parsed: any = null;
     parsed = tryParseJsonMessage(lastMsg.text);
 
     if (parsed?.type === 'goal') {
       goalSeenRef.current = true;
+      setGoalGatePending(true);
       setShowVocab(false);
-      if (goalVocabTimerRef.current != null) window.clearTimeout(goalVocabTimerRef.current);
-      goalVocabTimerRef.current = window.setTimeout(() => setShowVocab(true), 2000);
       setInputMode('hidden');
       return;
     }
@@ -119,6 +142,13 @@ export function useMessageDrivenUi({
       setVocabIndex(typeof desired === 'number' ? Math.min(Math.max(desired, 0), maxIdx) : 0);
       appliedVocabRestoreKeyRef.current = vocabProgressStorageKey;
       setPendingVocabPlay(true);
+      if (goalGatePending && !goalGateAcknowledged) {
+        setShowVocab(false);
+        setInputMode('hidden');
+        return;
+      }
+      // Ensure the vocab block is visible if we are not gated.
+      setShowVocab(true);
       setInputMode('hidden');
       return;
     }
@@ -139,10 +169,13 @@ export function useMessageDrivenUi({
     processAudioQueue,
     gatedGrammarSectionIdsRef,
     goalSeenRef,
+    goalGatePending,
+    goalGateAcknowledged,
     isInitializingRef,
     restoredVocabIndexRef,
     appliedVocabRestoreKeyRef,
     setInputMode,
+    setGoalGatePending,
     setShowVocab,
     setVocabWords,
     setVocabIndex,

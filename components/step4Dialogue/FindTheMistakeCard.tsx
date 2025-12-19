@@ -9,6 +9,7 @@ type Props = {
   explanation?: string;
   ui: UiState;
   isLoading: boolean;
+  renderMarkdown: (text: string) => React.ReactNode;
   onPick: (picked: 'A' | 'B') => void;
   onAdvance: () => void;
 };
@@ -19,6 +20,7 @@ export function FindTheMistakeCard({
   explanation,
   ui,
   isLoading,
+  renderMarkdown,
   onPick,
   onAdvance,
 }: Props) {
@@ -27,9 +29,9 @@ export function FindTheMistakeCard({
 
   return (
     <div className="space-y-4">
-      <div className="p-5 rounded-3xl border border-gray-100 bg-white shadow-sm space-y-4">
+      <div className="p-5 rounded-3xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 space-y-4 w-full max-w-2xl mx-auto">
         <CardHeading>Найди ошибку</CardHeading>
-        {instruction && <div className="text-sm text-gray-600">{instruction}</div>}
+        {instruction && <div className="text-sm text-gray-600">{renderMarkdown(instruction)}</div>}
         <div className="space-y-3">
           {twoOptions.map((optionText, optionIdx) => {
             const label = String.fromCharCode(65 + optionIdx) as 'A' | 'B';
@@ -59,7 +61,7 @@ export function FindTheMistakeCard({
                   <span className="mt-0.5 inline-flex items-center justify-center w-7 h-7 rounded-full bg-gray-100 border border-gray-200 font-bold text-gray-800">
                     {label}
                   </span>
-                  <span className="text-gray-900">{optionText}</span>
+                  <span className="text-gray-900">{renderMarkdown(optionText)}</span>
                 </div>
               </button>
             );
@@ -68,7 +70,7 @@ export function FindTheMistakeCard({
 
         {ui.selected && ui.correct === true && explanation && (
           <div className="text-sm text-green-800 bg-green-50 border border-green-100 rounded-2xl px-4 py-3">
-            {explanation}
+            {renderMarkdown(explanation)}
           </div>
         )}
 
