@@ -1,6 +1,7 @@
 import React from 'react';
 import { Languages } from 'lucide-react';
 import { CardHeading } from './CardHeading';
+import { CompletionBadge } from './CompletionBadge';
 
 type AudioItem = { text: string; lang: string; kind: string };
 
@@ -35,6 +36,7 @@ export function VocabularyListCard({
   const currentIdx = Math.min(vocabIndex, Math.max(words.length - 1, 0));
   const visibleWords = words.slice(0, currentIdx + 1);
   if (!visibleWords.length) return null;
+  const completed = currentIdx + 1 >= words.length;
 
   return (
     <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4">
@@ -46,8 +48,9 @@ export function VocabularyListCard({
             </div>
           }
         >
-          Vocabulary ({currentIdx + 1}/{words.length})
+          Слова ({currentIdx + 1}/{words.length})
         </CardHeading>
+        {completed && <CompletionBadge label="Слова пройдены" />}
       </div>
 
       <div className="space-y-3">

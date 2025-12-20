@@ -53,7 +53,13 @@ type Props = {
   setIsLoading: (v: boolean) => void;
   handleStudentAnswer: (
     studentText: string,
-    opts?: { choice?: 'A' | 'B'; stepOverride?: any | null; silent?: boolean; bypassValidation?: boolean }
+    opts?: {
+      choice?: 'A' | 'B';
+      stepOverride?: any | null;
+      silent?: boolean;
+      bypassValidation?: boolean;
+      forceAdvance?: boolean;
+    }
   ) => Promise<void>;
 
   extractStructuredSections: (text: string) => Array<{ title: string; body: string }>;
@@ -500,6 +506,10 @@ export function MessageContent({
   if (isSituationCard) {
     const group = situationGroupMessages && situationGroupMessages.length > 0 ? situationGroupMessages : [msg];
     const firstModel = group.find((m) => m.role === 'model');
+    const scenarioIndexForCard =
+      typeof firstModel?.currentStepSnapshot?.index === 'number' && Number.isFinite(firstModel.currentStepSnapshot.index)
+        ? (firstModel.currentStepSnapshot.index as number)
+        : null;
 
     const parsedSituation =
       parsed && parsed.type === 'situation'
@@ -512,6 +522,37 @@ export function MessageContent({
         : firstModel
           ? parseSituationMessage(firstModel.text || '', stripModuleTag)
           : {};
+
+    const lastSituationModel = (() => {
+      for (let i = group.length - 1; i >= 0; i--) {
+        const m = group[i];
+        if (m.role !== 'model') continue;
+        const raw = stripModuleTag(m.text || '').trim();
+        if (!raw.startsWith('{')) continue;
+        try {
+          const p = JSON.parse(raw);
+          if (p?.type === 'situation') return { msg: m, payload: p };
+        } catch {
+          // ignore
+        }
+      }
+      return null;
+    })();
+
+    const isActiveScenario =
+      currentStep?.type === 'situations' &&
+      typeof currentStep?.index === 'number' &&
+      scenarioIndexForCard != null &&
+      currentStep.index === scenarioIndexForCard;
+
+    const showContinue =
+      Boolean(isActiveScenario) &&
+      Boolean(lastSituationModel?.payload?.awaitingContinue) &&
+      String(lastSituationModel?.payload?.result || '') === 'correct';
+    const continueLabel =
+      typeof lastSituationModel?.payload?.continueLabel === 'string' && lastSituationModel.payload.continueLabel.trim()
+        ? String(lastSituationModel.payload.continueLabel)
+        : 'Далее';
 
     const items = group
       .filter((m) => m.role === 'user' || (m.role === 'model' && stripModuleTag(m.text || '').trim().startsWith('{')))
@@ -536,6 +577,28 @@ export function MessageContent({
         task={(parsedSituation as any).task}
         ai={(parsedSituation as any).ai}
         completedCorrect={situationCompletedCorrect}
+        showContinue={showContinue}
+        continueLabel={continueLabel}
+        isLoading={isLoading}
+        onContinue={
+          showContinue
+            ? async () => {
+                const stepForAdvance = lastSituationModel?.msg?.currentStepSnapshot ?? currentStep;
+                if (!stepForAdvance) return;
+                setIsLoading(true);
+                try {
+                  await handleStudentAnswer('', {
+                    stepOverride: stepForAdvance,
+                    silent: true,
+                    bypassValidation: true,
+                    forceAdvance: true,
+                  });
+                } finally {
+                  setIsLoading(false);
+                }
+              }
+            : undefined
+        }
         items={items}
         renderMarkdown={renderMarkdown}
       />

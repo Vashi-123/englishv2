@@ -472,10 +472,25 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
   }, [pendingVocabPlay, processAudioQueue, setPendingVocabPlay, showVocab, vocabWords]);
 
   useAutoScrollToEnd({
-    deps: [visibleMessages.length, showMatching, isAwaitingModelReply, lessonCompletedPersisted],
+    deps: [
+      day,
+      lesson,
+      resolvedLevel,
+      resolvedLanguage,
+      isInitializing,
+      visibleMessages.length,
+      showMatching,
+      showVocab,
+      vocabIndex,
+      goalGatePending,
+      goalGateAcknowledged,
+      isAwaitingModelReply,
+      lessonCompletedPersisted,
+    ],
     endRef: messagesEndRef,
     enabled: true,
-    behavior: 'smooth',
+    containerRef: scrollContainerRef,
+    behavior: isInitializing ? 'auto' : 'smooth',
   });
 
   useVocabScroll({ showVocab, vocabIndex, vocabRefs });

@@ -116,12 +116,18 @@ export function useLessonFlow({
   const handleStudentAnswer = useCallback(
     async (
       studentText: string,
-      opts?: { choice?: 'A' | 'B'; stepOverride?: any | null; silent?: boolean; bypassValidation?: boolean }
+      opts?: {
+        choice?: 'A' | 'B';
+        stepOverride?: any | null;
+        silent?: boolean;
+        bypassValidation?: boolean;
+        forceAdvance?: boolean;
+      }
     ) => {
       if (!day || !lesson) return;
       if (inFlightRef.current) return;
       const studentAnswer = String(studentText || '').trim();
-      if (!studentAnswer && !opts?.choice) return;
+      if (!studentAnswer && !opts?.choice && !opts?.forceAdvance) return;
 
       inFlightRef.current = true;
       if (studentAnswer && !opts?.silent) {

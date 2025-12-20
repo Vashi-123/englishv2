@@ -1,5 +1,6 @@
 import React from 'react';
 import { CardHeading } from './CardHeading';
+import { CompletionBadge } from './CompletionBadge';
 
 type UiState = { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean };
 
@@ -29,8 +30,11 @@ export function FindTheMistakeCard({
 
   return (
     <div className="space-y-4">
-      <div className="p-5 rounded-3xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 space-y-4 w-full max-w-2xl mx-auto">
-        <CardHeading>Найди ошибку</CardHeading>
+      <div className="p-5 rounded-3xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 space-y-4 w-full max-w-2xl mx-auto relative">
+        <div className="flex items-start justify-between gap-4">
+          <CardHeading>Найди ошибку</CardHeading>
+          {ui.selected && ui.correct === true && <CompletionBadge label="Отлично!" />}
+        </div>
         {instruction && <div className="text-sm text-gray-600">{renderMarkdown(instruction)}</div>}
         <div className="space-y-3">
           {twoOptions.map((optionText, optionIdx) => {

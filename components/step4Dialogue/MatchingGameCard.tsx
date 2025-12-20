@@ -1,6 +1,7 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Bot } from 'lucide-react';
 import { CardHeading } from './CardHeading';
+import { CompletionBadge } from './CompletionBadge';
 
 type Option = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -303,7 +304,7 @@ export function MatchingGameCard({
         >
           Соедини слово с переводом
         </CardHeading>
-        {matchesComplete && <span className="text-xs font-bold text-green-600">Готово!</span>}
+        {matchesComplete && <CompletionBadge label="Готово!" />}
       </div>
 
         <div ref={overlayRef} className="relative min-w-0">

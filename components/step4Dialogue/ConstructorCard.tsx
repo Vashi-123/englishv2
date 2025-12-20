@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CardHeading } from './CardHeading';
+import { CompletionBadge } from './CompletionBadge';
 
 type Props = {
   instruction: string;
@@ -160,12 +161,15 @@ export function ConstructorCard({
   return (
     <div className="space-y-4">
       <div
-        className={`p-4 rounded-2xl border bg-white shadow-lg shadow-slate-900/10 space-y-3 transition-colors w-full max-w-2xl mx-auto ${
+        className={`p-4 rounded-2xl border bg-white shadow-lg shadow-slate-900/10 space-y-3 transition-colors w-full max-w-2xl mx-auto relative ${
           wrongAttempt ? 'border-red-200 bg-red-50' : 'border-gray-200/60'
         }`}
       >
         <div className="space-y-4">
-          <CardHeading>Твоя задача</CardHeading>
+          <div className="flex items-start justify-between gap-4">
+            <CardHeading>Твоя задача</CardHeading>
+            {completed && <CompletionBadge label="Собрано!" />}
+          </div>
           <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{renderMarkdown(instruction)}</div>
         </div>
 

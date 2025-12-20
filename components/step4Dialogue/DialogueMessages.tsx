@@ -129,7 +129,13 @@ export function DialogueMessages({
 
   handleStudentAnswer: (
     studentText: string,
-    opts?: { choice?: 'A' | 'B'; stepOverride?: any | null; silent?: boolean; bypassValidation?: boolean }
+    opts?: {
+      choice?: 'A' | 'B';
+      stepOverride?: any | null;
+      silent?: boolean;
+      bypassValidation?: boolean;
+      forceAdvance?: boolean;
+    }
   ) => Promise<void>;
   extractStructuredSections: (...args: any[]) => any;
   renderMarkdown: (text: string) => React.ReactNode;
@@ -259,6 +265,24 @@ export function DialogueMessages({
           })
         );
 
+        const situationResult = (() => {
+          if (!situationGroupMessages?.length) return null;
+          for (let i = situationGroupMessages.length - 1; i >= 0; i--) {
+            const m = situationGroupMessages[i];
+            if (m.role !== 'model') continue;
+            const raw = stripModuleTag(m.text || '').trim();
+            if (!raw.startsWith('{')) continue;
+            try {
+              const p = JSON.parse(raw);
+              if (p?.type !== 'situation') continue;
+              if (typeof p?.result === 'string') return String(p.result);
+            } catch {
+              // ignore
+            }
+          }
+          return null;
+        })();
+
         const advancedPastSituation = (() => {
           if (!nextModelAfterSituation) return false;
           const t = nextModelAfterSituation.currentStepSnapshot?.type;
@@ -268,7 +292,11 @@ export function DialogueMessages({
           return nextIdx !== scenarioIndexForCard;
         })();
 
-        const situationCompletedCorrect = Boolean(isSituationCard && hasUserReplyInSituation && !hasFeedbackInSituation && advancedPastSituation);
+        const situationCompletedCorrect = Boolean(
+          isSituationCard &&
+            hasUserReplyInSituation &&
+            (situationResult === 'correct' || (situationResult == null && !hasFeedbackInSituation && advancedPastSituation))
+        );
 
         const findMistakeTaskIndexFallback = isFindMistakeMessage ? findMistakeOrdinal++ : undefined;
 

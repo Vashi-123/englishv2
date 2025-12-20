@@ -99,6 +99,8 @@ export const determineInputMode = (parsed: any, msg: ChatMessage): InputMode => 
   }
 
   if (parsed?.type === 'situation' || msg.currentStepSnapshot?.type === 'situations') {
+    if (parsed?.type === 'situation' && parsed?.awaitingContinue) return 'hidden';
+    if (msg.currentStepSnapshot?.type === 'situations' && (msg.currentStepSnapshot as any)?.awaitingContinue) return 'hidden';
     return 'text';
   }
   if (parsed?.type === 'audio_exercise') {

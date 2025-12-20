@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bot } from 'lucide-react';
 import { CardHeading } from './CardHeading';
+import { CompletionBadge } from './CompletionBadge';
 
 export type MatchOption = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -45,7 +46,7 @@ export const MatchingGame = React.forwardRef<HTMLDivElement, Props>(function Mat
         >
           Соедини слово с переводом
         </CardHeading>
-        {matchesComplete && <span className="text-xs font-bold text-green-600">Готово!</span>}
+        {matchesComplete && <CompletionBadge label="Готово!" />}
       </div>
 
       <div className="grid grid-cols-2 gap-3">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Bot } from 'lucide-react';
 import { CardHeading } from './CardHeading';
+import { CompletionBadge } from './CompletionBadge';
 
 type Item =
   | { kind: 'user'; text: string }
@@ -12,6 +13,10 @@ type Props = {
   task?: string;
   ai?: string;
   completedCorrect: boolean;
+  showContinue?: boolean;
+  continueLabel?: string;
+  onContinue?: () => void;
+  isLoading?: boolean;
   items: Item[];
   renderMarkdown: (text: string) => React.ReactNode;
 };
@@ -22,15 +27,22 @@ export function SituationThreadCard({
   task,
   ai,
   completedCorrect,
+  showContinue,
+  continueLabel = 'Далее',
+  onContinue,
+  isLoading,
   items,
   renderMarkdown,
 }: Props) {
   return (
     <div className="w-full">
       <div
-        className="rounded-2xl border border-gray-200/60 bg-white p-4 space-y-5 transition-colors shadow-lg shadow-slate-900/10 w-full max-w-2xl mx-auto"
+        className="rounded-2xl border border-gray-200/60 bg-white p-4 space-y-5 transition-colors shadow-lg shadow-slate-900/10 w-full max-w-2xl mx-auto relative"
       >
-        <CardHeading>Ситуация</CardHeading>
+        <div className="flex items-start justify-between gap-4">
+          <CardHeading>Ситуация</CardHeading>
+          {completedCorrect && <CompletionBadge label="Отлично!" />}
+        </div>
         {title && <div className="text-xl font-bold text-gray-900">{title}</div>}
 
         <div className="space-y-4">
@@ -99,6 +111,19 @@ export function SituationThreadCard({
                 </div>
               );
             })}
+
+            {showContinue && (
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={onContinue}
+                  disabled={isLoading}
+                  className="relative overflow-hidden px-5 py-2.5 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_85%_85%,rgba(255,255,255,0.22),transparent_55%)] after:pointer-events-none"
+                >
+                  {continueLabel}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
