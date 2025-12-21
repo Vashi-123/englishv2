@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
-import { loadChatMessages, loadLessonScript } from '../../services/generationService';
+import { loadChatMessages, loadLessonProgress, loadLessonScript, peekCachedChatMessages, upsertLessonProgress } from '../../services/generationService';
 import { createInitialLessonMessages, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { parseJsonBestEffort } from './lessonScriptUtils';
 
@@ -65,7 +65,41 @@ export function useChatInitialization({
         setIsInitializing(true);
         console.log('[Step4Dialogue] Initializing chat for day:', day, 'lesson:', lesson);
 
-        const savedMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
+        // Best-effort instant paint: if we have cached messages, show them immediately.
+        const cached = peekCachedChatMessages(day || 1, lesson || 1, level || 'A1');
+        if (cached && cached.length) {
+          setMessages(cached);
+          setIsLoading(false);
+        }
+
+        const progress = await loadLessonProgress(day || 1, lesson || 1, level || 'A1');
+        if (progress?.completed) {
+          setLessonCompletedPersisted(true);
+        }
+
+        // If there's no progress row, the lesson was never started — skip hitting chat_messages and seed immediately.
+        if (!force && !progress) {
+          console.log('[Step4Dialogue] No lesson_progress found, starting new chat without loading history');
+
+          console.log('[Step4Dialogue] Seeding first messages locally (v2)...');
+          await ensureLessonContextRef.current();
+          const script = (await ensureLessonScriptRef.current()) as LessonScriptV2;
+          const seeded = createInitialLessonMessages(script);
+          setCurrentStep(seeded.nextStep || null);
+          setMessages([]);
+          await appendRef.current(seeded.messages as any);
+          await upsertLessonProgress({
+            day: day || 1,
+            lesson: lesson || 1,
+            level: level || 'A1',
+            currentStepSnapshot: seeded.nextStep || null,
+            completed: false,
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        const savedMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1', { preferCache: true });
         console.log('[Step4Dialogue] Loaded messages:', savedMessages.length);
 
         if (!force && savedMessages && savedMessages.length > 0) {
@@ -73,10 +107,15 @@ export function useChatInitialization({
           setMessages(savedMessages);
           setIsLoading(false);
 
-          const lastModelMsg = [...savedMessages].reverse().find((m) => m.role === 'model' && m.currentStepSnapshot);
-          if (lastModelMsg && lastModelMsg.currentStepSnapshot) {
-            console.log('[Step4Dialogue] Restoring currentStep from history:', lastModelMsg.currentStepSnapshot);
-            setCurrentStep(lastModelMsg.currentStepSnapshot);
+          if (progress?.currentStepSnapshot) {
+            console.log('[Step4Dialogue] Restoring currentStep from lesson_progress:', progress.currentStepSnapshot);
+            setCurrentStep(progress.currentStepSnapshot);
+          } else {
+            const lastModelMsg = [...savedMessages].reverse().find((m) => m.role === 'model' && m.currentStepSnapshot);
+            if (lastModelMsg && lastModelMsg.currentStepSnapshot) {
+              console.log('[Step4Dialogue] Restoring currentStep from history:', lastModelMsg.currentStepSnapshot);
+              setCurrentStep(lastModelMsg.currentStepSnapshot);
+            }
           }
 
           if (!lessonScript && day && lesson) {
@@ -86,12 +125,7 @@ export function useChatInitialization({
               setLessonScript(parsed);
             }
           }
-
-          const hasLessonCompleteTag = savedMessages.some((msg) => msg.text && msg.text.includes('<lesson_complete>'));
-          if (hasLessonCompleteTag) {
-            console.log('[Step4Dialogue] Found lesson_complete tag in history, saving flag');
-            setLessonCompletedPersisted(true);
-          }
+          // completion is now derived from lesson_progress; keep message tag compatibility only as a fallback
         } else {
           console.log('[Step4Dialogue] No history found, starting new chat');
 
@@ -114,6 +148,13 @@ export function useChatInitialization({
           setCurrentStep(seeded.nextStep || null);
           setMessages([]);
           await appendRef.current(seeded.messages as any);
+          await upsertLessonProgress({
+            day: day || 1,
+            lesson: lesson || 1,
+            level: level || 'A1',
+            currentStepSnapshot: seeded.nextStep || null,
+            completed: false,
+          });
           setIsLoading(false);
         }
       } catch (err) {

@@ -13,7 +13,7 @@ export const useDayPlans = (level: string = 'A1') => {
     try {
       const { data, error: fetchError } = await supabase
         .from('lesson_scripts')
-        .select('day, lesson, theme, level')
+        .select('lesson_id, day, lesson, theme, level')
         .eq('level', level)
         .order('day', { ascending: true })
         .order('lesson', { ascending: true });
@@ -23,6 +23,7 @@ export const useDayPlans = (level: string = 'A1') => {
       const plans: DayPlan[] = (data || []).map((row) => ({
         day: row.day,
         lesson: row.lesson,
+        lessonId: row.lesson_id,
         title: `Lesson #${row.lesson}`,
         theme: row.theme || `Lesson #${row.lesson}`,
         isLocked: false,

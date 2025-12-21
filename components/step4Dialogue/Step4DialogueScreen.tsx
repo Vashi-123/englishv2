@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage } from '../../types';
 import type { LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { advanceLesson } from '../../services/lessonV2ClientEngine';
-import { getLessonIdForDayLesson, loadLessonScript } from '../../services/generationService';
+import { cacheChatMessages, getLessonIdForDayLesson, loadLessonScript, peekCachedChatMessages, upsertLessonProgress } from '../../services/generationService';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getOrCreateLocalUser } from '../../services/userService';
 import { parseMarkdown } from './markdown';
@@ -61,10 +61,17 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
   const resolvedLevel = level || 'A1';
   const resolvedLanguage = language || 'ru';
 
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    if (!day || !lesson) return [];
+    return peekCachedChatMessages(day, lesson, resolvedLevel) || [];
+  });
   const [input, setInput] = useState('');
   const [inputMode, setInputMode] = useState<InputMode>('hidden');
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => {
+    if (!day || !lesson) return true;
+    const cached = peekCachedChatMessages(day, lesson, resolvedLevel);
+    return !(cached && cached.length > 0);
+  });
   const [isAwaitingModelReply, setIsAwaitingModelReply] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
@@ -86,6 +93,27 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
   useEffect(() => {
     isInitializingRef.current = isInitializing;
   }, [isInitializing]);
+
+  // Persist chat messages to a lightweight session cache so leaving/re-entering the lesson is instant.
+  const cacheTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!day || !lesson) return;
+    if (isInitializing) return;
+    if (cacheTimerRef.current != null) {
+      window.clearTimeout(cacheTimerRef.current);
+      cacheTimerRef.current = null;
+    }
+    cacheTimerRef.current = window.setTimeout(() => {
+      cacheChatMessages(day || 1, lesson || 1, resolvedLevel, messages);
+      cacheTimerRef.current = null;
+    }, 120);
+    return () => {
+      if (cacheTimerRef.current != null) {
+        window.clearTimeout(cacheTimerRef.current);
+        cacheTimerRef.current = null;
+      }
+    };
+  }, [day, isInitializing, lesson, messages, resolvedLevel]);
 
   const lessonIdRef = useRef<string | null>(null);
   const userIdRef = useRef<string | null>(null);
@@ -348,6 +376,12 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
         const out = advanceLesson({ script, currentStep: { type: 'words', index: 0 } });
         await appendEngineMessagesWithDelay(out.messages);
         setCurrentStep(out.nextStep || null);
+        await upsertLessonProgress({
+          day: day || 1,
+          lesson: lesson || 1,
+          level: resolvedLevel,
+          currentStepSnapshot: out.nextStep || null,
+        });
       } catch (err) {
         console.error('[Step4Dialogue] Error completing matching:', err);
       } finally {
@@ -611,6 +645,12 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
 	        await appendEngineMessagesWithDelay(out.messages, 0);
 	      }
 	      setCurrentStep(out.nextStep || null);
+	      await upsertLessonProgress({
+	        day: day || 1,
+	        lesson: lesson || 1,
+	        level: resolvedLevel,
+	        currentStepSnapshot: out.nextStep || null,
+	      });
 	      // Make the transition feel immediate even if effects run later.
 	      setShowVocab(true);
 	      setPendingVocabPlay(true);

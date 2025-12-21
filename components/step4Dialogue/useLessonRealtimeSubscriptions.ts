@@ -4,12 +4,15 @@ import type { ChatMessage } from '../../types';
 import { subscribeChatMessages } from '../../services/generationService';
 
 function insertMessageByOrder(prev: ChatMessage[], msg: ChatMessage) {
-  const order = msg.messageOrder;
-  if (typeof order !== 'number') return [...prev, msg];
+  // Message ordering is based on createdAt (preferred) and id as a stable tie-breaker.
+  // When unavailable, we fall back to appending.
+  const createdAt = msg.createdAt;
+  if (!createdAt) return [...prev, msg];
   let insertAt = prev.length;
   for (let i = 0; i < prev.length; i++) {
-    const o = prev[i].messageOrder;
-    if (typeof o === 'number' && o > order) {
+    const other = prev[i].createdAt;
+    if (!other) continue;
+    if (other > createdAt) {
       insertAt = i;
       break;
     }
@@ -42,13 +45,31 @@ function reconcileOptimistic(prev: ChatMessage[], msg: ChatMessage) {
 function sortByMessageOrderStable(messages: ChatMessage[]) {
   const decorated = messages.map((m, idx) => ({ m, idx }));
   decorated.sort((a, b) => {
+    const ac = a.m.createdAt;
+    const bc = b.m.createdAt;
+    const aHasC = typeof ac === 'string' && ac.length > 0;
+    const bHasC = typeof bc === 'string' && bc.length > 0;
+    if (aHasC && bHasC) {
+      if (ac !== bc) return ac < bc ? -1 : 1;
+      const aid = a.m.id || '';
+      const bid = b.m.id || '';
+      if (aid && bid && aid !== bid) return aid < bid ? -1 : 1;
+      // Legacy fallback: messageOrder if present
+      const ao = a.m.messageOrder;
+      const bo = b.m.messageOrder;
+      if (typeof ao === 'number' && typeof bo === 'number') return ao - bo || a.idx - b.idx;
+      return a.idx - b.idx;
+    }
+    if (aHasC && !bHasC) return -1;
+    if (!aHasC && bHasC) return 1;
+    // Legacy fallback for older rows without createdAt.
     const ao = a.m.messageOrder;
     const bo = b.m.messageOrder;
-    const aHas = typeof ao === 'number';
-    const bHas = typeof bo === 'number';
-    if (aHas && bHas) return ao - bo || a.idx - b.idx;
-    if (aHas && !bHas) return -1;
-    if (!aHas && bHas) return 1;
+    const aHasO = typeof ao === 'number';
+    const bHasO = typeof bo === 'number';
+    if (aHasO && bHasO) return ao - bo || a.idx - b.idx;
+    if (aHasO && !bHasO) return -1;
+    if (!aHasO && bHasO) return 1;
     return a.idx - b.idx;
   });
   return decorated.map((d) => d.m);
@@ -109,6 +130,7 @@ export function useLessonRealtimeSubscriptions({
           const exists = prev.some(
             (m) =>
               (m.id && msg.id && m.id === msg.id) ||
+              (m.createdAt && msg.createdAt && m.createdAt === msg.createdAt && m.role === msg.role && m.text === msg.text) ||
               (m.messageOrder && msg.messageOrder && m.messageOrder === msg.messageOrder && m.role === msg.role) ||
               (m.text === msg.text && m.role === msg.role && m.messageOrder === msg.messageOrder)
           );

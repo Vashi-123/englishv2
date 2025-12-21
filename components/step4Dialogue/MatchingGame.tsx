@@ -51,27 +51,6 @@ export const MatchingGame = React.forwardRef<HTMLDivElement, Props>(function Mat
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
-          {wordOptions.map((w) => (
-            <button
-              key={w.id}
-              onClick={() => {
-                if (w.matched) return;
-                onSelectWord(w.id);
-              }}
-              className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
-                w.matched
-                  ? 'bg-green-50 border-green-200 text-green-700'
-                  : selectedWord === w.id
-                    ? 'bg-brand-primary/10 border-brand-primary text-brand-primary'
-                    : 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100'
-              }`}
-            >
-              {w.text}
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-2">
           {translationOptions.map((t) => (
             <button
               key={t.id}
@@ -88,6 +67,27 @@ export const MatchingGame = React.forwardRef<HTMLDivElement, Props>(function Mat
               }`}
             >
               {t.text}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-2">
+          {wordOptions.map((w) => (
+            <button
+              key={w.id}
+              onClick={() => {
+                if (w.matched) return;
+                onSelectWord(w.id);
+              }}
+              className={`w-full text-left px-3 py-2 rounded-lg border transition-colors ${
+                w.matched
+                  ? 'bg-green-50 border-green-200 text-green-700'
+                  : selectedWord === w.id
+                    ? 'bg-brand-primary/10 border-brand-primary text-brand-primary'
+                    : 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100'
+              }`}
+            >
+              {w.text}
             </button>
           ))}
         </div>

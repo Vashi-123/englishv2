@@ -211,27 +211,25 @@ Deno.serve(async (req: Request) => {
     );
 
     // Получаем сценарий из lesson_scripts по id
-    console.log("[groq-lesson-v2] Fetching lesson script for lesson_id:", lessonId);
-    const { data: lessonData, error: dbError } = await supabase
-      .from("lesson_scripts")
-      .select("script_text, script")
-      .eq("lesson_id", lessonId)
-      .single();
+	    console.log("[groq-lesson-v2] Fetching lesson script for lesson_id:", lessonId);
+	    const { data: lessonData, error: dbError } = await supabase
+	      .from("lesson_scripts")
+	      .select("script")
+	      .eq("lesson_id", lessonId)
+	      .single();
 
-    if (dbError || !lessonData || (!lessonData.script_text && !lessonData.script)) {
-      console.error("[groq-lesson-v2] Error fetching lesson script:", dbError?.message || "Script not found", "payload:", { lessonId });
-      return new Response("Failed to fetch lesson script", { status: 500, headers: corsHeaders });
-    }
+	    if (dbError || !lessonData || !lessonData.script) {
+	      console.error("[groq-lesson-v2] Error fetching lesson script:", dbError?.message || "Script not found", "payload:", { lessonId });
+	      return new Response("Failed to fetch lesson script", { status: 500, headers: corsHeaders });
+	    }
 
-    let script: LessonScript;
-    try {
-      script = lessonData.script
-        ? (lessonData.script as LessonScript)
-        : JSON.parse(lessonData.script_text) as LessonScript;
-    } catch (parseErr: any) {
-      console.error("[groq-lesson-v2] Failed to parse script_text:", parseErr?.message, "text snippet:", String(lessonData.script_text || "").substring(0, 200));
-      return new Response("Failed to parse lesson script", { status: 500, headers: corsHeaders });
-    }
+	    let script: LessonScript;
+	    try {
+	      script = lessonData.script as LessonScript;
+	    } catch (parseErr: any) {
+	      console.error("[groq-lesson-v2] Failed to parse lesson script:", parseErr?.message);
+	      return new Response("Failed to parse lesson script", { status: 500, headers: corsHeaders });
+	    }
 
     if (!script.goal) {
       console.error("[groq-lesson-v2] Lesson script missing goal", { lessonId, keys: Object.keys(script || {}) });

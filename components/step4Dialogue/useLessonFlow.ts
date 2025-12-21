@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
-import { saveChatMessage, validateDialogueAnswerV2 } from '../../services/generationService';
+import { saveChatMessage, upsertLessonProgress, validateDialogueAnswerV2 } from '../../services/generationService';
 import { advanceLesson, type EngineMessage, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { checkAudioInput, checkTextInput, tryParseJsonMessage } from './messageParsing';
 
@@ -157,6 +157,13 @@ export function useLessonFlow({
           }));
           await appendEngineMessagesWithDelay(messagesWithSnapshot);
           setCurrentStep(out.nextStep || null);
+          await upsertLessonProgress({
+            day,
+            lesson,
+            level,
+            currentStepSnapshot: out.nextStep || null,
+            completed: out.messages?.some((m) => String(m.text || '').includes('<lesson_complete>')) ? true : undefined,
+          });
           return;
         }
 
@@ -185,6 +192,13 @@ export function useLessonFlow({
         }));
         await appendEngineMessagesWithDelay(messagesWithSnapshot);
         setCurrentStep(out.nextStep || null);
+        await upsertLessonProgress({
+          day,
+          lesson,
+          level,
+          currentStepSnapshot: out.nextStep || null,
+          completed: out.messages?.some((m) => String(m.text || '').includes('<lesson_complete>')) ? true : undefined,
+        });
       } catch (err) {
         console.error('[Step4Dialogue] handleStudentAnswer error:', err);
       } finally {

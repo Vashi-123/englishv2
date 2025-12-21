@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
-import { resetLessonDialogue } from '../../services/generationService';
+import { clearChatMessagesCache, resetLessonDialogue } from '../../services/generationService';
 import type { InputMode } from './messageParsing';
 import type { MatchOption } from './useMatchingGame';
 
@@ -178,7 +178,20 @@ export function useLessonRestart({
         // ignore
       }
 
-      await resetLessonDialogue(day || 1, lesson || 1, level || 'A1');
+      // Optimistic reset: clear any cached messages immediately, then delete DB rows.
+      clearChatMessagesCache(day || 1, lesson || 1, resolvedLevel);
+
+      // Delete from DB (retry a couple of times). We still await before re-seeding to avoid deleting new rows.
+      const attempts = 3;
+      for (let i = 0; i < attempts; i += 1) {
+        try {
+          await resetLessonDialogue(day || 1, lesson || 1, resolvedLevel);
+          break;
+        } catch (err) {
+          if (i === attempts - 1) throw err;
+          await new Promise((r) => setTimeout(r, 350 * (i + 1)));
+        }
+      }
       await initializeChat(true);
     } catch (error) {
       console.error('[Step4Dialogue] Error restarting lesson:', error);
@@ -214,6 +227,7 @@ export function useLessonRestart({
     storageKeys.vocabProgressStorageKey,
     vocabRestoreRefs,
     vocab,
+    resolvedLevel,
   ]);
 
   return { restartLesson };

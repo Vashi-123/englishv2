@@ -222,10 +222,12 @@ export function MatchingGameCard({
       if (!wEl || !tEl) continue;
       const wRect = wEl.getBoundingClientRect();
       const tRect = tEl.getBoundingClientRect();
-      const x1 = wRect.right - overlayRect.left;
-      const y1 = wRect.top + wRect.height / 2 - overlayRect.top;
-      const x2 = tRect.left - overlayRect.left;
-      const y2 = tRect.top + tRect.height / 2 - overlayRect.top;
+      // Layout: translations on the left, English on the right.
+      // Connect from the right edge of the left column to the left edge of the right column.
+      const x1 = tRect.right - overlayRect.left;
+      const y1 = tRect.top + tRect.height / 2 - overlayRect.top;
+      const x2 = wRect.left - overlayRect.left;
+      const y2 = wRect.top + wRect.height / 2 - overlayRect.top;
 
       const laneOffsetY = c.kind !== 'matched' || !c.pairId ? 0 : ((hashStringToInt(c.pairId) % 5) - 2) * 12; // -24..24
       const dx = x2 - x1;
@@ -279,21 +281,20 @@ export function MatchingGameCard({
       className="bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto relative overflow-hidden box-border min-w-0"
     >
       <style>{`
-        @keyframes match-shake {
-          0% { transform: translateX(0); }
-          15% { transform: translateX(-6px); }
-          30% { transform: translateX(6px); }
-          45% { transform: translateX(-5px); }
-          60% { transform: translateX(5px); }
-          75% { transform: translateX(-3px); }
-          100% { transform: translateX(0); }
-        }
-        @keyframes match-wrong-pulse {
-          0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0); }
-          30% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.18); }
-          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0); }
-        }
-      `}</style>
+	        @keyframes match-shake {
+	          0% { transform: translateX(0); }
+	          18% { transform: translateX(-3px); }
+	          36% { transform: translateX(3px); }
+	          54% { transform: translateX(-2px); }
+	          72% { transform: translateX(2px); }
+	          100% { transform: translateX(0); }
+	        }
+	        @keyframes match-wrong-pulse {
+	          0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0); }
+	          35% { box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.14); }
+	          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0); }
+	        }
+	      `}</style>
       <div className="flex items-center justify-between">
         <CardHeading
           icon={
@@ -352,45 +353,13 @@ export function MatchingGameCard({
           </svg>
 
         <div className="grid grid-cols-2 gap-10 relative z-10 min-w-0">
-          <div className="space-y-2 min-w-0">
-            {wordOptions.map((w) => {
-              const isWrong = Boolean(mismatchAttempt && mismatchAttempt.wordId === w.id);
-              const animMs = mismatchAttempt ? 420 + (mismatchAttempt.nonce % 7) : 420;
-              const wrongStyle = isWrong
-                ? ({ animation: `match-shake ${animMs}ms ease-in-out both, match-wrong-pulse 560ms ease-out both` } as const)
-                : undefined;
-              return (
-                <button
-                  key={w.id}
-                  ref={(el) => registerWordRef(w.id, el)}
-                  onClick={() => {
-                    if (!showMatching || matchesComplete || w.matched) return;
-                    onPickWord(w.id);
-                  }}
-                  disabled={!showMatching || matchesComplete || w.matched}
-                  style={wrongStyle as any}
-                  className={`w-full min-w-0 text-left px-3 py-2 rounded-lg border transition-colors whitespace-normal break-words ${
-                    w.matched
-                      ? 'bg-green-50 border-green-200 text-green-700'
-                      : isWrong
-                        ? 'bg-red-50 border-red-300 text-red-800'
-                        : selectedWord === w.id
-                          ? 'bg-brand-primary/10 border-brand-primary text-brand-primary'
-                          : 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100'
-                  }`}
-                >
-                  {w.text}
-                </button>
-              );
-            })}
-          </div>
-
+          {/* Left: translations */}
           <div className="space-y-2 min-w-0">
             {translationOptions.map((t) => {
               const isWrong = Boolean(mismatchAttempt && mismatchAttempt.translationId === t.id);
-              const animMs = mismatchAttempt ? 420 + (mismatchAttempt.nonce % 7) : 420;
+              const animMs = mismatchAttempt ? 360 + (mismatchAttempt.nonce % 7) : 360;
               const wrongStyle = isWrong
-                ? ({ animation: `match-shake ${animMs}ms ease-in-out both, match-wrong-pulse 560ms ease-out both` } as const)
+                ? ({ animation: `match-shake ${animMs}ms ease-in-out both, match-wrong-pulse 520ms ease-out both` } as const)
                 : undefined;
               return (
                 <button
@@ -406,13 +375,47 @@ export function MatchingGameCard({
                     t.matched
                       ? 'bg-green-50 border-green-200 text-green-700'
                       : isWrong
-                        ? 'bg-red-50 border-red-300 text-red-800'
+                        ? 'bg-red-50 border-red-200 text-red-800'
                         : selectedTranslation === t.id
                           ? 'bg-brand-primary/10 border-brand-primary text-brand-primary'
                           : 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100'
                   }`}
                 >
                   {t.text}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Right: English */}
+          <div className="space-y-2 min-w-0">
+            {wordOptions.map((w) => {
+              const isWrong = Boolean(mismatchAttempt && mismatchAttempt.wordId === w.id);
+              const animMs = mismatchAttempt ? 360 + (mismatchAttempt.nonce % 7) : 360;
+              const wrongStyle = isWrong
+                ? ({ animation: `match-shake ${animMs}ms ease-in-out both, match-wrong-pulse 520ms ease-out both` } as const)
+                : undefined;
+              return (
+                <button
+                  key={w.id}
+                  ref={(el) => registerWordRef(w.id, el)}
+                  onClick={() => {
+                    if (!showMatching || matchesComplete || w.matched) return;
+                    onPickWord(w.id);
+                  }}
+                  disabled={!showMatching || matchesComplete || w.matched}
+                  style={wrongStyle as any}
+                  className={`w-full min-w-0 text-left px-3 py-2 rounded-lg border transition-colors whitespace-normal break-words ${
+                    w.matched
+                      ? 'bg-green-50 border-green-200 text-green-700'
+                      : isWrong
+                        ? 'bg-red-50 border-red-200 text-red-800'
+                        : selectedWord === w.id
+                          ? 'bg-brand-primary/10 border-brand-primary text-brand-primary'
+                          : 'bg-gray-50 border-gray-200 text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  {w.text}
                 </button>
               );
             })}

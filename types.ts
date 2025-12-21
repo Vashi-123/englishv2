@@ -26,6 +26,7 @@ export interface DayPlan {
   lesson?: number; // lesson number from a1_lessons
   wordIds?: number[]; // parsed word ids for the lesson
   level?: string; // optional: used to disambiguate lesson_scripts rows
+  lessonId?: string; // lesson_scripts.lesson_id (uuid)
 }
 
 // Content rows (Supabase)
@@ -93,6 +94,7 @@ export interface ChatMessage {
   translation?: string; // перевод на русский (для сообщений модели)
   moduleId?: string; // ID модуля, к которому относится сообщение
   messageOrder?: number;
+  createdAt?: string; // ISO timestamp (preferred ordering key)
   currentStepSnapshot?: DialogueStep | null;
 }
 

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useLayoutEffect, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Session } from '@supabase/supabase-js';
 import { ActivityType, ViewState } from './types';
 import { useLanguage } from './hooks/useLanguage';
@@ -7,7 +8,7 @@ import { useContentGeneration } from './hooks/useContentGeneration';
 import { ExerciseView } from './components/Exercise/ExerciseView';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
-import { loadChatMessages, resetUserProgress } from './services/generationService';
+import { hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
 import { 
   X, 
@@ -28,17 +29,37 @@ const AppContent: React.FC<{
   const { language, setLanguage, copy, languages } = useLanguage();
   const [showLangMenu, setShowLangMenu] = useState(false);
   const langMenuRef = useRef<HTMLDivElement | null>(null);
+  const [langMenuPos, setLangMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [level, setLevel] = useState<string>('A1');
 
-  useEffect(() => {
-    const onClickOutside = (e: MouseEvent) => {
-      if (langMenuRef.current && !langMenuRef.current.contains(e.target as Node)) {
-        setShowLangMenu(false);
-      }
+  useLayoutEffect(() => {
+    if (!showLangMenu) {
+      setLangMenuPos(null);
+      return;
+    }
+    const update = () => {
+      const anchor = langMenuRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      const menuWidth = 256; // w-64
+      const margin = 12;
+      const minLeft = 16;
+      const maxLeft = Math.max(minLeft, window.innerWidth - menuWidth - minLeft);
+      const left = Math.min(Math.max(minLeft, Math.round(rect.left)), Math.round(maxLeft));
+      const top = Math.max(16, Math.round(rect.bottom + margin));
+      setLangMenuPos({ top, left });
     };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
+
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [showLangMenu]);
+
+  // Menu uses a fullscreen overlay, so we don't need a global "click outside" listener.
 
   // Day plans management
   const { dayPlans, planLoading } = useDayPlans(level);
@@ -63,6 +84,7 @@ const AppContent: React.FC<{
   const [showInsightPopup, setShowInsightPopup] = useState(false);
   const [lessonCompleted, setLessonCompleted] = useState(false);
   const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>({});
+  const statusesInitKeyRef = useRef<string | null>(null);
 
   const studyPlanWords = copy.header.studyPlan.split(' ');
   const studyPlanFirst = studyPlanWords[0] || '';
@@ -100,6 +122,33 @@ const AppContent: React.FC<{
     preloadFirstMessage();
   }, [currentDayPlan, language, isInitializing]);
 
+  // Prefetch lesson script for the current (actual) day so Step4 opens instantly.
+  useEffect(() => {
+    if (isInitializing) return;
+    if (!currentDayPlan) return;
+    // Only prefetch while on the dashboard to avoid unnecessary background work.
+    if (view !== ViewState.DASHBOARD) return;
+    void prefetchLessonScript(currentDayPlan.day, currentDayPlan.lesson, level);
+  }, [currentDayPlan, isInitializing, level, view]);
+
+  // If the current lesson was already started (lesson_progress exists), preload chat_messages into cache
+  // so Step4 can render instantly without waiting for DB.
+  useEffect(() => {
+    if (isInitializing) return;
+    if (!currentDayPlan) return;
+    if (view !== ViewState.DASHBOARD) return;
+    let cancelled = false;
+    (async () => {
+      const progress = await loadLessonProgress(currentDayPlan.day, currentDayPlan.lesson, level);
+      if (cancelled) return;
+      if (!progress) return;
+      await loadChatMessages(currentDayPlan.day, currentDayPlan.lesson, level);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDayPlan, isInitializing, level, view]);
+
   // Функция проверки статуса урока
   const checkLessonCompletion = async (showLoading = false) => {
     if (!currentDayPlan) return;
@@ -113,12 +162,25 @@ const AppContent: React.FC<{
     }
 
     try {
-      const messages = await loadChatMessages(checkingDay, checkingLesson, level);
-      const hasTagInHistory = messages.some(
-        (msg) => msg.text && msg.text.includes('<lesson_complete>')
-      );
+      const progress = await loadLessonProgress(checkingDay, checkingLesson, level);
+      let resolvedCompleted = progress?.completed === true;
 
-      const resolvedCompleted = hasTagInHistory;
+      // Compatibility/backfill: if progress is missing OR outdated, check chat_messages for the completion tag.
+      if (!resolvedCompleted) {
+        const hasTag = await hasLessonCompleteTag(checkingDay, checkingLesson, level);
+        if (hasTag) {
+          resolvedCompleted = true;
+          await upsertLessonProgress({ day: checkingDay, lesson: checkingLesson, level, completed: true });
+        } else if (!progress) {
+          // Keep the older full-history fallback as a last resort.
+          const messages = await loadChatMessages(checkingDay, checkingLesson, level);
+          const hasTagInHistory = messages.some((msg) => msg.text && msg.text.includes('<lesson_complete>'));
+          resolvedCompleted = hasTagInHistory;
+          if (hasTagInHistory) {
+            await upsertLessonProgress({ day: checkingDay, lesson: checkingLesson, level, completed: true });
+          }
+        }
+      }
 
       // Проверяем, что день не изменился перед установкой статуса
       if (currentDayPlan && currentDayPlan.day === checkingDay && currentDayPlan.lesson === checkingLesson) {
@@ -139,7 +201,6 @@ const AppContent: React.FC<{
         day: checkingDay,
         lesson: checkingLesson,
         completed: resolvedCompleted,
-        tag: hasTagInHistory,
         currentDay: currentDayPlan?.day,
         stillValid: currentDayPlan && currentDayPlan.day === checkingDay,
       });
@@ -154,27 +215,33 @@ const AppContent: React.FC<{
   useEffect(() => {
     const loadAllDaysStatusAndSelectCurrent = async () => {
       if (dayPlans.length === 0) return;
-      
-      setIsInitializing(true);
+
+      // Do not block initial render with a fullscreen loader; hydrate statuses in the background.
+      setIsInitializing(false);
       const statuses: Record<number, boolean> = {};
-      
-      // Загружаем статусы всех дней параллельно
-      const progressPromises = dayPlans.map(async (dayPlan) => {
-        try {
-          const msgs = await loadChatMessages(dayPlan.day, dayPlan.lesson, level);
-          const completed = msgs.some((m) => m.text && m.text.includes('<lesson_complete>'));
-          return { day: dayPlan.day, completed };
-        } catch (error) {
-          // Игнорируем ошибки 406 и другие - просто считаем урок незавершенным
-          console.log("[App] Error loading progress for day", dayPlan.day, "- treating as incomplete");
-          return { day: dayPlan.day, completed: false };
+
+      // Prefer lesson_progress to avoid scanning chat history for every day.
+      const lessonIds = dayPlans.map((p) => p.lessonId).filter(Boolean) as string[];
+      const progressByLessonId = await loadLessonProgressByLessonIds(lessonIds, level);
+      // Walk in order: if a day appears incomplete in progress, verify completion tag only until the first truly incomplete day.
+      let shouldVerify = true;
+      for (const dayPlan of dayPlans) {
+        const lessonId = dayPlan.lessonId;
+        const completedFromProgress = lessonId ? progressByLessonId[lessonId]?.completed === true : false;
+        if (!completedFromProgress && shouldVerify) {
+          const hasTag = await hasLessonCompleteTag(dayPlan.day, dayPlan.lesson, level);
+          if (hasTag) {
+            statuses[dayPlan.day] = true;
+            await upsertLessonProgress({ day: dayPlan.day, lesson: dayPlan.lesson, level, completed: true });
+            continue;
+          }
+          statuses[dayPlan.day] = false;
+          // First truly incomplete day found; remaining days are locked anyway, so skip extra queries.
+          shouldVerify = false;
+          continue;
         }
-      });
-      
-      const results = await Promise.all(progressPromises);
-      results.forEach(({ day, completed }) => {
-        statuses[day] = completed;
-      });
+        statuses[dayPlan.day] = completedFromProgress;
+      }
       
       setDayCompletedStatus(statuses);
       
@@ -189,15 +256,16 @@ const AppContent: React.FC<{
       
       // Устанавливаем актуальный день
       setSelectedDayId(actualDayId);
-      setIsInitializing(false);
       
       console.log("[App] Initialized with actual day:", actualDayId, "statuses:", statuses);
     };
     
-    if (dayPlans.length > 0 && isInitializing) {
-      loadAllDaysStatusAndSelectCurrent();
-    }
-  }, [dayPlans, isInitializing]);
+    if (dayPlans.length === 0) return;
+    const key = `${level}:${dayPlans.length}`;
+    if (statusesInitKeyRef.current === key) return;
+    statusesInitKeyRef.current = key;
+    loadAllDaysStatusAndSelectCurrent();
+  }, [dayPlans, level]);
 
   // Check if lesson is completed by checking chat progress and chat history
   useEffect(() => {
@@ -224,12 +292,35 @@ const AppContent: React.FC<{
   // Realtime прогресс больше не используем: статус урока определяется по chat_messages (<lesson_complete>).
 
   const renderPlanState = () => {
-    if (planLoading || (dayPlans.length === 0) || isInitializing) {
+    if (planLoading || (dayPlans.length === 0)) {
       return (
-        <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
-            <p className="text-gray-500">{copy.common.loadingPlan}</p>
+        <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
+          <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
+          <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
+
+          <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-6 flex-1 pt-8 animate-pulse">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white border border-gray-200 shadow-sm" />
+                <div className="space-y-2">
+                  <div className="h-3 w-28 rounded bg-gray-200" />
+                  <div className="h-6 w-48 rounded bg-gray-200" />
+                </div>
+              </div>
+              <div className="h-10 w-24 rounded-xl bg-gray-200" />
+            </div>
+
+            <div className="rounded-3xl bg-white border border-gray-100 shadow-sm p-6 space-y-3">
+              <div className="h-4 w-40 rounded bg-gray-200" />
+              <div className="h-3 w-full rounded bg-gray-100" />
+              <div className="h-3 w-3/4 rounded bg-gray-100" />
+            </div>
+
+            <div className="rounded-3xl bg-white border border-gray-100 shadow-sm p-6 space-y-3">
+              <div className="h-4 w-32 rounded bg-gray-200" />
+              <div className="h-3 w-full rounded bg-gray-100" />
+              <div className="h-10 w-full rounded-2xl bg-gray-200" />
+            </div>
           </div>
         </div>
       );
@@ -320,6 +411,15 @@ const AppContent: React.FC<{
     setActivityStep(type);
     await generateContent(type);
     setView(ViewState.EXERCISE);
+
+    // Once the user starts the current lesson, prefetch the next lesson script in the background.
+    if (type === ActivityType.DIALOGUE) {
+      const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
+      const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
+      if (nextPlan?.day && nextPlan?.lesson) {
+        void prefetchLessonScript(nextPlan.day, nextPlan.lesson, level);
+      }
+    }
   };
 
   const handleLevelChange = (lvl: string) => {
@@ -352,12 +452,11 @@ const AppContent: React.FC<{
         setCompletedTasks(prev => [...prev, activityStep]);
     }
     
-    // Если выходим из чата (Step4Dialogue), проверяем статус урока
-    if (activityStep === ActivityType.DIALOGUE) {
-      await checkLessonCompletion(true);
-    }
-    
+    // Return instantly; refresh completion status in the background.
     setView(ViewState.DASHBOARD);
+    if (activityStep === ActivityType.DIALOGUE) {
+      void checkLessonCompletion(false);
+    }
   };
 
   const renderInsightPopup = () => {
@@ -431,18 +530,18 @@ const AppContent: React.FC<{
     // Не блокируем кнопку, если урок завершен - пользователь должен иметь возможность повторить
     const chatLocked = isCurrentDayCompleted && chatCompleted && !lessonCompleted;
 
-    return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
+	    return (
+	    <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
       
       {/* Background accents */}
       <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
       <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-      <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-5 flex-1 pt-8">
-      {/* 1. Header */}
-        <div className="flex flex-col gap-1.5 z-10 flex-none">
-        <div className="flex items-start justify-between gap-3">
-          <div className="relative" ref={langMenuRef}>
+	      <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-5 flex-1 pt-8">
+	      {/* 1. Header */}
+	        <div className="flex flex-col gap-1.5 z-10 flex-none">
+	        <div className="flex items-start justify-between gap-3">
+	          <div className="relative" ref={langMenuRef}>
             <div className="flex items-center gap-3">
               <div
                 className="w-10 h-10 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center cursor-pointer"
@@ -457,13 +556,23 @@ const AppContent: React.FC<{
                 <div className="text-2xl font-semibold leading-tight text-slate-900">
                   {studyPlanFirst} {studyPlanRest && <span className="font-bold text-brand-primary">{studyPlanRest}</span>}
                 </div>
-              </div>
-            </div>
+	              </div>
+	            </div>
 
-            {showLangMenu && (
-              <div
-                className="absolute top-14 left-0 bg-white border border-gray-200 rounded-xl shadow-lg p-3 w-64 space-y-3"
-              >
+	            {showLangMenu &&
+                langMenuPos &&
+                createPortal(
+                  <div className="fixed inset-0 z-[9999]">
+                    <button
+                      type="button"
+                      aria-label="Close menu"
+                      className="absolute inset-0 bg-black/25 backdrop-blur-sm cursor-default"
+                      onClick={() => setShowLangMenu(false)}
+                    />
+                    <div
+                      className="absolute bg-white border border-gray-200 rounded-xl shadow-2xl p-3 w-64 space-y-3"
+                      style={{ top: langMenuPos.top, left: langMenuPos.left }}
+                    >
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
               Профиль
             </div>
@@ -522,11 +631,13 @@ const AppContent: React.FC<{
                 Выйти
               </button>
             </div>
-          </div>
-        )}
-          </div>
-        </div>
-        </div>
+                    </div>
+                  </div>,
+                  document.body
+                )}
+	          </div>
+	        </div>
+	        </div>
 
         {/* 2. Course Progress */}
         <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-4 flex flex-col gap-3 w-full">
@@ -763,9 +874,9 @@ const AppContent: React.FC<{
   );};
 
   const handleBackFromExercise = async () => {
-    // Проверяем статус урока перед возвратом на главный экран
-    await checkLessonCompletion(true);
+    // Return instantly; refresh completion status in the background.
     setView(ViewState.DASHBOARD);
+    void checkLessonCompletion(false);
   };
 
   const renderExercise = () => {

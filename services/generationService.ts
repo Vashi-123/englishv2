@@ -1,13 +1,38 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { VocabResponse, GrammarResponse, GrammarRow, CorrectionResponse, ChatMessage, DialogueStep } from "../types";
 import { supabase } from "./supabaseClient";
-import { getOrCreateLocalUser } from "./userService";
+import { getLocalUserId, getOrCreateLocalUser } from "./userService";
 
 const apiKey = process.env.API_KEY || "";
 const ai = new GoogleGenAI({ apiKey });
 
 // Helper to get the model
 const getModel = () => "gemini-2.5-flash";
+
+// In-memory lesson script cache to make Step4 openings instant after prefetch.
+const lessonScriptCache = new Map<string, string>();
+const lessonScriptStoragePrefix = 'englishv2:lessonScript:';
+
+const getLessonScriptCacheKey = (day: number, lesson: number, level: string) => `${level}:${day}:${lesson}`;
+
+const readLessonScriptFromSession = (cacheKey: string): string | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.sessionStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}`);
+  } catch {
+    return null;
+  }
+};
+
+const writeLessonScriptToSession = (cacheKey: string, script: string) => {
+  try {
+    if (typeof window === 'undefined') return;
+    // sessionStorage keeps cache until tab is closed; avoids growing persistent storage.
+    window.sessionStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}`, script);
+  } catch {
+    // ignore
+  }
+};
 
 /**
  * Call Groq edge function to generate vocabulary with translations
@@ -467,6 +492,138 @@ export const loadChatProgress = async (
   return null;
 };
 
+type LessonProgressRow = {
+  lesson_id: string;
+  local_user_id: string | null;
+  user_id: string | null;
+  level: string | null;
+  current_step_snapshot: any | null;
+  completed_at: string | null;
+  updated_at: string | null;
+};
+
+const toLessonProgressCompleted = (row: LessonProgressRow | null | undefined): boolean =>
+  !!row?.completed_at;
+
+export const loadLessonProgress = async (
+  day: number,
+  lesson: number,
+  level: string = 'A1'
+): Promise<{ currentStepSnapshot: any | null; completed: boolean } | null> => {
+  try {
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) return null;
+    const lessonId = await getLessonIdForDayLesson(day, lesson, level);
+
+    const { data, error } = await supabase
+      .from('lesson_progress')
+      .select('current_step_snapshot, completed_at')
+      .eq('local_user_id', localUserId)
+      .eq('lesson_id', lessonId)
+      .limit(1)
+      .maybeSingle();
+
+    if (error) return null;
+
+    const row = data as any;
+    return {
+      currentStepSnapshot: row?.current_step_snapshot ?? null,
+      completed: !!row?.completed_at,
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const loadLessonProgressByLessonIds = async (
+  lessonIds: string[],
+  level: string = 'A1'
+): Promise<Record<string, { completed: boolean; currentStepSnapshot: any | null }>> => {
+  const out: Record<string, { completed: boolean; currentStepSnapshot: any | null }> = {};
+  try {
+    const ids = (lessonIds || []).filter(Boolean);
+    if (ids.length === 0) return out;
+
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) return out;
+
+    const { data, error } = await supabase
+      .from('lesson_progress')
+      .select('lesson_id, completed_at, current_step_snapshot')
+      .eq('local_user_id', localUserId)
+      .in('lesson_id', ids);
+
+    if (error || !data) return out;
+
+    for (const row of data as any[]) {
+      if (!row?.lesson_id) continue;
+      out[row.lesson_id] = {
+        completed: !!row.completed_at,
+        currentStepSnapshot: row.current_step_snapshot ?? null,
+      };
+    }
+    return out;
+  } catch {
+    void level;
+    return out;
+  }
+};
+
+export const hasLessonCompleteTag = async (
+  day: number,
+  lesson: number,
+  level: string = 'A1'
+): Promise<boolean> => {
+  try {
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) return false;
+    const lessonId = await getLessonIdForDayLesson(day, lesson, level);
+
+    const { data, error } = await supabase
+      .from('chat_messages')
+      .select('id')
+      .eq('local_user_id', localUserId)
+      .eq('lesson_id', lessonId)
+      .ilike('text', '%<lesson_complete>%')
+      .limit(1);
+
+    if (error) return false;
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return false;
+  }
+};
+
+export const upsertLessonProgress = async (params: {
+  day: number;
+  lesson: number;
+  level?: string;
+  lessonId?: string;
+  currentStepSnapshot?: any | null;
+  completed?: boolean;
+}): Promise<void> => {
+  try {
+    const localUserId = await getOrCreateLocalUser();
+    if (!localUserId) return;
+    const resolvedLevel = params.level || 'A1';
+    const lessonId = params.lessonId || (await getLessonIdForDayLesson(params.day, params.lesson, resolvedLevel));
+
+    const payload: any = {
+      local_user_id: localUserId,
+      lesson_id: lessonId,
+      level: resolvedLevel,
+      updated_at: new Date().toISOString(),
+    };
+    if (params.currentStepSnapshot !== undefined) payload.current_step_snapshot = params.currentStepSnapshot;
+    if (params.completed === true) payload.completed_at = new Date().toISOString();
+    if (params.completed === false) payload.completed_at = null;
+
+    await supabase.from('lesson_progress').upsert(payload, { onConflict: 'local_user_id,lesson_id' });
+  } catch (error) {
+    console.error('[upsertLessonProgress] Error:', error);
+  }
+};
+
 /**
  * Сохранить сообщение в чате
  */
@@ -506,22 +663,6 @@ export const saveChatMessage = async (
       textLength: text.length 
     });
 
-    // Получаем последний message_order (быстрее и меньше шансов на гонки, чем count)
-    const { data: lastRow, error: lastOrderError } = await supabase
-      .from('chat_messages')
-      .select('message_order')
-      .eq('local_user_id', localUserId)
-      .eq('lesson_id', lessonId)
-      .order('message_order', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (lastOrderError) {
-      console.error("[saveChatMessage] Error loading last message order:", lastOrderError);
-    }
-
-    const messageOrder = (lastRow?.message_order || 0) + 1;
-
     const { data: insertedData, error } = await supabase
       .from('chat_messages')
       .insert({
@@ -529,7 +670,6 @@ export const saveChatMessage = async (
         lesson_id: lessonId,
         role,
         text: text.trim(),
-        message_order: messageOrder,
         current_step_snapshot: currentStepSnapshot ?? null,
       })
       .select();
@@ -545,6 +685,12 @@ export const saveChatMessage = async (
     } else {
       console.log("[saveChatMessage] Message saved successfully:", insertedData);
     }
+
+    // Lightweight progress update: record completion without scanning history.
+    // We update current_step_snapshot from the Step4 client where we know the next step.
+    if (text.includes('<lesson_complete>')) {
+      await upsertLessonProgress({ day, lesson, level, lessonId, completed: true });
+    }
   } catch (error) {
     console.error("[saveChatMessage] Exception saving chat message:", error);
   }
@@ -556,14 +702,21 @@ export const saveChatMessage = async (
 export const loadChatMessages = async (
   day: number,
   lesson: number,
-  level: string = 'A1'
+  level: string = 'A1',
+  opts?: { preferCache?: boolean }
 ): Promise<ChatMessage[]> => {
   try {
+    if (opts?.preferCache) {
+      const cached = peekCachedChatMessages(day, lesson, level);
+      if (cached) return cached;
+    }
+
     const localUserId = await getOrCreateLocalUser();
     if (!localUserId) {
       console.log("[loadChatMessages] No local user ID found");
       return [];
     }
+    const cacheKey = getChatMessagesCacheKey(day, lesson, level, localUserId);
 
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
@@ -571,10 +724,11 @@ export const loadChatMessages = async (
 
     const { data, error } = await supabase
       .from('chat_messages')
-      .select('id, role, text, message_order, current_step_snapshot')
+      .select('id, role, text, created_at, message_order, current_step_snapshot')
       .eq('local_user_id', localUserId)
       .eq('lesson_id', lessonId)
-      .order('message_order', { ascending: true });
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
 
     if (error) {
       console.error("[loadChatMessages] Error loading chat messages:", error);
@@ -591,15 +745,21 @@ export const loadChatMessages = async (
     }
 
     console.log("[loadChatMessages] Loaded", data.length, "messages");
-    return data.map(msg => ({
+    const mapped = data.map(msg => ({
       id: msg.id,
       role: msg.role as 'user' | 'model',
       text: msg.text,
       translation: undefined,
       moduleId: undefined,
       messageOrder: msg.message_order || undefined,
+      createdAt: (msg as any).created_at || undefined,
       currentStepSnapshot: msg.current_step_snapshot,
     }));
+    if (cacheKey) {
+      chatMessagesMemoryCache.set(cacheKey, mapped);
+      writeChatMessagesToSession(cacheKey, mapped);
+    }
+    return mapped;
   } catch (error) {
     console.error("[loadChatMessages] Exception loading chat messages:", error);
     return [];
@@ -615,9 +775,19 @@ export const loadLessonScript = async (
   level: string = 'A1'
 ): Promise<string | null> => {
   try {
+    const cacheKey = getLessonScriptCacheKey(day, lesson, level);
+    const cached = lessonScriptCache.get(cacheKey);
+    if (cached) return cached;
+
+    const sessionCached = readLessonScriptFromSession(cacheKey);
+    if (sessionCached) {
+      lessonScriptCache.set(cacheKey, sessionCached);
+      return sessionCached;
+    }
+
     const base = supabase
       .from('lesson_scripts')
-      .select('script_text, script')
+      .select('script')
       .eq('day', day)
       .eq('lesson', lesson)
       .order('updated_at', { ascending: false })
@@ -637,21 +807,133 @@ export const loadLessonScript = async (
       return null;
     }
 
-    // IMPORTANT: Prefer the JSON column `script` (v2), because `script_text` might contain a legacy/plain-text script.
-    const raw =
-      (data as any)?.script != null
-        ? JSON.stringify((data as any).script)
-        : typeof (data as any)?.script_text === "string"
-          ? (data as any).script_text
-          : null;
+    const raw = (data as any)?.script != null ? JSON.stringify((data as any).script) : null;
 
     if (typeof raw !== "string") return null;
 
     // Some DB rows may contain a leading BOM/zero-width characters which break JSON.parse on the client.
-    return raw.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, "");
+    const cleaned = raw.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, "");
+    lessonScriptCache.set(cacheKey, cleaned);
+    writeLessonScriptToSession(cacheKey, cleaned);
+    return cleaned;
   } catch (error) {
     console.error("[loadLessonScript] Exception loading lesson script:", error);
     return null;
+  }
+};
+
+export const prefetchLessonScript = async (
+  day: number,
+  lesson: number,
+  level: string = 'A1'
+): Promise<void> => {
+  try {
+    const cacheKey = getLessonScriptCacheKey(day, lesson, level);
+    if (lessonScriptCache.has(cacheKey)) return;
+    const sessionCached = readLessonScriptFromSession(cacheKey);
+    if (sessionCached) {
+      lessonScriptCache.set(cacheKey, sessionCached);
+      return;
+    }
+    await loadLessonScript(day, lesson, level);
+  } catch {
+    // ignore prefetch errors
+  }
+};
+
+export const clearLessonScriptCache = () => {
+  lessonScriptCache.clear();
+  try {
+    if (typeof window === 'undefined') return;
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (key && key.startsWith(lessonScriptStoragePrefix)) keysToRemove.push(key);
+    }
+    keysToRemove.forEach((k) => window.sessionStorage.removeItem(k));
+  } catch {
+    // ignore
+  }
+};
+
+// Lightweight client-side cache for chat_messages to avoid reloading on re-entry.
+const chatMessagesStoragePrefix = 'englishv2:chatMessages:';
+const chatMessagesMemoryCache = new Map<string, ChatMessage[]>();
+
+const getChatMessagesCacheKey = (
+  day: number,
+  lesson: number,
+  level: string,
+  localUserIdOverride?: string | null
+): string | null => {
+  const localUserId = localUserIdOverride || getLocalUserId();
+  if (!localUserId) return null;
+  return `${localUserId}:${level}:${day}:${lesson}`;
+};
+
+const readChatMessagesFromSession = (cacheKey: string): ChatMessage[] | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    const raw = window.sessionStorage.getItem(`${chatMessagesStoragePrefix}${cacheKey}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as ChatMessage[]) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writeChatMessagesToSession = (cacheKey: string, messages: ChatMessage[]) => {
+  try {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(`${chatMessagesStoragePrefix}${cacheKey}`, JSON.stringify(messages));
+  } catch {
+    // ignore
+  }
+};
+
+export const cacheChatMessages = (day: number, lesson: number, level: string, messages: ChatMessage[]) => {
+  const cacheKey = getChatMessagesCacheKey(day, lesson, level);
+  if (!cacheKey) return;
+  chatMessagesMemoryCache.set(cacheKey, messages);
+  writeChatMessagesToSession(cacheKey, messages);
+};
+
+export const peekCachedChatMessages = (day: number, lesson: number, level: string): ChatMessage[] | null => {
+  const cacheKey = getChatMessagesCacheKey(day, lesson, level);
+  if (!cacheKey) return null;
+  const mem = chatMessagesMemoryCache.get(cacheKey);
+  if (mem && Array.isArray(mem)) return mem;
+  const sess = readChatMessagesFromSession(cacheKey);
+  if (sess) {
+    chatMessagesMemoryCache.set(cacheKey, sess);
+    return sess;
+  }
+  return null;
+};
+
+export const clearChatMessagesCache = (day?: number, lesson?: number, level?: string) => {
+  try {
+    if (day != null && lesson != null && level) {
+      const cacheKey = getChatMessagesCacheKey(day, lesson, level);
+      if (cacheKey) {
+        chatMessagesMemoryCache.delete(cacheKey);
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem(`${chatMessagesStoragePrefix}${cacheKey}`);
+        }
+      }
+      return;
+    }
+    chatMessagesMemoryCache.clear();
+    if (typeof window === 'undefined') return;
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (key && key.startsWith(chatMessagesStoragePrefix)) keysToRemove.push(key);
+    }
+    keysToRemove.forEach((k) => window.sessionStorage.removeItem(k));
+  } catch {
+    // ignore
   }
 };
 
@@ -678,6 +960,7 @@ export const subscribeChatMessages = async (
       translation: undefined,
       moduleId: undefined,
       messageOrder: row.message_order || undefined,
+      createdAt: row.created_at || undefined,
       currentStepSnapshot: row.current_step_snapshot,
     });
   };
@@ -737,6 +1020,17 @@ export const resetLessonDialogue = async (day: number, lesson: number, level: st
     if (delMessages.error) {
       console.error('[resetLessonDialogue] Error deleting chat_messages:', delMessages.error);
     }
+
+    const delProgress = await supabase
+      .from('lesson_progress')
+      .delete()
+      .eq('local_user_id', localUserId)
+      .eq('lesson_id', lessonId);
+    if ((delProgress as any)?.error) {
+      console.error('[resetLessonDialogue] Error deleting lesson_progress:', (delProgress as any).error);
+    }
+
+    clearChatMessagesCache(day, lesson, level);
   } catch (error) {
     console.error('[resetLessonDialogue] Error:', error);
     throw error;
@@ -752,6 +1046,8 @@ export const resetUserProgress = async (): Promise<void> => {
     if (!localUserId) return;
 
     await supabase.from('chat_messages').delete().eq('local_user_id', localUserId);
+    await supabase.from('lesson_progress').delete().eq('local_user_id', localUserId);
+    clearChatMessagesCache();
   } catch (error) {
     console.error('[resetUserProgress] Error:', error);
   }
