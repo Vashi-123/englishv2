@@ -519,6 +519,29 @@ const AppContent: React.FC<{
     setIsCheckingStatus(true);
     try {
       await resetUserProgress();
+
+      // "Start level over" must also reset client-side UI caches, otherwise Step4 cards can restore as "completed"
+      // even though the DB was wiped.
+      try {
+        if (typeof window !== 'undefined') {
+          // Step4 UI state
+          for (let i = 0; i < window.localStorage.length; i += 1) {
+            const k = window.localStorage.key(i);
+            if (!k) continue;
+            if (k.startsWith('step4dialogue:') || k.startsWith('dialogue_messages_v2:')) {
+              window.localStorage.removeItem(k);
+              i -= 1;
+            }
+          }
+
+          // Force-refresh cached lesson scripts (and linked audio caches) + dashboard plan for this level.
+          clearLessonScriptCacheForLevel(level);
+          window.sessionStorage.removeItem(`englishv2:dayPlans:${level}`);
+        }
+      } catch {
+        // ignore cache errors
+      }
+
       setDayCompletedStatus({});
       setLessonCompleted(false);
       setCompletedTasks([]);
