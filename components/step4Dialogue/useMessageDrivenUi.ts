@@ -202,6 +202,9 @@ export function useMessageDrivenUi({
           setVocabIndex(typeof desired === 'number' ? Math.min(Math.max(desired, 0), maxIdx) : 0);
           appliedVocabRestoreKeyRef.current = vocabProgressStorageKey;
           setPendingVocabPlay(false);
+          // If the user already acknowledged the goal gate, ensure the vocab block is visible on re-entry.
+          // Otherwise keep it hidden until the goal message is acknowledged.
+          setShowVocab(goalGateAcknowledged && !goalGatePending);
           break;
         }
       } catch {
@@ -214,9 +217,12 @@ export function useMessageDrivenUi({
     messages,
     restoredVocabIndexRef,
     setPendingVocabPlay,
+    setShowVocab,
     setVocabIndex,
     setVocabWords,
     vocabProgressStorageKey,
+    goalGateAcknowledged,
+    goalGatePending,
   ]);
 
   useEffect(() => {

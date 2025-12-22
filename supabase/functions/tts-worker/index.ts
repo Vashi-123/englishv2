@@ -15,39 +15,91 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
 const BUCKET = Deno.env.get("TTS_BUCKET") || "tts";
-const GOOGLE_TTS_API_KEY = Deno.env.get("GOOGLE_TTS_API_KEY");
+const OPENAI_TTS_API_KEY = Deno.env.get("OPENAI_TTS_API_KEY");
+const OPENAI_TTS_MODEL = Deno.env.get("OPENAI_TTS_MODEL") || "gpt-4o-mini-tts";
 const DEFAULT_LANG = Deno.env.get("TTS_LANG") || "en-US";
-// Google Cloud Text-to-Speech voice name (examples: en-US-Neural2-F, en-GB-Neural2-B, en-US-Studio-O)
-const DEFAULT_VOICE = Deno.env.get("TTS_VOICE") || "en-US-Neural2-F";
+// OpenAI TTS voice (examples: cedar, marin)
+const DEFAULT_VOICE = Deno.env.get("TTS_VOICE") || "cedar";
+const MAX_JOB_ATTEMPTS = Math.max(1, Math.min(10, Number(Deno.env.get("TTS_MAX_ATTEMPTS") || "5")));
 
-async function speakGoogle(params: { text: string; lang: string; voice: string }): Promise<Uint8Array> {
-  if (!GOOGLE_TTS_API_KEY) {
-    throw new Error("Missing GOOGLE_TTS_API_KEY");
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isInsufficientQuotaError(message: string): boolean {
+  return message.includes("insufficient_quota") || message.includes('"code": "insufficient_quota"');
+}
+
+function isRetryableNetworkError(message: string): boolean {
+  const m = message.toLowerCase();
+  // Deno/undici-ish transient network errors we see in practice
+  if (m.includes("connection reset")) return true;
+  if (m.includes("econnreset")) return true;
+  if (m.includes("timed out") || m.includes("timeout")) return true;
+  if (m.includes("connection error")) return true;
+  if (m.includes("sendrequest")) return true;
+  if (m.includes("load failed")) return true;
+  return false;
+}
+
+function parseRetryAfterMs(res: Response): number | null {
+  const raw = res.headers.get("retry-after");
+  if (!raw) return null;
+  const secs = Number(raw);
+  if (Number.isFinite(secs) && secs > 0) return Math.min(30_000, Math.round(secs * 1000));
+  return null;
+}
+
+async function speakOpenAI(params: { text: string; voice: string }): Promise<Uint8Array> {
+  if (!OPENAI_TTS_API_KEY) {
+    throw new Error("Missing OPENAI_TTS_API_KEY");
   }
 
-  const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(GOOGLE_TTS_API_KEY)}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      input: { text: params.text },
-      voice: { languageCode: params.lang, name: params.voice },
-      audioConfig: { audioEncoding: "MP3" },
-    }),
-  });
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const res = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${OPENAI_TTS_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: OPENAI_TTS_MODEL,
+          voice: params.voice,
+          input: params.text,
+          format: "mp3",
+        }),
+      });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Google TTS failed: ${res.status} ${res.statusText} ${text}`);
+      if (!res.ok) {
+        const bodyText = await res.text().catch(() => "");
+
+        // Retry rate-limits + transient 5xx.
+        if (res.status === 429 && !isInsufficientQuotaError(bodyText) && attempt < maxAttempts) {
+          await sleep(parseRetryAfterMs(res) ?? 800 * attempt);
+          continue;
+        }
+        if (res.status >= 500 && res.status <= 599 && attempt < maxAttempts) {
+          await sleep(600 * attempt);
+          continue;
+        }
+
+        throw new Error(`OpenAI TTS failed: ${res.status} ${res.statusText} ${bodyText}`);
+      }
+
+      const buf = new Uint8Array(await res.arrayBuffer());
+      if (buf.length === 0) throw new Error("OpenAI TTS returned empty audio");
+      return buf;
+    } catch (e) {
+      const msg = String(e?.message || e);
+      const retryable = isRetryableNetworkError(msg);
+      if (!retryable || attempt >= maxAttempts) throw e;
+      await sleep(500 * attempt);
+    }
   }
 
-  const json = await res.json().catch(() => null) as any;
-  const b64 = json?.audioContent;
-  if (!b64 || typeof b64 !== "string") throw new Error("Google TTS returned empty audio");
-
-  const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-  if (bytes.length === 0) throw new Error("Google TTS returned empty audio");
-  return bytes;
+  throw new Error("OpenAI TTS failed: exhausted retries");
 }
 
 Deno.serve(async (req: Request) => {
@@ -66,8 +118,9 @@ Deno.serve(async (req: Request) => {
 
     const { data: jobs, error } = await supabase
       .from("tts_jobs")
-      .select("id, hash, lang, voice, text")
-      .eq("status", "pending")
+      .select("id, hash, lang, voice, text, status, attempts, error")
+      .in("status", ["pending", "error"])
+      .lt("attempts", MAX_JOB_ATTEMPTS)
       .order("created_at", { ascending: true })
       .limit(limit);
 
@@ -89,10 +142,19 @@ Deno.serve(async (req: Request) => {
       const voice = (job.voice as string) || DEFAULT_VOICE;
       const text = String(job.text || "").trim();
       const hash = String(job.hash || "");
+      const attempts = Number(job.attempts || 0);
+      const priorStatus = String(job.status || "pending");
+      const priorError = String(job.error || "");
 
       try {
+        // Avoid re-processing quota failures in tight loops.
+        if (priorStatus === "error" && isInsufficientQuotaError(priorError)) {
+          processed += 1;
+          continue;
+        }
+
         // Mark as processing
-        await supabase.from("tts_jobs").update({ status: "processing", attempts: (job.attempts || 0) + 1 }).eq("id", jobId);
+        await supabase.from("tts_jobs").update({ status: "processing", attempts: attempts + 1 }).eq("id", jobId);
 
         // If asset already exists, skip generation.
         const { data: existing } = await supabase
@@ -108,7 +170,7 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        const audio = await speakGoogle({ text, lang, voice });
+        const audio = await speakOpenAI({ text, voice });
         const path = `${lang}/${voice}/${hash}.mp3`;
 
         const upload = await supabase.storage.from(BUCKET).upload(path, new Blob([audio], { type: "audio/mpeg" }), {
@@ -140,7 +202,10 @@ Deno.serve(async (req: Request) => {
       } catch (e) {
         const msg = String(e?.message || e);
         errors.push({ id: jobId, error: msg });
-        await supabase.from("tts_jobs").update({ status: "error", error: msg }).eq("id", jobId);
+        const nextAttempts = attempts + 1;
+        const shouldRetry = nextAttempts < MAX_JOB_ATTEMPTS && (isRetryableNetworkError(msg) || msg.includes("OpenAI TTS failed: 429"));
+        const nextStatus = shouldRetry ? "pending" : "error";
+        await supabase.from("tts_jobs").update({ status: nextStatus, error: msg }).eq("id", jobId);
         processed += 1;
       }
     }

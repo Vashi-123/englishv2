@@ -14,8 +14,8 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const DEFAULT_LANG = Deno.env.get("TTS_LANG") || "en-US";
-// Google Cloud Text-to-Speech voice name (examples: en-US-Neural2-F, en-GB-Neural2-B, en-US-Studio-O)
-const DEFAULT_VOICE = Deno.env.get("TTS_VOICE") || "en-US-Neural2-F";
+// OpenAI TTS voice (examples: cedar, marin)
+const DEFAULT_VOICE = Deno.env.get("TTS_VOICE") || "cedar";
 
 function normalizeText(input: string): string {
   return String(input || "")

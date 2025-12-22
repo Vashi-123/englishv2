@@ -2,6 +2,7 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { VocabResponse, GrammarResponse, GrammarRow, CorrectionResponse, ChatMessage, DialogueStep } from "../types";
 import { supabase } from "./supabaseClient";
 import { getLocalUserId, getOrCreateLocalUser, requireAuthUserId } from "./userService";
+import { clearAllTtsCache, clearTtsCacheForLessonCacheKey, prefetchTtsForLessonScript } from './ttsAssetService';
 
 const apiKey = process.env.API_KEY || "";
 const ai = new GoogleGenAI({ apiKey });
@@ -829,6 +830,9 @@ export const loadLessonScript = async (
     const cleaned = raw.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, "");
     lessonScriptCache.set(cacheKey, cleaned);
     writeLessonScriptToSession(cacheKey, cleaned);
+
+    // Start background audio prefetch together with lesson_script caching.
+    void prefetchTtsForLessonScript({ lessonCacheKey: cacheKey, scriptJsonString: cleaned });
     return cleaned;
   } catch (error) {
     console.error("[loadLessonScript] Exception loading lesson script:", error);
@@ -864,6 +868,9 @@ export const clearLessonScriptCacheFor = (day: number, lesson: number, level: st
   } catch {
     // ignore
   }
+
+  // Keep lesson_script + audio cache in sync.
+  void clearTtsCacheForLessonCacheKey(cacheKey);
 };
 
 export const clearLessonScriptCache = () => {
@@ -879,6 +886,9 @@ export const clearLessonScriptCache = () => {
   } catch {
     // ignore
   }
+
+  // Keep lesson_script + audio cache in sync.
+  void clearAllTtsCache();
 };
 
 // Lightweight client-side cache for chat_messages to avoid reloading on re-entry.
