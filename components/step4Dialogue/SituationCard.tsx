@@ -39,16 +39,16 @@ export function SituationCard({ title, situation, task, ai, feedback, renderMark
             </div>
           )}
 
-          {ai && (
-            <div className="mt-6 flex justify-start items-end gap-3">
-              <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">
-                <span className="text-xs font-bold">AI</span>
-              </div>
-              <div className="max-w-[92%] rounded-2xl bg-gray-50 px-4 py-3 text-[15px] font-medium leading-relaxed text-gray-900">
-                {renderMarkdown(ai)}
-              </div>
-            </div>
-          )}
+	          {ai && (
+	            <div className="mt-6 flex justify-start items-end gap-3 mb-6">
+	              <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">
+	                <span className="text-xs font-bold">AI</span>
+	              </div>
+	              <div className="max-w-[92%] rounded-2xl bg-gray-50 px-4 py-3 text-[15px] font-medium leading-relaxed text-gray-900">
+	                {renderMarkdown(ai)}
+	              </div>
+	            </div>
+	          )}
         </div>
 
         {feedback && (

@@ -1,13 +1,28 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { VocabResponse, GrammarResponse, GrammarRow, CorrectionResponse, ChatMessage, DialogueStep } from "../types";
 import { supabase } from "./supabaseClient";
-import { getLocalUserId, getOrCreateLocalUser } from "./userService";
+import { getLocalUserId, getOrCreateLocalUser, requireAuthUserId } from "./userService";
 
 const apiKey = process.env.API_KEY || "";
 const ai = new GoogleGenAI({ apiKey });
 
 // Helper to get the model
 const getModel = () => "gemini-2.5-flash";
+
+export const getAuthUserIdFromSession = async (): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return null;
+    return data.session?.user?.id || null;
+  } catch {
+    return null;
+  }
+};
+
+const getIdentityFilter = async (): Promise<{ column: 'user_id'; value: string }> => {
+  const userId = await requireAuthUserId();
+  return { column: 'user_id', value: userId };
+};
 
 // In-memory lesson script cache to make Step4 openings instant after prefetch.
 const lessonScriptCache = new Map<string, string>();
@@ -282,7 +297,7 @@ export const startDialogueSessionV2 = async (
 ): Promise<{ text: string; isCorrect: boolean; feedback: string; nextStep: DialogueStep | null }> => {
   try {
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
-    const userId = await getOrCreateLocalUser();
+    const userId = (await getAuthUserIdFromSession()) || (await getOrCreateLocalUser());
 
     console.log("[startDialogueSessionV2] invoking groq-lesson-v2", { lessonId, userId, day, lesson, uiLang });
     const { data, error } = await supabase.functions.invoke("groq-lesson-v2", {
@@ -340,7 +355,7 @@ export const sendDialogueMessageV2 = async (
 ): Promise<{ text: string; isCorrect: boolean; feedback: string; nextStep: DialogueStep | null }> => {
   try {
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
-    const userId = await getOrCreateLocalUser();
+    const userId = (await getAuthUserIdFromSession()) || (await getOrCreateLocalUser());
 
     console.log("[sendDialogueMessageV2] invoking groq-lesson-v2", {
       lessonId,
@@ -494,7 +509,6 @@ export const loadChatProgress = async (
 
 type LessonProgressRow = {
   lesson_id: string;
-  local_user_id: string | null;
   user_id: string | null;
   level: string | null;
   current_step_snapshot: any | null;
@@ -511,14 +525,13 @@ export const loadLessonProgress = async (
   level: string = 'A1'
 ): Promise<{ currentStepSnapshot: any | null; completed: boolean } | null> => {
   try {
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) return null;
+    const ident = await getIdentityFilter();
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
     const { data, error } = await supabase
       .from('lesson_progress')
       .select('current_step_snapshot, completed_at')
-      .eq('local_user_id', localUserId)
+      .eq(ident.column, ident.value)
       .eq('lesson_id', lessonId)
       .limit(1)
       .maybeSingle();
@@ -544,13 +557,12 @@ export const loadLessonProgressByLessonIds = async (
     const ids = (lessonIds || []).filter(Boolean);
     if (ids.length === 0) return out;
 
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) return out;
+    const ident = await getIdentityFilter();
 
     const { data, error } = await supabase
       .from('lesson_progress')
       .select('lesson_id, completed_at, current_step_snapshot')
-      .eq('local_user_id', localUserId)
+      .eq(ident.column, ident.value)
       .in('lesson_id', ids);
 
     if (error || !data) return out;
@@ -575,14 +587,13 @@ export const hasLessonCompleteTag = async (
   level: string = 'A1'
 ): Promise<boolean> => {
   try {
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) return false;
+    const ident = await getIdentityFilter();
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
     const { data, error } = await supabase
       .from('chat_messages')
       .select('id')
-      .eq('local_user_id', localUserId)
+      .eq(ident.column, ident.value)
       .eq('lesson_id', lessonId)
       .ilike('text', '%<lesson_complete>%')
       .limit(1);
@@ -603,13 +614,12 @@ export const upsertLessonProgress = async (params: {
   completed?: boolean;
 }): Promise<void> => {
   try {
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) return;
+    const userId = await requireAuthUserId();
     const resolvedLevel = params.level || 'A1';
     const lessonId = params.lessonId || (await getLessonIdForDayLesson(params.day, params.lesson, resolvedLevel));
 
     const payload: any = {
-      local_user_id: localUserId,
+      user_id: userId,
       lesson_id: lessonId,
       level: resolvedLevel,
       updated_at: new Date().toISOString(),
@@ -618,7 +628,20 @@ export const upsertLessonProgress = async (params: {
     if (params.completed === true) payload.completed_at = new Date().toISOString();
     if (params.completed === false) payload.completed_at = null;
 
-    await supabase.from('lesson_progress').upsert(payload, { onConflict: 'local_user_id,lesson_id' });
+    const { error } = await supabase
+      .from('lesson_progress')
+      .upsert(payload, { onConflict: 'user_id,lesson_id' });
+
+    if (error) {
+      console.error('[upsertLessonProgress] Supabase error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        payload,
+        onConflict: 'user_id,lesson_id',
+      });
+    }
   } catch (error) {
     console.error('[upsertLessonProgress] Error:', error);
   }
@@ -647,17 +670,12 @@ export const saveChatMessage = async (
       return;
     }
 
-    // Получаем или создаем локального пользователя
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) {
-      console.error("[saveChatMessage] Failed to get local user ID");
-      return;
-    }
+    const userId = await requireAuthUserId();
 
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
     console.log("[saveChatMessage] Attempting to save:", { 
-      localUserId, 
+      userId,
       lessonId,
       role, 
       textLength: text.length 
@@ -666,7 +684,7 @@ export const saveChatMessage = async (
     const { data: insertedData, error } = await supabase
       .from('chat_messages')
       .insert({
-        local_user_id: localUserId,
+        user_id: userId,
         lesson_id: lessonId,
         role,
         text: text.trim(),
@@ -711,21 +729,17 @@ export const loadChatMessages = async (
       if (cached) return cached;
     }
 
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) {
-      console.log("[loadChatMessages] No local user ID found");
-      return [];
-    }
-    const cacheKey = getChatMessagesCacheKey(day, lesson, level, localUserId);
+    const userId = await requireAuthUserId();
+    const cacheKey = getChatMessagesCacheKey(day, lesson, level, userId);
 
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
-    console.log("[loadChatMessages] Loading messages for lessonId:", lessonId, "localUserId:", localUserId);
+    console.log("[loadChatMessages] Loading messages for lessonId:", lessonId, "userId:", userId);
 
     const { data, error } = await supabase
       .from('chat_messages')
       .select('id, role, text, created_at, message_order, current_step_snapshot')
-      .eq('local_user_id', localUserId)
+      .eq('user_id', userId)
       .eq('lesson_id', lessonId)
       .order('created_at', { ascending: true })
       .order('id', { ascending: true });
@@ -841,6 +855,17 @@ export const prefetchLessonScript = async (
   }
 };
 
+export const clearLessonScriptCacheFor = (day: number, lesson: number, level: string = 'A1') => {
+  const cacheKey = getLessonScriptCacheKey(day, lesson, level);
+  lessonScriptCache.delete(cacheKey);
+  try {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.removeItem(`${lessonScriptStoragePrefix}${cacheKey}`);
+  } catch {
+    // ignore
+  }
+};
+
 export const clearLessonScriptCache = () => {
   lessonScriptCache.clear();
   try {
@@ -946,8 +971,7 @@ export const subscribeChatMessages = async (
   onMessage: (msg: ChatMessage) => void,
   level: string = 'A1'
 ): Promise<() => void> => {
-  const localUserId = await getOrCreateLocalUser();
-  if (!localUserId) return () => {};
+  const userId = await requireAuthUserId();
   const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
   const emitRow = (row: any) => {
@@ -966,17 +990,17 @@ export const subscribeChatMessages = async (
   };
 
   const channel = supabase
-    .channel(`chat_messages_${localUserId}_${lessonId}`)
+    .channel(`chat_messages_user_id_${userId}_${lessonId}`)
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `local_user_id=eq.${localUserId}` },
+      { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `user_id=eq.${userId}` },
       (payload) => {
         emitRow((payload as any).new);
       }
     )
     .on(
       'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'chat_messages', filter: `local_user_id=eq.${localUserId}` },
+      { event: 'UPDATE', schema: 'public', table: 'chat_messages', filter: `user_id=eq.${userId}` },
       (payload) => {
         emitRow((payload as any).new);
       }
@@ -1008,14 +1032,13 @@ export const subscribeChatProgress = async (
  */
 export const resetLessonDialogue = async (day: number, lesson: number, level: string = 'A1'): Promise<void> => {
   try {
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) return;
+    const userId = await requireAuthUserId();
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
     const delMessages = await supabase
       .from('chat_messages')
       .delete()
-      .eq('local_user_id', localUserId)
+      .eq('user_id', userId)
       .eq('lesson_id', lessonId);
     if (delMessages.error) {
       console.error('[resetLessonDialogue] Error deleting chat_messages:', delMessages.error);
@@ -1024,7 +1047,7 @@ export const resetLessonDialogue = async (day: number, lesson: number, level: st
     const delProgress = await supabase
       .from('lesson_progress')
       .delete()
-      .eq('local_user_id', localUserId)
+      .eq('user_id', userId)
       .eq('lesson_id', lessonId);
     if ((delProgress as any)?.error) {
       console.error('[resetLessonDialogue] Error deleting lesson_progress:', (delProgress as any).error);
@@ -1042,11 +1065,9 @@ export const resetLessonDialogue = async (day: number, lesson: number, level: st
  */
 export const resetUserProgress = async (): Promise<void> => {
   try {
-    const localUserId = await getOrCreateLocalUser();
-    if (!localUserId) return;
-
-    await supabase.from('chat_messages').delete().eq('local_user_id', localUserId);
-    await supabase.from('lesson_progress').delete().eq('local_user_id', localUserId);
+    const userId = await requireAuthUserId();
+    await supabase.from('chat_messages').delete().eq('user_id', userId);
+    await supabase.from('lesson_progress').delete().eq('user_id', userId);
     clearChatMessagesCache();
   } catch (error) {
     console.error('[resetUserProgress] Error:', error);

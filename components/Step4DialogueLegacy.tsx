@@ -208,7 +208,13 @@ interface Props {
 	    if (lessonIdRef.current && userIdRef.current) return;
 	    if (!day || !lesson) return;
 	    lessonIdRef.current = await getLessonIdForDayLesson(day, lesson);
-	    userIdRef.current = await getOrCreateLocalUser();
+	    // Prefer authenticated user_id (UUID) when available.
+	    try {
+	      const { data } = await supabase.auth.getSession();
+	      userIdRef.current = data.session?.user?.id || (await getOrCreateLocalUser());
+	    } catch {
+	      userIdRef.current = await getOrCreateLocalUser();
+	    }
 	  }, [day, lesson]);
 
   const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());

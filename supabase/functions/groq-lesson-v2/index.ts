@@ -487,32 +487,14 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       });
     }
 
-    // Для скорости не грузим всю историю — нам нужен только следующий message_order
-    const { data: lastMessageRow, error: lastMessageError } = await supabase
-      .from("chat_messages")
-      .select("message_order")
-      .eq("lesson_id", lessonId)
-      .eq("local_user_id", userId)
-      .order("message_order", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (lastMessageError) {
-      console.error("[groq-lesson-v2] Error fetching last chat message:", lastMessageError.message, "payload:", { lessonId, userId });
-      return new Response("Failed to fetch chat messages", { status: 500, headers: corsHeaders });
-    }
-
-    let nextMessageOrder = (lastMessageRow?.message_order || 0) + 1;
-
     const insertModelMessage = async (text: string, stepSnapshot: any | null) => {
       const { error } = await supabase.from("chat_messages").insert({
         lesson_id: lessonId,
-        local_user_id: userId,
+        user_id: userId,
         role: "model",
         text,
         day: (script as any).day || 0,
         lesson: (script as any).lesson || 0,
-        message_order: nextMessageOrder++,
         current_step_snapshot: stepSnapshot ?? null,
       });
       if (error) {
@@ -533,12 +515,11 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
         .from("chat_messages")
         .insert({
           lesson_id: lessonId,
-          local_user_id: userId,
+          user_id: userId,
           role: "model",
           text,
           day: (script as any).day || 0,
           lesson: (script as any).lesson || 0,
-          message_order: nextMessageOrder++,
           current_step_snapshot: stepSnapshot ?? null,
         })
         .select("id")
@@ -600,10 +581,11 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       .from("chat_messages")
       .select("current_step_snapshot, text")
       .eq("lesson_id", lessonId)
-      .eq("local_user_id", userId)
+      .eq("user_id", userId)
       .eq("role", "model")
-      .order("message_order", { ascending: false })
-      .limit(1)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1)      
       .maybeSingle();
 
     if (lastModelAnyRow?.current_step_snapshot) {
@@ -617,11 +599,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
           .from("chat_messages")
           .select("current_step_snapshot")
           .eq("lesson_id", lessonId)
-          .eq("local_user_id", userId)
+          .eq("user_id", userId)
           .eq("role", "model")
           .not("current_step_snapshot", "is", null)
-          .order("message_order", { ascending: false })
-          .limit(1)
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(1)          
           .maybeSingle();
         if (lastModelSnapshotRow?.current_step_snapshot) {
           effectiveCurrentStep = lastModelSnapshotRow.current_step_snapshot as any;
@@ -635,12 +618,11 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
         .from("chat_messages")
         .insert({
           lesson_id: lessonId,
-          local_user_id: userId,
+          user_id: userId,
           role: 'user',
           text: lastUserMessageContent,
           day: (script as any).day || 0,
           lesson: (script as any).lesson || 0,
-          message_order: nextMessageOrder++,
         });
 
       if (insertUserMessageError) {
@@ -678,12 +660,11 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       // Сохраняем сообщение с целью (Goal)
       await supabase.from("chat_messages").insert({
         lesson_id: lessonId,
-        local_user_id: userId,
+        user_id: userId,
         role: "model",
         text: goalContent,
         day: (script as any).day || 0,
         lesson: (script as any).lesson || 0,
-        message_order: nextMessageOrder++,
         current_step_snapshot: { type: 'goal', index: 0 }
       });
 
@@ -1109,12 +1090,11 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
         .from("chat_messages")
         .insert({
           lesson_id: lessonId,
-          local_user_id: userId,
+          user_id: userId,
           role: 'model', // aligns with check constraint ('user','model')
           text: parsedResponse.text,
           day: (script as any).day || 0, 
           lesson: (script as any).lesson || 0, 
-          message_order: nextMessageOrder++,
           current_step_snapshot: newCurrentStep,
         });
 

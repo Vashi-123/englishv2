@@ -5,6 +5,8 @@ import { ActivityType, ViewState } from './types';
 import { useLanguage } from './hooks/useLanguage';
 import { useDayPlans } from './hooks/useDayPlans';
 import { useContentGeneration } from './hooks/useContentGeneration';
+import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { useAvailableLevels } from './hooks/useAvailableLevels';
 import { ExerciseView } from './components/Exercise/ExerciseView';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
@@ -21,6 +23,25 @@ import {
   ChevronRight,
 } from 'lucide-react';
 
+const ConnectionRequiredScreen = () => {
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-6">
+      <div className="w-full max-w-sm text-center">
+        <div className="relative mx-auto mb-6 h-16 w-16">
+          <div className="absolute inset-0 rounded-full border-4 border-gray-200 border-t-brand-primary animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Sparkles className="w-6 h-6 text-brand-primary" />
+          </div>
+        </div>
+        <h1 className="text-xl font-bold tracking-tight">Нет соединения</h1>
+        <p className="mt-2 text-sm text-gray-600 font-medium">
+          Подключитесь к интернету — приложение продолжит работу автоматически.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const AppContent: React.FC<{
   userEmail?: string;
   onSignOut: () => Promise<void>;
@@ -31,6 +52,14 @@ const AppContent: React.FC<{
   const langMenuRef = useRef<HTMLDivElement | null>(null);
   const [langMenuPos, setLangMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [level, setLevel] = useState<string>('A1');
+  const { levels: availableLevels, loading: levelsLoading } = useAvailableLevels();
+
+  useEffect(() => {
+    if (levelsLoading) return;
+    if (!availableLevels.includes(level)) {
+      setLevel(availableLevels[0] || 'A1');
+    }
+  }, [availableLevels, level, levelsLoading]);
 
   useLayoutEffect(() => {
     if (!showLangMenu) {
@@ -342,13 +371,20 @@ const AppContent: React.FC<{
   const totalDays = dayPlans.length || 1;
   const TOTAL_SPRINT_TASKS = totalDays * TASKS_PER_DAY;
   
-  const selectedIndex = Math.max(
-    0,
-    dayPlans.findIndex((d) => d.day === selectedDayId)
-  );
-  // Считаем завершенные уроки на основе dayCompletedStatus
-  const totalCompletedCount = Object.values(dayCompletedStatus).filter(Boolean).length;
-  const sprintProgressPercent = Math.round((totalCompletedCount / TOTAL_SPRINT_TASKS) * 100);
+	  const selectedIndex = Math.max(
+	    0,
+	    dayPlans.findIndex((d) => d.day === selectedDayId)
+	  );
+	  // "Actual" day = first incomplete day (even if user selects another day).
+	  const actualDayId = (() => {
+	    for (const p of dayPlans) {
+	      if (dayCompletedStatus[p.day] !== true) return p.day;
+	    }
+	    return dayPlans[0]?.day || 1;
+	  })();
+	  // Считаем завершенные уроки на основе dayCompletedStatus
+	  const totalCompletedCount = Object.values(dayCompletedStatus).filter(Boolean).length;
+	  const sprintProgressPercent = Math.round((totalCompletedCount / TOTAL_SPRINT_TASKS) * 100);
   
   // Check if current day is completed на основе dayCompletedStatus
   const isCurrentDayCompleted = currentDayPlan ? (dayCompletedStatus[currentDayPlan.day] === true) : false;
@@ -452,11 +488,34 @@ const AppContent: React.FC<{
         setCompletedTasks(prev => [...prev, activityStep]);
     }
     
+    // When dialogue is completed we treat it as finishing the whole lesson:
+    // 1) optimistically mark the current day completed
+    // 2) unlock + auto-select the next lesson/day
+    // 3) persist progress in the background
+    if (activityStep === ActivityType.DIALOGUE && currentDayPlan) {
+      const completedDay = currentDayPlan.day;
+      setDayCompletedStatus((prev) => ({ ...prev, [completedDay]: true }));
+      setLessonCompleted(true);
+
+      void upsertLessonProgress({
+        day: currentDayPlan.day,
+        lesson: currentDayPlan.lesson,
+        level,
+        completed: true,
+      });
+
+      const currentIndex = dayPlans.findIndex(
+        (p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson
+      );
+      const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
+      if (nextPlan?.day) {
+        setSelectedDayId(nextPlan.day);
+      }
+    }
+
     // Return instantly; refresh completion status in the background.
     setView(ViewState.DASHBOARD);
-    if (activityStep === ActivityType.DIALOGUE) {
-      void checkLessonCompletion(false);
-    }
+    if (activityStep === ActivityType.DIALOGUE) void checkLessonCompletion(false);
   };
 
   const renderInsightPopup = () => {
@@ -604,12 +663,15 @@ const AppContent: React.FC<{
               Уровень
             </div>
             <div className="flex flex-wrap gap-2">
-              {['A1', 'A2', 'B1'].map((lvl) => (
+              {availableLevels.map((lvl) => (
                 <button
                   key={lvl}
                   onClick={() => { handleLevelChange(lvl); setShowLangMenu(false); }}
+                  disabled={levelsLoading}
                   className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition ${
-                    level === lvl ? 'bg-brand-primary text-white border-brand-primary' : 'border-gray-200 text-slate-800 hover:border-brand-primary/40'
+                    level === lvl
+                      ? 'bg-brand-primary text-white border-brand-primary'
+                      : 'border-gray-200 text-slate-800 hover:border-brand-primary/40'
                   }`}
                 >
                   {lvl}
@@ -655,12 +717,13 @@ const AppContent: React.FC<{
             </div>
             <div className="h-px bg-gray-100" />
             <div className="flex overflow-x-auto gap-2.5 pt-0.5 pb-2 hide-scrollbar pl-1">
-          {dayPlans.map((d, idx) => {
-            const isSelected = selectedDayId === d.day;
-            const label = copy.calendar.weekdays[idx % copy.calendar.weekdays.length];
-            const isPast = idx < selectedIndex;
-            // Блокируем день, если предыдущий не завершён
-            const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
+	          {dayPlans.map((d, idx) => {
+	            const isSelected = selectedDayId === d.day;
+	            const isActual = actualDayId === d.day;
+	            const label = copy.calendar.weekdays[idx % copy.calendar.weekdays.length];
+	            const isPast = idx < selectedIndex;
+	            // Блокируем день, если предыдущий не завершён
+	            const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
             const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
             const isLocked = idx > 0 && !prevCompleted;
             const isDayCompleted = dayCompletedStatus[d.day] === true;
@@ -672,15 +735,17 @@ const AppContent: React.FC<{
                       if (isLocked) return;
                       setSelectedDayId(d.day);
                     }}
-                    disabled={isLocked}
-                    className={`
-                      min-w-[50px] flex flex-col items-center gap-1.5 px-2 py-2 rounded-3xl border-2 transition-all duration-200 relative overflow-hidden
-	                      ${isDayCompleted && !isSelected
-	                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
-	                        : isSelected 
-	                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
-	                        : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
-	                      }
+	                    disabled={isLocked}
+	                    className={`
+	                      min-w-[50px] flex flex-col items-center gap-1.5 px-2 py-2 rounded-3xl border-2 transition-all duration-200 relative overflow-hidden
+		                      ${isDayCompleted && !isSelected
+		                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
+		                        : isActual && !isSelected
+		                          ? 'bg-gradient-to-br from-brand-primary/10 via-brand-primary/5 to-brand-secondary/10 border-brand-primary/50 text-slate-900 shadow-sm hover:shadow-md hover:scale-[1.02]'
+		                        : isSelected 
+		                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
+		                        : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
+		                      }
 	                      ${
 	                        isLocked
 	                          ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
@@ -697,39 +762,47 @@ const AppContent: React.FC<{
                         </div>
                       </>
                     )}
-                    <span className={`text-[10px] font-bold uppercase tracking-wider relative z-10 ${
-                      isDayCompleted && !isSelected
-                        ? 'text-amber-700'
-                        : isSelected 
-                        ? 'text-white/90' 
-                        : 'text-gray-500'
-                    }`}>
-                        {label}
-                    </span>
-                    <div className={`
-	                      w-8 h-8 rounded-xl flex items-center justify-center transition-all relative z-10
-	                      ${isDayCompleted && !isSelected
-	                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+	                    <span className={`text-[10px] font-bold uppercase tracking-wider relative z-10 ${
+	                      isDayCompleted && !isSelected
+	                        ? 'text-amber-700'
+	                        : isActual && !isSelected
+	                          ? 'text-brand-primary'
 	                        : isSelected 
-	                        ? 'bg-white text-brand-primary shadow-md' 
-	                        : isLocked
-	                          ? 'bg-gray-50 text-gray-700'
-	                          : 'bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/25'
-	                      }
-	                    `}>
-                      {isDayCompleted ? (
-                        <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-white drop-shadow-sm'}`} />
-                      ) : isPast ? (
-                        <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
-                      ) : isLocked ? (
-                        <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
-                      ) : (
-                        <span className={`text-xs font-bold ${isSelected ? 'text-brand-primary' : 'text-gray-700'}`}>
-                          {d.day}
-                        </span>
-                      )}
-                    </div>
-                </button>
+	                        ? 'text-white/90' 
+	                        : 'text-gray-500'
+	                    }`}>
+	                        {label}
+	                    </span>
+	                    <div className={`
+		                      w-8 h-8 rounded-xl flex items-center justify-center transition-all relative z-10
+		                      ${isDayCompleted && !isSelected
+		                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+		                        : isActual && !isSelected
+		                          ? 'bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md ring-2 ring-brand-primary/25'
+		                        : isSelected 
+		                        ? 'bg-white text-brand-primary shadow-md' 
+		                        : isLocked
+		                          ? 'bg-gray-50 text-gray-700'
+		                          : 'bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/25'
+		                      }
+		                    `}>
+	                      {isDayCompleted ? (
+	                        <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-white drop-shadow-sm'}`} />
+	                      ) : isPast ? (
+	                        <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
+	                      ) : isLocked ? (
+	                        <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
+	                      ) : (
+	                        <span
+	                          className={`text-xs font-bold ${
+	                            isSelected ? 'text-brand-primary' : isActual ? 'text-white' : 'text-gray-700'
+	                          }`}
+	                        >
+	                          {d.day}
+	                        </span>
+	                      )}
+	                    </div>
+	                </button>
             )
           })}
 	          </div>
@@ -857,12 +930,12 @@ const AppContent: React.FC<{
                   )}
                 </div>
                 <div
-                  className={`w-12 h-12 rounded-full flex items-center justify-center text-white animate-pulse relative z-10 ${
-                    lessonCompleted
-                      ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-[0_0_30px_rgba(251,191,36,0.8),0_0_60px_rgba(251,146,60,0.6)] ring-4 ring-amber-300/60'
-                      : 'bg-black shadow-[0_0_20px_rgba(99,102,241,0.6),0_0_40px_rgba(99,102,241,0.4)] ring-4 ring-brand-primary/50'
-                  }`}
-                >
+	                  className={`w-12 h-12 rounded-full flex items-center justify-center text-white animate-pulse relative z-10 ${
+	                    lessonCompleted
+	                      ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-[0_0_30px_rgba(251,191,36,0.8),0_0_60px_rgba(251,146,60,0.6)] ring-4 ring-amber-300/60'
+	                      : 'bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary shadow-[0_0_20px_rgba(99,102,241,0.6),0_0_40px_rgba(99,102,241,0.4)] ring-4 ring-brand-primary/50'
+	                  }`}
+	                >
                   <Play className="w-5 h-5 fill-white" />
                 </div>
               </div>
@@ -922,10 +995,22 @@ const AppContent: React.FC<{
 };
 
 const App = () => {
+  const isOnline = useOnlineStatus();
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showIntro, setShowIntro] = useState(true);
   const [hasLoggedIn, setHasLoggedIn] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // Block scrolling while offline to avoid "using" the app behind the gate.
+    document.documentElement.style.overflow = isOnline ? '' : 'hidden';
+    document.body.style.overflow = isOnline ? '' : 'hidden';
+    return () => {
+      document.documentElement.style.overflow = '';
+      document.body.style.overflow = '';
+    };
+  }, [isOnline]);
 
   useEffect(() => {
     const storedLogged = localStorage.getItem('has_logged_in') === '1';
@@ -965,6 +1050,10 @@ const App = () => {
       listener?.subscription?.unsubscribe();
     };
   }, []);
+
+  if (!isOnline) {
+    return <ConnectionRequiredScreen />;
+  }
 
   if (authLoading) {
     return (

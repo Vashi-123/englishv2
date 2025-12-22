@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage } from '../../types';
 import type { LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { advanceLesson } from '../../services/lessonV2ClientEngine';
-import { cacheChatMessages, getLessonIdForDayLesson, loadLessonScript, peekCachedChatMessages, upsertLessonProgress } from '../../services/generationService';
+import { cacheChatMessages, getAuthUserIdFromSession, getLessonIdForDayLesson, loadLessonScript, peekCachedChatMessages, upsertLessonProgress } from '../../services/generationService';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getOrCreateLocalUser } from '../../services/userService';
 import { parseMarkdown } from './markdown';
@@ -123,7 +123,7 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
     if (!day || !lesson) return;
     const resolvedLevel = level || 'A1';
     lessonIdRef.current = await getLessonIdForDayLesson(day, lesson, resolvedLevel);
-    userIdRef.current = await getOrCreateLocalUser();
+    userIdRef.current = (await getAuthUserIdFromSession()) || (await getOrCreateLocalUser());
   }, [day, lesson, level]);
 
   const ensureLessonScript = useCallback(async (): Promise<any> => {

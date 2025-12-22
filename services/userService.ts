@@ -1,63 +1,44 @@
 import { supabase } from './supabaseClient';
 
-const LOCAL_USER_ID_KEY = 'english_app_user_id';
-
-const getAuthUserId = async (): Promise<string | null> => {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) {
-    console.error('[getAuthUserId] Error getting auth user:', error);
-    return null;
-  }
-  return data.user?.id || null;
-};
+let cachedUserId: string | null = null;
+let cachedUserIdPromise: Promise<string | null> | null = null;
 
 /**
- * Получить или создать локального пользователя
+ * Get the current Supabase Auth user id (UUID) or null if not signed in.
+ * Uses getSession which is usually served from local cache.
  */
-export const getOrCreateLocalUser = async (): Promise<string> => {
-  try {
-    const authUserId = await getAuthUserId();
+export const getAuthUserId = async (): Promise<string | null> => {
+  if (cachedUserId) return cachedUserId;
+  if (cachedUserIdPromise) return cachedUserIdPromise;
 
-    // Пытаемся получить ID из Supabase auth, затем из localStorage
-    let localId = authUserId || localStorage.getItem(LOCAL_USER_ID_KEY);
-    if (!localId) {
-      localId = crypto.randomUUID();
+  cachedUserIdPromise = (async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) return null;
+      const id = data.session?.user?.id || null;
+      cachedUserId = id;
+      return id;
+    } catch {
+      return null;
+    } finally {
+      cachedUserIdPromise = null;
     }
-    localStorage.setItem(LOCAL_USER_ID_KEY, localId);
+  })();
 
-    // Создаём/обновляем запись для отслеживания last_seen
-    const { error: upsertError } = await supabase
-      .from('local_users')
-      .upsert(
-        {
-          local_id: localId,
-          last_seen_at: new Date().toISOString(),
-        },
-        { onConflict: 'local_id' }
-      );
-
-    if (upsertError) {
-      console.error('[getOrCreateLocalUser] Error upserting user:', upsertError);
-      return localId;
-    }
-
-    return localId;
-  } catch (error) {
-    console.error('[getOrCreateLocalUser] Exception:', error);
-    // В случае ошибки генерируем и возвращаем ID из localStorage
-    let localId = localStorage.getItem(LOCAL_USER_ID_KEY);
-    if (!localId) {
-      localId = crypto.randomUUID();
-      localStorage.setItem(LOCAL_USER_ID_KEY, localId);
-    }
-    return localId;
-  }
+  return cachedUserIdPromise;
 };
+
+export const getAuthUserIdSync = (): string | null => cachedUserId;
 
 /**
- * Получить текущий локальный ID пользователя
+ * Get the current user id (UUID). Throws if the user is not authenticated.
  */
-export const getLocalUserId = (): string | null => {
-  return localStorage.getItem(LOCAL_USER_ID_KEY);
+export const requireAuthUserId = async (): Promise<string> => {
+  const id = await getAuthUserId();
+  if (!id) throw new Error('Not authenticated');
+  return id;
 };
 
+// Back-compat export name (previously local-user). Now always returns auth user id.
+export const getOrCreateLocalUser = requireAuthUserId;
+export const getLocalUserId = getAuthUserIdSync;

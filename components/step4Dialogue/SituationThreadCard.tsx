@@ -46,26 +46,33 @@ export function SituationThreadCard({
         {title && <div className="text-xl font-bold text-gray-900">{title}</div>}
 
         <div className="space-y-4">
-          {(situation || task) && (
-            <div className="space-y-3">
-              {situation && (
-                <div className="space-y-1.5">
-                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Контекст</div>
-                  <div className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed">
-                    {renderMarkdown(situation)}
-                  </div>
-                </div>
-              )}
-              {task && (
-                <div className="space-y-1.5">
-                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Твоя задача</div>
-                  <div className="text-base font-semibold text-gray-900 whitespace-pre-wrap leading-relaxed">
-                    {renderMarkdown(task)}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+	          {(situation || task) && (
+	            <div className="space-y-3">
+	              {situation && (
+	                <div className="space-y-1.5">
+	                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Контекст</div>
+	                  <div className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed">
+	                    {renderMarkdown(situation)}
+	                  </div>
+	                </div>
+	              )}
+	              {task && (
+	                <div className="space-y-1.5">
+	                  <div className="flex items-center gap-3">
+	                    <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">
+	                      Твоя задача
+	                    </div>
+	                  </div>
+	                  {/* Highlight without shifting text alignment: px + negative mx cancel out */}
+	                  <div className="-mx-2 rounded-2xl border border-brand-primary/15 bg-gradient-to-br from-brand-primary/8 via-brand-secondary/10 to-brand-accent/8 px-2 py-3 shadow-sm">
+	                    <div className="text-[15px] font-semibold text-gray-900 whitespace-pre-wrap leading-relaxed">
+	                      {renderMarkdown(task)}
+	                    </div>
+	                  </div>
+	                </div>
+	              )}
+	            </div>
+	          )}
 
           <div className="pt-6">
             <div className="flex items-center gap-3">
@@ -80,16 +87,16 @@ export function SituationThreadCard({
               completedCorrect ? 'border-green-200 bg-green-50/60' : 'border-gray-100 bg-gray-50/60'
             }`}
           >
-            {ai && (
-              <div className="flex justify-start items-end gap-3">
-                <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <div className="max-w-[92%] rounded-2xl bg-white px-4 py-3 text-[15px] font-medium leading-relaxed text-gray-900 border border-gray-100 shadow-sm">
-                  {renderMarkdown(ai)}
-                </div>
-              </div>
-            )}
+	            {ai && (
+	              <div className="flex justify-start items-end gap-3 mb-6">
+	                <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
+	                  <Bot className="w-4 h-4" />
+	                </div>
+	                <div className="max-w-[92%] rounded-2xl bg-white px-4 py-3 text-[15px] font-medium leading-relaxed text-gray-900 border border-gray-100 shadow-sm">
+	                  {renderMarkdown(ai)}
+	                </div>
+	              </div>
+	            )}
 
             {items.map((item, idx) => {
               if (item.kind === 'user') {
