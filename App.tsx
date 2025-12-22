@@ -9,7 +9,7 @@ import { useAvailableLevels } from './hooks/useAvailableLevels';
 import Step4Dialogue from './components/Step4Dialogue';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
-import { hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
+import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
 import { 
   X, 
@@ -496,6 +496,16 @@ const AppContent: React.FC<{
   };
 
   const handleLevelChange = (lvl: string) => {
+    // "Start level from scratch": force-refresh lesson_scripts cache for this level.
+    clearLessonScriptCacheForLevel(lvl);
+    try {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem(`englishv2:dayPlans:${lvl}`);
+      }
+    } catch {
+      // ignore
+    }
+
     setLevel(lvl);
     setSelectedDayId(1);
     setDayCompletedStatus({});

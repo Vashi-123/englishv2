@@ -160,6 +160,20 @@ export function DialogueMessages({
 		  onNextLesson?: () => void;
 		}) {
   let findMistakeOrdinal = 0;
+  const lastModelIndex = (() => {
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      if (visibleMessages[i]?.role === 'model') return i;
+    }
+    return -1;
+  })();
+  const lastModelWithStepSnapshotIndex = (() => {
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      const m = visibleMessages[i];
+      if (m?.role !== 'model') continue;
+      if (m?.currentStepSnapshot?.type) return i;
+    }
+    return -1;
+  })();
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pt-12 space-y-6 pb-32 bg-white w-full">
       {visibleMessages.map((msg, idx) => {
@@ -348,13 +362,15 @@ export function DialogueMessages({
               persistGrammarGateOpened([grammarGate.sectionId, grammarGate.ordinalKey].filter(Boolean) as string[]);
             }}
           >
-	            <MessageContent
-	              msg={msg}
-	              idx={idx}
-	              parsed={parsed}
-	              displayText={displayText}
-	              baseMessageContent={baseMessageContent}
-	              msgStableId={msgStableId}
+		            <MessageContent
+		              msg={msg}
+		              idx={idx}
+                  isLastModelMessage={idx === lastModelIndex}
+                  isLastModelWithStepSnapshot={idx === lastModelWithStepSnapshotIndex}
+		              parsed={parsed}
+		              displayText={displayText}
+		              baseMessageContent={baseMessageContent}
+		              msgStableId={msgStableId}
 	              isSituationCard={isSituationCard}
 	              situationGroupMessages={situationGroupMessages || null}
 	              situationCompletedCorrect={situationCompletedCorrect}

@@ -891,6 +891,36 @@ export const clearLessonScriptCache = () => {
   void clearAllTtsCache();
 };
 
+export const clearLessonScriptCacheForLevel = (level: string) => {
+  const prefix = `${String(level || '').trim()}:`;
+  if (!prefix || prefix === ':') return;
+
+  const removedKeys: string[] = [];
+  for (const key of lessonScriptCache.keys()) {
+    if (key.startsWith(prefix)) removedKeys.push(key);
+  }
+  removedKeys.forEach((k) => lessonScriptCache.delete(k));
+
+  try {
+    if (typeof window !== 'undefined') {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.sessionStorage.length; i += 1) {
+        const k = window.sessionStorage.key(i);
+        if (!k) continue;
+        if (!k.startsWith(lessonScriptStoragePrefix)) continue;
+        const cacheKey = k.slice(lessonScriptStoragePrefix.length);
+        if (cacheKey.startsWith(prefix)) keysToRemove.push(k);
+      }
+      keysToRemove.forEach((k) => window.sessionStorage.removeItem(k));
+    }
+  } catch {
+    // ignore
+  }
+
+  // Keep lesson_script + audio cache in sync.
+  removedKeys.forEach((k) => void clearTtsCacheForLessonCacheKey(k));
+};
+
 // Lightweight client-side cache for chat_messages to avoid reloading on re-entry.
 const chatMessagesStoragePrefix = 'englishv2:chatMessages:';
 const chatMessagesMemoryCache = new Map<string, ChatMessage[]>();

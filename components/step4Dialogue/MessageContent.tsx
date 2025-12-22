@@ -13,6 +13,8 @@ import { CardHeading } from './CardHeading';
 type Props = {
   msg: ChatMessage;
   idx: number;
+  isLastModelMessage: boolean;
+  isLastModelWithStepSnapshot: boolean;
   parsed: any | null;
   lessonScript: LessonScript | null;
   currentStep: any | null;
@@ -66,6 +68,8 @@ type Props = {
 export function MessageContent({
   msg,
   idx,
+  isLastModelMessage,
+  isLastModelWithStepSnapshot,
   parsed,
   lessonScript,
   currentStep,
@@ -212,7 +216,7 @@ export function MessageContent({
       return (
         <div className="space-y-1">
           <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
-            {renderMarkdown(goalText ? `🎯 ${goalText}` : '🎯')}
+            {renderMarkdown(goalText)}
           </div>
         </div>
       );
@@ -283,6 +287,12 @@ export function MessageContent({
     const ctorState = constructorUI?.[constructorKey] || {};
     const isActive =
       currentStep?.type === msg.currentStepSnapshot?.type && currentStep?.index === msg.currentStepSnapshot?.index;
+    const isActiveFallback = Boolean(
+      msg.role === 'model' &&
+        (isLastModelWithStepSnapshot || isLastModelMessage) &&
+        msg.currentStepSnapshot?.type === 'constructor' &&
+        (!currentStep || currentStep?.type === 'constructor')
+    );
 
     const onConstructorStateChange = React.useCallback(
       ({ pickedWordIndices, completed }: { pickedWordIndices: number[]; completed: boolean }) => {
@@ -320,7 +330,7 @@ export function MessageContent({
         initialCompleted={typeof ctorState.completed === 'boolean' ? ctorState.completed : undefined}
         onStateChange={onConstructorStateChange}
         onComplete={
-          isActive && typeof msg.currentStepSnapshot?.type === 'string'
+          (isActive || isActiveFallback) && typeof msg.currentStepSnapshot?.type === 'string'
             ? async () => {
                 setIsLoading(true);
                 try {

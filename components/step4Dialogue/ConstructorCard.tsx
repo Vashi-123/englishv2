@@ -77,6 +77,12 @@ export function ConstructorCard({
 
   const pickedTokens = useMemo(() => pickedWordIndices.map((i) => words[i]).filter(Boolean), [pickedWordIndices, words]);
   const sentence = useMemo(() => formatSentence(pickedTokens), [pickedTokens]);
+  const expectedWordsCount = useMemo(() => {
+    if (!expected) return 0;
+    const normalized = normalizeLenient(expected);
+    if (!normalized) return 0;
+    return normalized.split(' ').filter(Boolean).length;
+  }, [expected]);
   const isCorrect = useMemo(() => {
     if (!expected) return null;
     if (!sentence) return false;
@@ -135,11 +141,9 @@ export function ConstructorCard({
     if (completed) return;
     if (!onComplete) return;
     if (isLoading) return;
-    if (words.length === 0) return;
-    if (pickedWordIndices.length !== words.length) return;
+    if (!sentence) return;
 
-    const ok = expected ? normalizeLenient(sentence) === normalizeLenient(expected) : true;
-    if (ok) {
+    if (isCorrect === true || !expected) {
       setCompleted(true);
       void Promise.resolve(onComplete()).catch(() => {
         // ignore
@@ -147,16 +151,20 @@ export function ConstructorCard({
       return;
     }
 
+    // Gentle feedback: once the user has roughly the expected number of words, show an error hint,
+    // but don't wipe their selection (so they can fix it by toggling words).
+    const shouldHint = expectedWordsCount > 0 && pickedWordIndices.length >= expectedWordsCount;
+    if (!shouldHint) return;
+
     setWrongAttempt(true);
     try {
-      window.navigator?.vibrate?.(60);
+      window.navigator?.vibrate?.(40);
     } catch {
       // ignore
     }
-    setPickedWordIndices([]);
     if (wrongTimerRef.current) window.clearTimeout(wrongTimerRef.current);
-    wrongTimerRef.current = window.setTimeout(() => setWrongAttempt(false), 1800);
-  }, [completed, expected, isLoading, onComplete, pickedWordIndices.length, sentence, words.length]);
+    wrongTimerRef.current = window.setTimeout(() => setWrongAttempt(false), 900);
+  }, [completed, expected, expectedWordsCount, isCorrect, isLoading, onComplete, pickedWordIndices.length, sentence]);
 
   return (
     <div className="space-y-4">
