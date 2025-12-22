@@ -13,6 +13,7 @@ type Props = {
   isRecording: boolean;
   isTranscribing: boolean;
   onToggleRecording: () => void;
+  cta?: { label: string; onClick: () => void; disabled?: boolean } | null;
 };
 
 export function DialogueInputBar({
@@ -25,6 +26,7 @@ export function DialogueInputBar({
   isRecording,
   isTranscribing,
   onToggleRecording,
+  cta,
 }: Props) {
   return (
     <div className="absolute bottom-0 left-0 right-0 bg-white p-4 border-t border-gray-100">
@@ -77,7 +79,18 @@ export function DialogueInputBar({
             </button>
           </form>
         ) : (
-          <div className="py-2" />
+          <div className="py-2">
+            {cta ? (
+              <button
+                type="button"
+                onClick={cta.onClick}
+                disabled={Boolean(cta.disabled || isLoading)}
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {cta.label}
+              </button>
+            ) : null}
+          </div>
         )}
       </div>
     </div>

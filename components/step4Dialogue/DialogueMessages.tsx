@@ -79,14 +79,12 @@ export function DialogueMessages({
   matchingMismatchAttempt,
 
   shouldShowVocabCheckButton,
-  handleCheckVocabulary,
+		  handleCheckVocabulary,
 
-	  isAwaitingModelReply,
-	  lessonCompletedPersisted,
-	  showGoalGateCta,
-	  goalGateLabel,
-	  onGoalGateAcknowledge,
-	}: {
+		  isAwaitingModelReply,
+		  lessonCompletedPersisted,
+		  onNextLesson,
+		}: {
   scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
   messageRefs: MutableRefObject<Map<number, HTMLDivElement>>;
@@ -157,12 +155,10 @@ export function DialogueMessages({
   shouldShowVocabCheckButton: boolean;
   handleCheckVocabulary: () => void;
 
-	  isAwaitingModelReply: boolean;
-	  lessonCompletedPersisted: boolean;
-	  showGoalGateCta: boolean;
-	  goalGateLabel: string;
-	  onGoalGateAcknowledge: () => void;
-	}) {
+		  isAwaitingModelReply: boolean;
+		  lessonCompletedPersisted: boolean;
+		  onNextLesson?: () => void;
+		}) {
   let findMistakeOrdinal = 0;
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pt-12 space-y-6 pb-32 bg-white w-full">
@@ -215,8 +211,7 @@ export function DialogueMessages({
 
         const isTaskPayload =
           msg.role === 'model' &&
-          (parsed?.type === 'goal' ||
-            parsed?.type === 'words_list' ||
+          (parsed?.type === 'words_list' ||
             parsed?.type === 'audio_exercise' ||
             parsed?.type === 'text_exercise' ||
             parsed?.type === 'word' ||
@@ -363,9 +358,6 @@ export function DialogueMessages({
 	              isSituationCard={isSituationCard}
 	              situationGroupMessages={situationGroupMessages || null}
 	              situationCompletedCorrect={situationCompletedCorrect}
-	              showGoalGateCta={showGoalGateCta}
-	              goalGateLabel={goalGateLabel}
-	              onGoalGateAcknowledge={onGoalGateAcknowledge}
 	              showVocab={showVocab}
 	              vocabWords={vocabWords}
 	              vocabIndex={vocabIndex}
@@ -438,7 +430,22 @@ export function DialogueMessages({
         </div>
       )}
 
-      {lessonCompletedPersisted && messages.length > 0 && !isLoading && <AchievementCard />}
+	      {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
+	        <>
+	          <AchievementCard />
+	          {onNextLesson && (
+	            <div className="flex justify-center -mt-2 mb-8 animate-fade-in">
+	              <button
+	                type="button"
+	                onClick={onNextLesson}
+	                className="inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-[0_14px_34px_rgba(251,146,60,0.35)] ring-2 ring-amber-200/70 hover:shadow-[0_18px_40px_rgba(244,63,94,0.22)] hover:scale-[1.02] active:scale-[0.99] transition"
+	              >
+	                Следующий урок
+	              </button>
+	            </div>
+	          )}
+	        </>
+	      )}
 
       <div ref={messagesEndRef} />
     </div>

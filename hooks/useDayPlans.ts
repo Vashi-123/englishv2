@@ -5,7 +5,18 @@ import { clearLessonScriptCacheFor } from '../services/generationService';
 
 // План берём из lesson_scripts (level = 'A1'), подписываемся на realtime.
 export const useDayPlans = (level: string = 'A1') => {
-  const [dayPlans, setDayPlans] = useState<DayPlan[]>([]);
+  const cacheKey = `englishv2:dayPlans:${level}`;
+  const [dayPlans, setDayPlans] = useState<DayPlan[]>(() => {
+    try {
+      if (typeof window === 'undefined') return [];
+      const raw = window.sessionStorage.getItem(cacheKey);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as DayPlan[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const [planLoading, setPlanLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const prevThemeByLessonIdRef = useRef<Record<string, string>>({});
@@ -71,11 +82,18 @@ export const useDayPlans = (level: string = 'A1') => {
       }));
 
       setDayPlans(plans);
+      try {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(cacheKey, JSON.stringify(plans));
+        }
+      } catch {
+        // ignore
+      }
         setError(null);
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
         setError(err);
-          setDayPlans([]);
+        // Keep the last known plan on transient failures (offline/reconnect) to avoid a "cold start" feel.
       } finally {
         setPlanLoading(false);
     }
@@ -96,7 +114,7 @@ export const useDayPlans = (level: string = 'A1') => {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [level]);
+  }, [cacheKey, level]);
 
   return {
     dayPlans,

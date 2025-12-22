@@ -37,6 +37,7 @@ export type Step4DialogueProps = {
   level?: string;
   initialLessonProgress?: any | null;
   onFinish: () => void;
+  onNextLesson?: () => void;
   onBack?: () => void;
   copy: {
     active: string;
@@ -56,7 +57,16 @@ function shuffleArray<T>(arr: T[]): T[] {
   return a;
 }
 
-export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress, onFinish, onBack, copy }: Step4DialogueProps) {
+export function Step4DialogueScreen({
+  day,
+  lesson,
+  level,
+  initialLessonProgress,
+  onFinish,
+  onNextLesson,
+  onBack,
+  copy,
+}: Step4DialogueProps) {
   const { language } = useLanguage();
   const resolvedLevel = level || 'A1';
   const resolvedLanguage = language || 'ru';
@@ -749,7 +759,7 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
             isLoading={isLoading}
           />
 
-	          <DialogueMessages
+		          <DialogueMessages
             scrollContainerRef={scrollContainerRef}
             messagesEndRef={messagesEndRef}
             messageRefs={messageRefs}
@@ -798,12 +808,10 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
 	            matchingMismatchAttempt={matchingMismatchAttempt}
 	            shouldShowVocabCheckButton={shouldShowVocabCheckButton}
 		            handleCheckVocabulary={handleCheckVocabulary}
-		            isAwaitingModelReply={isAwaitingModelReply}
-		            lessonCompletedPersisted={lessonCompletedPersisted}
-		            showGoalGateCta={showGoalGateCta}
-	            goalGateLabel={goalGateLabel}
-	            onGoalGateAcknowledge={acknowledgeGoalGate}
-	          />
+			            isAwaitingModelReply={isAwaitingModelReply}
+			            lessonCompletedPersisted={lessonCompletedPersisted}
+			            onNextLesson={onNextLesson}
+		          />
 
 	          <DialogueInputBar
 	            inputMode={effectiveInputMode}
@@ -815,6 +823,15 @@ export function Step4DialogueScreen({ day, lesson, level, initialLessonProgress,
             isRecording={isRecording}
             isTranscribing={isTranscribing}
             onToggleRecording={onToggleRecording}
+            cta={
+              showGoalGateCta
+                ? {
+                    label: goalGateLabel,
+                    onClick: acknowledgeGoalGate,
+                    disabled: isLoading,
+                  }
+                : null
+            }
           />
         </div>
       </div>

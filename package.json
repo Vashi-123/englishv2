@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "apple:client-secret": "node scripts/apple-client-secret.mjs",
     "tts:enqueue": "node scripts/tts.mjs enqueue",
     "tts:work": "node scripts/tts.mjs work",
     "tts:run": "node scripts/tts.mjs run"

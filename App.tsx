@@ -4,10 +4,9 @@ import { Session } from '@supabase/supabase-js';
 import { ActivityType, ViewState } from './types';
 import { useLanguage } from './hooks/useLanguage';
 import { useDayPlans } from './hooks/useDayPlans';
-import { useContentGeneration } from './hooks/useContentGeneration';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useAvailableLevels } from './hooks/useAvailableLevels';
-import { ExerciseView } from './components/Exercise/ExerciseView';
+import Step4Dialogue from './components/Step4Dialogue';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
 import { hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
@@ -43,9 +42,10 @@ const ConnectionRequiredScreen = () => {
 };
 
 const AppContent: React.FC<{
+  userId?: string;
   userEmail?: string;
   onSignOut: () => Promise<void>;
-}> = ({ userEmail, onSignOut }) => {
+}> = ({ userId, userEmail, onSignOut }) => {
   // Language management
   const { language, setLanguage, copy, languages } = useLanguage();
   const [showLangMenu, setShowLangMenu] = useState(false);
@@ -92,18 +92,19 @@ const AppContent: React.FC<{
 
   // Day plans management
   const { dayPlans, planLoading } = useDayPlans(level);
-  const [selectedDayId, setSelectedDayId] = useState<number>(1);
+  const [selectedDayId, setSelectedDayId] = useState<number>(() => {
+    try {
+      if (typeof window === 'undefined') return 1;
+      if (!userId) return 1;
+      const raw = window.localStorage.getItem(`englishv2:selectedDayId:${userId}:${level}`);
+      const n = raw != null ? Number(raw) : NaN;
+      return Number.isFinite(n) && n > 0 ? n : 1;
+    } catch {
+      return 1;
+    }
+  });
   const [isInitializing, setIsInitializing] = useState(true);
   const currentDayPlan = dayPlans.find(d => d.day === selectedDayId) || dayPlans[0];
-
-  // Content generation
-  const {
-    vocabData,
-    grammarData,
-    correctionData,
-    loading,
-    generateContent,
-  } = useContentGeneration(currentDayPlan, selectedDayId);
 
   // View and activity state
   const [view, setView] = useState<ViewState>(ViewState.DASHBOARD);
@@ -112,8 +113,43 @@ const AppContent: React.FC<{
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [showInsightPopup, setShowInsightPopup] = useState(false);
   const [lessonCompleted, setLessonCompleted] = useState(false);
-  const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>({});
+  const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>(() => {
+    try {
+      if (typeof window === 'undefined') return {};
+      if (!userId) return {};
+      const raw = window.localStorage.getItem(`englishv2:dayCompletedStatus:${userId}:${level}`);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<number, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
   const statusesInitKeyRef = useRef<string | null>(null);
+
+  const statusStorageKey = userId ? `englishv2:dayCompletedStatus:${userId}:${level}` : null;
+  const selectedDayStorageKey = userId ? `englishv2:selectedDayId:${userId}:${level}` : null;
+
+  // Persist dashboard state so a refresh doesn't feel like a cold start.
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      if (!statusStorageKey) return;
+      window.localStorage.setItem(statusStorageKey, JSON.stringify(dayCompletedStatus));
+    } catch {
+      // ignore
+    }
+  }, [dayCompletedStatus, statusStorageKey]);
+
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      if (!selectedDayStorageKey) return;
+      window.localStorage.setItem(selectedDayStorageKey, String(selectedDayId));
+    } catch {
+      // ignore
+    }
+  }, [selectedDayId, selectedDayStorageKey]);
 
   const studyPlanWords = copy.header.studyPlan.split(' ');
   const studyPlanFirst = studyPlanWords[0] || '';
@@ -321,7 +357,9 @@ const AppContent: React.FC<{
   // Realtime прогресс больше не используем: статус урока определяется по chat_messages (<lesson_complete>).
 
   const renderPlanState = () => {
-    if (planLoading || (dayPlans.length === 0)) {
+    // Only block the UI when we truly have no plan to render yet.
+    // planLoading can happen during background refresh (realtime, reconnect) — we keep the last plan visible.
+    if (dayPlans.length === 0) {
       return (
         <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
           <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
@@ -441,16 +479,15 @@ const AppContent: React.FC<{
     },
   ];
 
-  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
-    if (isLocked || !currentDayPlan) return;
-    
-    setActivityStep(type);
-    await generateContent(type);
-    setView(ViewState.EXERCISE);
+	  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
+	    if (isLocked || !currentDayPlan) return;
+	    
+	    setActivityStep(type);
+	    setView(ViewState.EXERCISE);
 
-    // Once the user starts the current lesson, prefetch the next lesson script in the background.
-    if (type === ActivityType.DIALOGUE) {
-      const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
+	    // Once the user starts the current lesson, prefetch the next lesson script in the background.
+	    if (type === ActivityType.DIALOGUE) {
+	      const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
       const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
       if (nextPlan?.day && nextPlan?.lesson) {
         void prefetchLessonScript(nextPlan.day, nextPlan.lesson, level);
@@ -518,11 +555,36 @@ const AppContent: React.FC<{
     if (activityStep === ActivityType.DIALOGUE) void checkLessonCompletion(false);
   };
 
+  const handleNextLesson = () => {
+    if (!currentDayPlan) return;
+    const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
+    const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
+    if (!nextPlan?.day || !nextPlan?.lesson) {
+      setView(ViewState.DASHBOARD);
+      return;
+    }
+
+    // Mark current completed (same as handleNextStep) but stay in Step4 for the next lesson.
+    const completedDay = currentDayPlan.day;
+    setDayCompletedStatus((prev) => ({ ...prev, [completedDay]: true }));
+    setLessonCompleted(true);
+    void upsertLessonProgress({ day: currentDayPlan.day, lesson: currentDayPlan.lesson, level, completed: true });
+
+    setSelectedDayId(nextPlan.day);
+    setActivityStep(ActivityType.DIALOGUE);
+    setView(ViewState.EXERCISE);
+
+    const nextNextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 2] : undefined;
+    if (nextNextPlan?.day && nextNextPlan?.lesson) {
+      void prefetchLessonScript(nextNextPlan.day, nextNextPlan.lesson, level);
+    }
+  };
+
   const renderInsightPopup = () => {
     if (!showInsightPopup) return null;
 
     // If no plans loaded yet
-    if (planLoading || dayPlans.length === 0) {
+    if (dayPlans.length === 0) {
       return (
         <div className="min-h-screen bg-slate-50 text-slate-900 p-6 flex items-center justify-center">
           <span className="text-gray-600">{copy.common.loadingPlan}</span>
@@ -954,16 +1016,26 @@ const AppContent: React.FC<{
 
   const renderExercise = () => {
     return (
-      <ExerciseView
-        activityStep={activityStep}
-        vocabData={vocabData}
-        grammarData={grammarData}
-        correctionData={correctionData}
-        currentDayPlan={currentDayPlan}
-        onComplete={handleNextStep}
-        onBack={handleBackFromExercise}
-        copy={copy}
-      />
+      <div
+        key={currentDayPlan ? `${currentDayPlan.day}:${currentDayPlan.lesson}:${level}` : 'no-lesson'}
+        className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up"
+      >
+        <div className="flex-1 overflow-y-auto bg-white flex justify-center">
+          <div className="h-full w-full max-w-3xl lg:max-w-4xl">
+            {currentDayPlan && (
+              <Step4Dialogue
+                day={currentDayPlan.day}
+                lesson={currentDayPlan.lesson}
+                level={level}
+                onFinish={handleNextStep}
+                onNextLesson={handleNextLesson}
+                onBack={handleBackFromExercise}
+                copy={copy.dialogue}
+              />
+            )}
+          </div>
+        </div>
+      </div>
     );
   };
 
@@ -974,7 +1046,7 @@ const AppContent: React.FC<{
       {renderInsightPopup()}
 
       {/* Loading Overlay */}
-       {(loading || isCheckingStatus) && (
+       {isCheckingStatus && (
             <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center animate-in fade-in duration-300">
                 <div className="relative mb-8">
                     <div className="w-24 h-24 border-4 border-white/10 border-t-brand-primary rounded-full animate-spin"></div>
@@ -983,10 +1055,10 @@ const AppContent: React.FC<{
                     </div>
                 </div>
                 <h3 className="text-white font-bold text-3xl tracking-tight mb-2">
-                  {isCheckingStatus ? 'Проверка статуса...' : copy.common.loadingOverlayTitle}
+                  Проверка статуса...
                 </h3>
                 <p className="text-gray-200 font-medium">
-                  {isCheckingStatus ? 'Обновление информации об уроке' : copy.common.loadingOverlaySubtitle}
+                  Обновление информации об уроке
                 </p>
             </div>
         )}
@@ -1097,7 +1169,7 @@ const App = () => {
     setShowIntro(false);
   };
 
-  return <AppContent userEmail={session.user?.email || undefined} onSignOut={handleSignOut} />;
+  return <AppContent userId={session.user?.id || undefined} userEmail={session.user?.email || undefined} onSignOut={handleSignOut} />;
 };
 
 export default App;

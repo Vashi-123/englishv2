@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import type { AudioQueueItem, ChatMessage, LessonScript, VocabWord } from '../../types';
 import { extractIntroText } from './messageUtils';
 import { VocabularyCard } from './VocabularyCard';
@@ -20,9 +20,6 @@ type Props = {
   isSituationCard: boolean;
   situationGroupMessages: ChatMessage[] | null;
   situationCompletedCorrect: boolean;
-  showGoalGateCta: boolean;
-  goalGateLabel: string;
-  onGoalGateAcknowledge: () => void;
   showVocab: boolean;
   vocabWords: VocabWord[];
   vocabIndex: number;
@@ -76,9 +73,6 @@ export function MessageContent({
   isSituationCard,
   situationGroupMessages,
   situationCompletedCorrect,
-  showGoalGateCta,
-  goalGateLabel,
-  onGoalGateAcknowledge,
   showVocab,
   vocabWords,
   vocabIndex,
@@ -161,22 +155,64 @@ export function MessageContent({
     return `msg-${params.msgStableId}`;
   };
 
+  // Auto-play the situation's AI line once when that scenario becomes active (mp3-only).
+  // This uses processAudioQueue messageId gating + an extra ref guard to avoid rerender loops.
+  const autoPlayedSituationAiRef = useRef<Set<string>>(new Set());
+  let autoPlaySituationAiText: string | null = null;
+  let autoPlaySituationAiMessageId: string | null = null;
+  let shouldAutoPlaySituationAi = false;
+
+  if (isSituationCard) {
+    const group = situationGroupMessages && situationGroupMessages.length > 0 ? situationGroupMessages : [msg];
+    const firstModel = group.find((m) => m.role === 'model');
+    const scenarioIndexForCard =
+      typeof firstModel?.currentStepSnapshot?.index === 'number' && Number.isFinite(firstModel.currentStepSnapshot.index)
+        ? (firstModel.currentStepSnapshot.index as number)
+        : null;
+
+    const parsedSituation =
+      parsed && parsed.type === 'situation'
+        ? {
+            title: typeof (parsed as any).title === 'string' ? (parsed as any).title : '',
+            situation: typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '',
+            task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
+            ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
+          }
+        : firstModel
+          ? parseSituationMessage(firstModel.text || '', stripModuleTag)
+          : {};
+
+    const isActiveScenario =
+      currentStep?.type === 'situations' &&
+      typeof currentStep?.index === 'number' &&
+      scenarioIndexForCard != null &&
+      currentStep.index === scenarioIndexForCard;
+
+    const hasUserReplyInSituation = Boolean(group.some((m) => m.role === 'user' && stripModuleTag(m.text || '').trim()));
+    const aiText = String((parsedSituation as any)?.ai || '').trim();
+
+    autoPlaySituationAiText = aiText || null;
+    autoPlaySituationAiMessageId = msgStableId ? `situation-ai:${msgStableId}` : null;
+    shouldAutoPlaySituationAi = Boolean(isActiveScenario && aiText && !hasUserReplyInSituation && !situationCompletedCorrect);
+  }
+
+  useEffect(() => {
+    if (!shouldAutoPlaySituationAi) return;
+    if (!autoPlaySituationAiText) return;
+    if (!autoPlaySituationAiMessageId) return;
+    if (autoPlayedSituationAiRef.current.has(autoPlaySituationAiMessageId)) return;
+    autoPlayedSituationAiRef.current.add(autoPlaySituationAiMessageId);
+
+    processAudioQueue([{ text: autoPlaySituationAiText, lang: 'en', kind: 'situation_ai' }], autoPlaySituationAiMessageId);
+  }, [autoPlaySituationAiMessageId, autoPlaySituationAiText, processAudioQueue, shouldAutoPlaySituationAi]);
+
   if (parsed && (parsed.type === 'goal' || parsed.type === 'words_list')) {
     if (parsed.type === 'goal') {
+      const goalText = String(parsed.goal || '').trim();
       return (
-        <div className="space-y-4">
-          <div className="p-5 rounded-3xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 space-y-3 w-full max-w-2xl mx-auto">
-            <div className="text-xs uppercase font-semibold tracking-widest text-gray-500">🎯 Цель урока</div>
-            <div className="text-lg font-semibold text-gray-900 leading-relaxed">{parsed.goal}</div>
-            {showGoalGateCta && (
-              <button
-                type="button"
-                onClick={onGoalGateAcknowledge}
-                className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition"
-              >
-                {goalGateLabel}
-              </button>
-            )}
+        <div className="space-y-1">
+          <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
+            {renderMarkdown(goalText ? `🎯 ${goalText}` : '🎯')}
           </div>
         </div>
       );
@@ -388,6 +424,7 @@ export function MessageContent({
       <FindTheMistakeCard
         instruction={instruction}
         options={options}
+        answer={answer}
         explanation={explanation}
         ui={ui}
         isLoading={isLoading}
@@ -401,17 +438,24 @@ export function MessageContent({
         }}
         onAdvance={async () => {
           const uiNow = findMistakeUI[findKey] || ui;
-          if (!uiNow.correct || !uiNow.selected) return;
+          if (!uiNow.selected) return;
           if (uiNow.advanced) return;
           const stepForAdvance = msg.currentStepSnapshot ?? currentStep;
           if (!stepForAdvance) return;
+
+          const choiceToSend: 'A' | 'B' =
+            uiNow.correct === true
+              ? uiNow.selected
+              : answer === 'A' || answer === 'B'
+                ? answer
+                : uiNow.selected;
 
           const advancedPayload = { ...uiNow, advanced: true };
           setFindMistakeUI((prev) => ({ ...prev, [findKey]: advancedPayload }));
           persistFindMistakePatch({ [findKey]: advancedPayload });
           setIsLoading(true);
           try {
-            await handleStudentAnswer('', { choice: uiNow.selected, stepOverride: stepForAdvance, silent: true });
+            await handleStudentAnswer('', { choice: choiceToSend, stepOverride: stepForAdvance, silent: true });
           } catch (err) {
             console.error('[find_the_mistake] advance error:', err);
             const rollbackPayload = { ...uiNow, advanced: false };
@@ -464,6 +508,7 @@ export function MessageContent({
             <FindTheMistakeCard
               instruction={instruction}
               options={options}
+              answer={answer}
               explanation={explanation}
               ui={ui}
               isLoading={isLoading}
@@ -477,16 +522,23 @@ export function MessageContent({
               }}
               onAdvance={async () => {
                 const uiNow = findMistakeUI[findKey] || ui;
-                if (!uiNow.correct || !uiNow.selected) return;
+                if (!uiNow.selected) return;
                 if (uiNow.advanced) return;
                 const stepForAdvance = msg.currentStepSnapshot ?? currentStep;
                 if (!stepForAdvance) return;
+
+                const choiceToSend: 'A' | 'B' =
+                  uiNow.correct === true
+                    ? uiNow.selected
+                    : answer === 'A' || answer === 'B'
+                      ? answer
+                      : uiNow.selected;
                 const advancedPayload = { ...uiNow, advanced: true };
                 setFindMistakeUI((prev) => ({ ...prev, [findKey]: advancedPayload }));
                 persistFindMistakePatch({ [findKey]: advancedPayload });
                 setIsLoading(true);
                 try {
-                  await handleStudentAnswer('', { choice: uiNow.selected, stepOverride: stepForAdvance, silent: true });
+                  await handleStudentAnswer('', { choice: choiceToSend, stepOverride: stepForAdvance, silent: true });
                 } catch (err) {
                   console.error('[find_the_mistake] advance error (fallback):', err);
                   const rollbackPayload = { ...uiNow, advanced: false };
