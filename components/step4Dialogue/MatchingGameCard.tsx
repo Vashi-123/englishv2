@@ -151,11 +151,6 @@ export function MatchingGameCard({
       (selectedTranslation && translationPairById.get(selectedTranslation)) ||
       null;
 
-    const selected =
-      selectedWord && selectedTranslation
-        ? [{ pairId: selectedPairId, wordId: selectedWord, translationId: selectedTranslation, kind: 'active' as const }]
-        : [];
-
     const mismatch =
       mismatchAttempt && mismatchAttempt.wordId && mismatchAttempt.translationId
         ? [
@@ -166,6 +161,13 @@ export function MatchingGameCard({
               kind: 'mismatch' as const,
             },
           ]
+        : [];
+
+    // If we are showing a mismatch animation, don't draw the "active" (blue) line on top of it,
+    // otherwise the strokes visually mix (half red / half active).
+    const selected =
+      !mismatch.length && selectedWord && selectedTranslation
+        ? [{ pairId: selectedPairId, wordId: selectedWord, translationId: selectedTranslation, kind: 'active' as const }]
         : [];
 
     // Draw active line on top of matched ones.

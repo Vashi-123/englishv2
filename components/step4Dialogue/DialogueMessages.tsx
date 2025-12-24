@@ -81,10 +81,15 @@ export function DialogueMessages({
   shouldShowVocabCheckButton,
 		  handleCheckVocabulary,
 
-		  isAwaitingModelReply,
-		  lessonCompletedPersisted,
-		  onNextLesson,
-		}: {
+			  isAwaitingModelReply,
+			  lessonCompletedPersisted,
+			  onNextLesson,
+			  onAskTutor,
+			  tutorPanelOpen,
+			  tutorBannerText,
+			  tutorThreadMessages,
+			  tutorIsAwaitingReply,
+			}: {
   scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
   messageRefs: MutableRefObject<Map<number, HTMLDivElement>>;
@@ -155,10 +160,15 @@ export function DialogueMessages({
   shouldShowVocabCheckButton: boolean;
   handleCheckVocabulary: () => void;
 
-		  isAwaitingModelReply: boolean;
-		  lessonCompletedPersisted: boolean;
-		  onNextLesson?: () => void;
-		}) {
+			  isAwaitingModelReply: boolean;
+			  lessonCompletedPersisted: boolean;
+			  onNextLesson?: () => void;
+			  onAskTutor?: () => void;
+			  tutorPanelOpen?: boolean;
+			  tutorBannerText?: string;
+			  tutorThreadMessages?: Array<{ role: 'user' | 'model'; text: string }>;
+			  tutorIsAwaitingReply?: boolean;
+			}) {
   let findMistakeOrdinal = 0;
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   const suppressGlobalTypingIndicator =
@@ -181,6 +191,19 @@ export function DialogueMessages({
   })();
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6 pt-12 space-y-6 pb-32 bg-white w-full">
+      {visibleMessages.length === 0 && isLoading && (
+        <div className="min-h-[45vh] flex items-center justify-center">
+          <div className="px-5 py-4 rounded-2xl bg-gray-50 border border-gray-200 shadow-sm">
+            <div className="text-sm font-semibold text-gray-700">Загружаю урок</div>
+            <div className="mt-2 flex items-center gap-1 text-gray-400">
+              <span className="inline-block w-2 h-2 rounded-full bg-gray-300 animate-bounce [animation-delay:-0.2s]" />
+              <span className="inline-block w-2 h-2 rounded-full bg-gray-300 animate-bounce [animation-delay:-0.1s]" />
+              <span className="inline-block w-2 h-2 rounded-full bg-gray-300 animate-bounce" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {visibleMessages.map((msg, idx) => {
         const groupStart = situationGrouping.startByIndex[idx];
         if (typeof groupStart === 'number' && groupStart !== idx) return null;
@@ -454,7 +477,11 @@ export function DialogueMessages({
         />
       )}
 
-      {isAwaitingModelReply && !suppressGlobalTypingIndicator && messages.length > 0 && messages[messages.length - 1]?.role === 'user' && (
+      {isAwaitingModelReply &&
+        !tutorPanelOpen &&
+        !suppressGlobalTypingIndicator &&
+        messages.length > 0 &&
+        messages[messages.length - 1]?.role === 'user' && (
         <div className="flex justify-start">
           <div className="bg-gray-50 px-4 py-2 rounded-full flex space-x-1">
             <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
@@ -464,22 +491,62 @@ export function DialogueMessages({
         </div>
       )}
 
-	      {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
-	        <>
-	          <AchievementCard />
-	          {onNextLesson && (
-	            <div className="flex justify-center -mt-2 mb-8 animate-fade-in">
-	              <button
-	                type="button"
-	                onClick={onNextLesson}
-	                className="inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-[0_14px_34px_rgba(251,146,60,0.35)] ring-2 ring-amber-200/70 hover:shadow-[0_18px_40px_rgba(244,63,94,0.22)] hover:scale-[1.02] active:scale-[0.99] transition"
-	              >
-	                Следующий урок
-	              </button>
-	            </div>
-	          )}
-	        </>
-	      )}
+		      {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
+		        <>
+		          <AchievementCard />
+		          {(onNextLesson || onAskTutor) && (
+		            <div className="flex flex-col items-center -mt-2 mb-8 gap-3 animate-fade-in w-full">
+		              {onNextLesson && (
+		                <button
+		                  type="button"
+		                  onClick={onNextLesson}
+		                  className="w-full max-w-sm inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-[0_14px_34px_rgba(251,146,60,0.35)] ring-2 ring-amber-200/70 hover:shadow-[0_18px_40px_rgba(244,63,94,0.22)] hover:scale-[1.02] active:scale-[0.99] transition"
+		                >
+		                  Следующий урок
+		                </button>
+		              )}
+		              {tutorPanelOpen && tutorBannerText ? (
+		                <div className="w-full max-w-sm px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 shadow-sm">
+		                  <div className="text-sm font-semibold">{tutorBannerText}</div>
+                      <div className="mt-3 space-y-2">
+                        {(tutorThreadMessages || []).map((m, i) => (
+                          <div key={`${m.role}-${i}`} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div
+                              className={
+                                m.role === 'user'
+                                  ? 'max-w-[85%] rounded-2xl bg-gray-900 text-white px-4 py-2 text-sm shadow-sm'
+                                  : 'max-w-[85%] rounded-2xl bg-white text-gray-900 px-4 py-2 text-sm shadow-sm border border-emerald-100'
+                              }
+                            >
+                              {m.text}
+                            </div>
+                          </div>
+                        ))}
+                        {tutorIsAwaitingReply && (
+                          <div className="flex justify-start">
+                            <div className="bg-white px-4 py-2 rounded-full flex space-x-1 border border-emerald-100 shadow-sm">
+                              <div className="w-2 h-2 bg-emerald-300 rounded-full animate-bounce"></div>
+                              <div className="w-2 h-2 bg-emerald-300 rounded-full animate-bounce delay-100"></div>
+                              <div className="w-2 h-2 bg-emerald-300 rounded-full animate-bounce delay-200"></div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+		                </div>
+		              ) : null}
+		              {onAskTutor && !tutorPanelOpen && (
+		                <button
+		                  type="button"
+		                  onClick={onAskTutor}
+		                  className="w-full max-w-sm inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 shadow-[0_14px_34px_rgba(16,185,129,0.28)] ring-2 ring-emerald-200/70 hover:shadow-[0_18px_40px_rgba(20,184,166,0.22)] hover:scale-[1.02] active:scale-[0.99] transition"
+		                >
+		                  Спросить репетитора
+		                </button>
+		              )}
+		            </div>
+		          )}
+		        </>
+		      )}
 
       <div ref={messagesEndRef} />
     </div>

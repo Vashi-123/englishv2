@@ -410,6 +410,37 @@ export const sendDialogueMessageV2 = async (
   }
 };
 
+export const askTutorV2 = async (params: {
+  day: number;
+  lesson: number;
+  question: string;
+  tutorMessages: Array<{ role: "user" | "model"; text: string }>;
+  uiLang?: string;
+  level?: string;
+}): Promise<{ text: string }> => {
+  const level = params.level || "A1";
+  const lessonId = await getLessonIdForDayLesson(params.day, params.lesson, level);
+  const userId = (await getAuthUserIdFromSession()) || (await getOrCreateLocalUser());
+
+  const { data, error } = await supabase.functions.invoke("groq-lesson-v2", {
+    body: {
+      lessonId,
+      userId,
+      uiLang: params.uiLang || "ru",
+      tutorMode: true,
+      tutorMessages: params.tutorMessages,
+      lastUserMessageContent: params.question,
+    },
+  });
+
+  if (error) {
+    console.error("[askTutorV2] groq-lesson-v2 error:", error);
+    return { text: "Не удалось получить ответ репетитора. Попробуй еще раз." };
+  }
+
+  return { text: String(data?.response || "").trim() || "Не удалось получить ответ репетитора. Попробуй еще раз." };
+};
+
 /**
  * Validate a student's answer for the current step using groq-lesson-v2 in validateOnly mode.
  * Client can then advance the lesson locally without asking the edge function for the next message.

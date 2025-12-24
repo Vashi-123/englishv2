@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { CardHeading } from './CardHeading';
 import { CompletionBadge } from './CompletionBadge';
 
@@ -27,6 +27,23 @@ export function FindTheMistakeCard({
   onPick,
   onAdvance,
 }: Props) {
+  const explanationRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (ui.selected && typeof ui.correct === 'boolean' && !ui.advanced) {
+      // Use requestAnimationFrame to ensure we scroll immediately after layout repaint
+      // This is generally smoother and more reliable than a fixed timeout
+      const frameId = requestAnimationFrame(() => {
+        if (explanation && explanationRef.current) {
+          explanationRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          explanationRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+      return () => cancelAnimationFrame(frameId);
+    }
+  }, [ui.selected, ui.correct, ui.advanced, explanation]);
+
   const twoOptions = options.slice(0, 2);
   if (twoOptions.length < 2) return null;
   // "isLoading" is global for Step4 (history load / message streaming). For this card, we only need to
@@ -82,7 +99,10 @@ export function FindTheMistakeCard({
         </div>
 
         {ui.selected && typeof ui.correct === 'boolean' && explanation && (
-          <div className="text-sm text-green-900 bg-green-50/70 border border-green-200 rounded-2xl px-4 py-3 space-y-1">
+          <div
+            ref={explanationRef}
+            className="text-sm text-green-900 bg-green-50/70 border border-green-200 rounded-2xl px-4 py-3 space-y-1"
+          >
             {answer && <div className="font-bold text-green-900">{renderMarkdown(`Правильно: <b>${answer}<b>`)}</div>}
             {renderMarkdown(explanation)}
           </div>

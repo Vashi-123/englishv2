@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Mic, Send } from 'lucide-react';
 
 type InputMode = 'hidden' | 'text' | 'audio';
@@ -28,8 +28,19 @@ export function DialogueInputBar({
   onToggleRecording,
   cta,
 }: Props) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    if (inputMode !== 'text') return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    const next = Math.min(el.scrollHeight, 160);
+    el.style.height = `${Math.max(52, next)}px`;
+  }, [input, inputMode]);
+
   return (
-    <div className="absolute bottom-0 left-0 right-0 bg-white p-4 border-t border-gray-100">
+    <div className="absolute bottom-0 left-0 right-0 z-[100] bg-white p-4 border-t border-gray-100">
       <div className="max-w-3xl lg:max-w-4xl mx-auto px-4">
         {inputMode === 'audio' ? (
           <div className="flex justify-center">
@@ -61,12 +72,19 @@ export function DialogueInputBar({
           </div>
         ) : inputMode === 'text' ? (
           <form onSubmit={onSend} className="relative flex items-center gap-3">
-            <input
-              type="text"
+            <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend(e as unknown as React.FormEvent);
+                }
+              }}
               placeholder={placeholder}
-              className="flex-1 bg-gray-100 border-none rounded-full px-6 py-4 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium"
+              rows={1}
+              className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto"
               disabled={isLoading}
               autoFocus
             />

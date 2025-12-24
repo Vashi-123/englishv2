@@ -116,6 +116,8 @@ interface ReqPayload {
   choice?: "A" | "B";
   uiLang?: string;
   validateOnly?: boolean;
+  tutorMode?: boolean;
+  tutorMessages?: Array<{ role: "user" | "model"; text: string }>;
   lessonId: string; // id из lesson_scripts
   userId: string;
   currentStep?: {
@@ -136,7 +138,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-console.info("groq-lesson-v2 function started (VALIDATOR ONLY MODE)");
+console.info("groq-lesson-v2 function started (VALIDATOR + TUTOR MODE)");
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -156,7 +158,17 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { lastUserMessageContent, choice, uiLang, validateOnly, lessonId, userId, currentStep }: ReqPayload = await req.json();
+    const {
+      lastUserMessageContent,
+      choice,
+      uiLang,
+      validateOnly,
+      tutorMode,
+      tutorMessages,
+      lessonId,
+      userId,
+      currentStep,
+    }: ReqPayload = await req.json();
 
     if (!lessonId) {
       return new Response("Missing 'lessonId' - lesson ID is required", { status: 400, headers: corsHeaders });
@@ -166,9 +178,14 @@ Deno.serve(async (req: Request) => {
       return new Response("Missing 'userId' - user ID is required", { status: 400, headers: corsHeaders });
     }
 
-    // We strictly enforce validateOnly mode now, as the state machine is client-side.
-    if (!validateOnly) {
-       return new Response("groq-lesson-v2 now only supports validateOnly=true mode.", { status: 400, headers: corsHeaders });
+    // This function supports:
+    // - validateOnly=true: validate the student's answer
+    // - tutorMode=true: post-lesson Q&A (no DB writes)
+    if (!validateOnly && !tutorMode) {
+      return new Response("groq-lesson-v2 now only supports validateOnly=true or tutorMode=true.", {
+        status: 400,
+        headers: corsHeaders,
+      });
     }
 
     const supabase = createClient(
@@ -200,7 +217,10 @@ Deno.serve(async (req: Request) => {
 
     const userLang = uiLang || "ru";
 
-    const makeGroqRequest = async (requestMessages: any[]): Promise<{ text: string; success: boolean }> => {
+    const makeGroqRequest = async (
+      requestMessages: any[],
+      opts?: { max_tokens?: number; temperature?: number }
+    ): Promise<{ text: string; success: boolean }> => {
       const maxRetries = 3;
       let attempt = 0;
 
@@ -215,8 +235,8 @@ Deno.serve(async (req: Request) => {
             body: JSON.stringify({
               model: MODEL,
               messages: requestMessages,
-              max_tokens: 200,
-              temperature: 0.0,
+              max_tokens: typeof opts?.max_tokens === "number" ? opts.max_tokens : 200,
+              temperature: typeof opts?.temperature === "number" ? opts.temperature : 0.0,
             }),
           });
 
@@ -265,6 +285,219 @@ Deno.serve(async (req: Request) => {
       }
       return { text: '', success: false };
     };
+
+    if (tutorMode) {
+      const lessonContext = (() => {
+        const safeText = (value: unknown) => String(value ?? "").trim();
+
+        const goal = safeText(script?.goal);
+
+        const wordsItems = Array.isArray((script as any)?.words?.items)
+          ? (script as any).words.items
+          : Array.isArray((script as any)?.words)
+            ? (script as any).words
+            : [];
+
+        const wordsBlock = wordsItems.length
+          ? [
+              "Слова:",
+              ...wordsItems.map((w: any, i: number) => {
+                const word = safeText(w?.word);
+                const translation = safeText(w?.translation);
+                const context = safeText(w?.context);
+                const contextTranslation = safeText(w?.context_translation);
+                return [
+                  `${i + 1}. ${word}${translation ? ` — ${translation}` : ""}`,
+                  context ? `   Пример: ${context}` : "",
+                  contextTranslation ? `   Перевод примера: ${contextTranslation}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n");
+              }),
+            ].join("\n")
+          : "";
+
+        const grammarExplanation = safeText((script as any)?.grammar?.explanation);
+        const grammarAudioExpected = safeText((script as any)?.grammar?.audio_exercise?.expected);
+        const grammarTextExpected = safeText((script as any)?.grammar?.text_exercise?.expected);
+        const grammarTextInstruction = safeText((script as any)?.grammar?.text_exercise?.instruction);
+
+        const grammarBlock = [
+          "Грамматика:",
+          grammarExplanation ? `Правило/объяснение:\n${grammarExplanation}` : "",
+          grammarAudioExpected ? `Audio exercise expected: ${grammarAudioExpected}` : "",
+          grammarTextExpected ? `Text exercise expected: ${grammarTextExpected}` : "",
+          grammarTextInstruction ? `Text exercise instruction: ${grammarTextInstruction}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+
+        const constructorTasks = Array.isArray((script as any)?.constructor?.tasks) ? (script as any).constructor.tasks : [];
+        const constructorBlock = constructorTasks.length
+          ? [
+              "Конструктор:",
+              ...constructorTasks.map((t: any, i: number) => {
+                const words = Array.isArray(t?.words) ? t.words.map((x: any) => safeText(x)).filter(Boolean) : [];
+                const correct = safeText(t?.correct);
+                const translation = safeText(t?.translation);
+                return [
+                  `${i + 1}. Слова: ${words.join(" ")}`,
+                  correct ? `   Correct: ${correct}` : "",
+                  translation ? `   Перевод: ${translation}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n");
+              }),
+            ].join("\n")
+          : "";
+
+        const findTasks = Array.isArray((script as any)?.find_the_mistake?.tasks) ? (script as any).find_the_mistake.tasks : [];
+        const findBlock = findTasks.length
+          ? [
+              "Найди ошибку:",
+              ...findTasks.map((t: any, i: number) => {
+                const options = Array.isArray(t?.options) ? t.options.map((x: any) => safeText(x)).filter(Boolean) : [];
+                const answer = safeText(t?.answer);
+                const explanation = safeText(t?.explanation);
+                return [
+                  `${i + 1}. A) ${options[0] || ""}`,
+                  `   B) ${options[1] || ""}`,
+                  answer ? `   Ответ: ${answer}` : "",
+                  explanation ? `   Объяснение: ${explanation}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n");
+              }),
+            ].join("\n")
+          : "";
+
+        const scenarios = Array.isArray((script as any)?.situations?.scenarios) ? (script as any).situations.scenarios : [];
+        const situationsBlock = scenarios.length
+          ? [
+              "Ситуации:",
+              ...scenarios.map((s: any, i: number) => {
+                const title = safeText(s?.title);
+                const situation = safeText(s?.situation);
+                const steps = Array.isArray(s?.steps) ? s.steps : null;
+                if (steps && steps.length > 0) {
+                  return [
+                    `${i + 1}. ${title}`,
+                    situation ? `   Описание: ${situation}` : "",
+                    ...steps.map((st: any, j: number) => {
+                      const ai = safeText(st?.ai);
+                      const aiTr = safeText(st?.ai_translation);
+                      const task = safeText(st?.task);
+                      const expected = safeText(st?.expected_answer);
+                      return [
+                        `   Шаг ${j + 1}:`,
+                        ai ? `     AI: ${ai}` : "",
+                        aiTr ? `     Перевод AI: ${aiTr}` : "",
+                        task ? `     Задача: ${task}` : "",
+                        expected ? `     Expected: ${expected}` : "",
+                      ]
+                        .filter(Boolean)
+                        .join("\n");
+                    }),
+                  ]
+                    .filter(Boolean)
+                    .join("\n");
+                }
+                const ai = safeText(s?.ai);
+                const task = safeText(s?.task);
+                const expected = safeText(s?.expected_answer);
+                return [
+                  `${i + 1}. ${title}`,
+                  situation ? `   Описание: ${situation}` : "",
+                  ai ? `   AI: ${ai}` : "",
+                  task ? `   Задача: ${task}` : "",
+                  expected ? `   Expected: ${expected}` : "",
+                ]
+                  .filter(Boolean)
+                  .join("\n");
+              }),
+            ].join("\n")
+          : "";
+
+        const completion = safeText((script as any)?.completion);
+
+        const text = [
+          goal ? `Цель урока: ${goal}` : "",
+          wordsBlock,
+          grammarBlock,
+          constructorBlock,
+          findBlock,
+          situationsBlock,
+          completion ? `Финал: ${completion}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n\n---\n\n");
+
+        // Guardrail: keep context reasonably sized so the tutor call doesn't fail on token limits.
+        const maxChars = 12000;
+        if (text.length <= maxChars) return text;
+        return `${text.slice(0, maxChars)}\n\n…(контекст урока обрезан по длине)…`;
+      })();
+
+      const tutorSystemPrompt =
+        userLang.toLowerCase().startsWith("ru")
+          ? `Ты репетитор по английскому. Отвечай на вопросы ученика по этому уроку.
+Правила:
+- Пиши кратко и по делу, дружелюбно.
+- Если ученик просит примеры — дай 2-3 примера и краткое объяснение.
+- Если вопрос не относится к уроку — мягко верни к теме урока.
+Контекст урока (для тебя):\n\n${lessonContext}`
+          : `You are an English tutor. Answer the student's questions about this lesson.
+Rules:
+- Be concise, friendly, and practical.
+- If asked for examples, give 2-3 examples and a short explanation.
+- If the question is unrelated to the lesson, gently steer back to the lesson.
+Lesson context (for you):\n\n${lessonContext}`;
+
+      const history = Array.isArray(tutorMessages)
+        ? tutorMessages
+            .filter((m) => m && (m.role === "user" || m.role === "model") && typeof m.text === "string" && m.text.trim())
+            .slice(-12)
+        : [];
+
+      const toGroqRole = (role: "user" | "model") => (role === "model" ? "assistant" : "user");
+
+      const greeting =
+        userLang.toLowerCase().startsWith("ru")
+          ? "Я рад ответить на вопросы по этому уроку. Задай вопрос — я помогу."
+          : "Happy to answer questions about this lesson. Ask away!";
+
+      const userQuestion = String(lastUserMessageContent || "").trim();
+
+      const messages = [
+        { role: "system", content: tutorSystemPrompt },
+        ...(history.length
+          ? history.map((m) => ({ role: toGroqRole(m.role), content: String(m.text) }))
+          : [{ role: "assistant", content: greeting }]),
+        ...(userQuestion ? [{ role: "user", content: userQuestion }] : []),
+      ];
+
+      const result = await makeGroqRequest(messages, { max_tokens: 500, temperature: 0.2 });
+      if (!result.success || !result.text) {
+        const fallback = userLang.toLowerCase().startsWith("ru")
+          ? "Не получилось ответить прямо сейчас. Попробуй еще раз."
+          : "Couldn't answer right now. Please try again.";
+        return new Response(
+          JSON.stringify({ response: fallback, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          response: result.text.trim(),
+          isCorrect: true,
+          feedback: "",
+          nextStep: currentStep ?? null,
+          translation: "",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Хелпер для валидации ответа через Groq (только проверка корректности)
     const validateAnswer = async (params: {

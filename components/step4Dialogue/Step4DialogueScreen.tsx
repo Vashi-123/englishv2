@@ -2,7 +2,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage } from '../../types';
 import type { LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { advanceLesson } from '../../services/lessonV2ClientEngine';
-import { cacheChatMessages, getAuthUserIdFromSession, getLessonIdForDayLesson, loadLessonScript, peekCachedChatMessages, upsertLessonProgress } from '../../services/generationService';
+import {
+  askTutorV2,
+  cacheChatMessages,
+  getAuthUserIdFromSession,
+  getLessonIdForDayLesson,
+  loadLessonScript,
+  peekCachedChatMessages,
+  upsertLessonProgress,
+} from '../../services/generationService';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getOrCreateLocalUser } from '../../services/userService';
 import { parseMarkdown } from './markdown';
@@ -93,6 +101,12 @@ export function Step4DialogueScreen({
   const [lessonCompletedPersisted, setLessonCompletedPersisted] = useState(false);
 
   const [showTranslations, setShowTranslations] = useState<Record<number, boolean>>({});
+
+  const [tutorMode, setTutorMode] = useState(false);
+  const [tutorPanelOpen, setTutorPanelOpen] = useState(false);
+  const [tutorQuestionsUsed, setTutorQuestionsUsed] = useState(0);
+  const [tutorHistory, setTutorHistory] = useState<Array<{ role: 'user' | 'model'; text: string }>>([]);
+  const [tutorThreadMessages, setTutorThreadMessages] = useState<Array<{ role: 'user' | 'model'; text: string }>>([]);
 
   const { currentAudioItem, processAudioQueue, resetTtsState } = useTtsQueue();
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -205,6 +219,25 @@ export function Step4DialogueScreen({
     setShowTranslations((prev) => ({ ...prev, [index]: !prev[index] }));
   }, []);
 
+  const appendLocalMessage = useCallback((msg: ChatMessage) => {
+    setMessages((prev) => [...prev, msg]);
+  }, []);
+
+  const tutorGreeting = useMemo(() => {
+    return resolvedLanguage.toLowerCase().startsWith('ru')
+      ? 'Задайте вопрос — рад буду ответить.'
+      : 'Ask a question — happy to help.';
+  }, [resolvedLanguage]);
+
+  const startTutorMode = useCallback(() => {
+    setTutorMode(true);
+    setTutorPanelOpen(true);
+    setTutorQuestionsUsed(0);
+    setTutorHistory([{ role: 'model', text: tutorGreeting }]);
+    setTutorThreadMessages([]);
+    setInputMode('text');
+  }, [tutorGreeting]);
+
   const handleSend = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
@@ -212,17 +245,107 @@ export function Step4DialogueScreen({
       const userMsg = input.trim();
       setInput('');
       setInputMode('hidden');
+
+      if (tutorMode) {
+        if (tutorQuestionsUsed >= 5) {
+          setTutorThreadMessages((prev) => [
+            ...prev,
+            {
+              role: 'model',
+              text: resolvedLanguage.toLowerCase().startsWith('ru')
+                ? 'Лимит вопросов исчерпан (5). Можешь нажать «Спросить репетитора» снова, чтобы начать заново.'
+                : 'Question limit reached (5). Tap “Ask the tutor” again to start over.',
+            },
+          ]);
+          setTutorMode(false);
+          return;
+        }
+
+        setTutorThreadMessages((prev) => [...prev, { role: 'user', text: userMsg }]);
+        setIsAwaitingModelReply(true);
+        try {
+          const nextHistory = [...tutorHistory, { role: 'user' as const, text: userMsg }];
+          setTutorHistory(nextHistory);
+          const out = await askTutorV2({
+            day: day || 1,
+            lesson: lesson || 1,
+            question: userMsg,
+            tutorMessages: nextHistory,
+            uiLang: resolvedLanguage,
+            level: resolvedLevel,
+          });
+          const answerText = out.text || '';
+          setTutorThreadMessages((prev) => [...prev, { role: 'model', text: answerText }]);
+          setTutorHistory((prev) => [...prev, { role: 'model', text: answerText }]);
+          const nextCount = tutorQuestionsUsed + 1;
+          setTutorQuestionsUsed(nextCount);
+          setTutorMode(nextCount < 5);
+          if (nextCount < 5) setInputMode('text');
+        } finally {
+          setIsAwaitingModelReply(false);
+        }
+        return;
+      }
+
       await handleStudentAnswer(userMsg);
     },
-    [handleStudentAnswer, input]
+    [
+      appendLocalMessage,
+      day,
+      handleStudentAnswer,
+      input,
+      lesson,
+      resolvedLanguage,
+      resolvedLevel,
+      tutorHistory,
+      tutorMode,
+      tutorQuestionsUsed,
+    ]
   );
 
   const onSpeechTranscript = useCallback(
     async (transcript: string) => {
       setInputMode('hidden');
+      if (tutorMode) {
+        const studentText = String(transcript || '').trim();
+        if (!studentText) return;
+        setTutorThreadMessages((prev) => [...prev, { role: 'user', text: studentText }]);
+        setIsAwaitingModelReply(true);
+        try {
+          const nextHistory = [...tutorHistory, { role: 'user' as const, text: studentText }];
+          setTutorHistory(nextHistory);
+          const out = await askTutorV2({
+            day: day || 1,
+            lesson: lesson || 1,
+            question: studentText,
+            tutorMessages: nextHistory,
+            uiLang: resolvedLanguage,
+            level: resolvedLevel,
+          });
+          const answerText = out.text || '';
+          setTutorThreadMessages((prev) => [...prev, { role: 'model', text: answerText }]);
+          setTutorHistory((prev) => [...prev, { role: 'model', text: answerText }]);
+          const nextCount = tutorQuestionsUsed + 1;
+          setTutorQuestionsUsed(nextCount);
+          setTutorMode(nextCount < 5);
+        } finally {
+          setIsAwaitingModelReply(false);
+        }
+        return;
+      }
       await handleStudentAnswer(transcript);
     },
-    [handleStudentAnswer]
+    [
+      appendLocalMessage,
+      day,
+      handleStudentAnswer,
+      lesson,
+      resolvedLanguage,
+      resolvedLevel,
+      tutorHistory,
+      tutorMode,
+      tutorQuestionsUsed,
+    ]
   );
   const { isRecording, isTranscribing, startRecording, stopRecording } = useSpeechInput({
     messages,
@@ -388,12 +511,12 @@ export function Step4DialogueScreen({
         const out = advanceLesson({ script, currentStep: { type: 'words', index: 0 } });
         await appendEngineMessagesWithDelay(out.messages);
         setCurrentStep(out.nextStep || null);
-        await upsertLessonProgress({
+        upsertLessonProgress({
           day: day || 1,
           lesson: lesson || 1,
           level: resolvedLevel,
           currentStepSnapshot: out.nextStep || null,
-        });
+        }).catch((err) => console.error('[Step4Dialogue] Matching background save error:', err));
       } catch (err) {
         console.error('[Step4Dialogue] Error completing matching:', err);
       } finally {
@@ -513,9 +636,21 @@ export function Step4DialogueScreen({
       { text: String(first.context || ''), lang: 'en', kind: 'example' },
     ].filter((x) => x.text.trim().length > 0);
     if (!queue.length) return;
-    processAudioQueue(queue);
+    // React StrictMode can run effects twice in development; use messageId gating
+    // so the first vocab item doesn't play twice.
+    let lastWordsListStableId = 'words_list';
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const msg = messages[i];
+      if (!msg || msg.role !== 'model') continue;
+      const parsed = tryParseJsonMessage(msg.text);
+      if (parsed?.type === 'words_list') {
+        lastWordsListStableId = getMessageStableId(msg, i);
+        break;
+      }
+    }
+    processAudioQueue(queue, `vocab:first:${lastWordsListStableId}`);
     setPendingVocabPlay(false);
-  }, [pendingVocabPlay, processAudioQueue, setPendingVocabPlay, showVocab, vocabWords]);
+  }, [getMessageStableId, messages, pendingVocabPlay, processAudioQueue, setPendingVocabPlay, showVocab, vocabWords]);
 
   const prevVocabIndexRef = useRef<number>(vocabIndex);
   useEffect(() => {
@@ -659,7 +794,7 @@ export function Step4DialogueScreen({
     window.setTimeout(() => matchingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }, [messages.length, vocabWords]);
 
-	  const effectiveInputMode: InputMode = grammarGate.gated ? 'hidden' : inputMode;
+	  const effectiveInputMode: InputMode = tutorMode ? 'text' : grammarGate.gated ? 'hidden' : inputMode;
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
   const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
   const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
@@ -679,12 +814,12 @@ export function Step4DialogueScreen({
         await appendEngineMessagesWithDelay(out.messages, 0);
       }
       setCurrentStep(out.nextStep || null);
-      await upsertLessonProgress({
+      upsertLessonProgress({
         day: day || 1,
         lesson: lesson || 1,
         level: resolvedLevel,
         currentStepSnapshot: out.nextStep || null,
-      });
+      }).catch((err) => console.error('[Step4Dialogue] Goal background save error:', err));
       // Make the transition feel immediate even if effects run later.
       setShowVocab(true);
       setPendingVocabPlay(true);
@@ -1018,7 +1153,12 @@ export function Step4DialogueScreen({
 			            isAwaitingModelReply={isAwaitingModelReply}
 			            lessonCompletedPersisted={lessonCompletedPersisted}
 			            onNextLesson={onNextLesson}
-		          />
+			            onAskTutor={startTutorMode}
+			            tutorPanelOpen={tutorPanelOpen}
+			            tutorBannerText={tutorGreeting}
+			            tutorThreadMessages={tutorThreadMessages}
+			            tutorIsAwaitingReply={tutorMode && isAwaitingModelReply}
+			          />
 
           <DialogueInputBar
             inputMode={effectiveInputMode}

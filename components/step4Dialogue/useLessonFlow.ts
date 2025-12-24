@@ -157,13 +157,13 @@ export function useLessonFlow({
           }));
           await appendEngineMessagesWithDelay(messagesWithSnapshot);
           setCurrentStep(out.nextStep || null);
-          await upsertLessonProgress({
+          upsertLessonProgress({
             day,
             lesson,
             level,
             currentStepSnapshot: out.nextStep || null,
             completed: out.messages?.some((m) => String(m.text || '').includes('<lesson_complete>')) ? true : undefined,
-          });
+          }).catch((err) => console.error('[Step4Dialogue] upsertLessonProgress bg error:', err));
           return;
         }
 
@@ -192,13 +192,13 @@ export function useLessonFlow({
         }));
         await appendEngineMessagesWithDelay(messagesWithSnapshot);
         setCurrentStep(out.nextStep || null);
-        await upsertLessonProgress({
+        upsertLessonProgress({
           day,
           lesson,
           level,
           currentStepSnapshot: out.nextStep || null,
           completed: out.messages?.some((m) => String(m.text || '').includes('<lesson_complete>')) ? true : undefined,
-        });
+        }).catch((err) => console.error('[Step4Dialogue] upsertLessonProgress bg error:', err));
       } catch (err) {
         console.error('[Step4Dialogue] handleStudentAnswer error:', err);
       } finally {

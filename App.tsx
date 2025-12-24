@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState, useEffect, useRef } from 'react';
+import React, { useLayoutEffect, useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Session } from '@supabase/supabase-js';
 import { ActivityType, ViewState } from './types';
@@ -41,24 +41,42 @@ const ConnectionRequiredScreen = () => {
   );
 };
 
-const AppContent: React.FC<{
-  userId?: string;
-  userEmail?: string;
-  onSignOut: () => Promise<void>;
-}> = ({ userId, userEmail, onSignOut }) => {
-  // Language management
-  const { language, setLanguage, copy, languages } = useLanguage();
-  const [showLangMenu, setShowLangMenu] = useState(false);
-  const langMenuRef = useRef<HTMLDivElement | null>(null);
-  const [langMenuPos, setLangMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const [level, setLevel] = useState<string>('A1');
-  const { levels: availableLevels, loading: levelsLoading } = useAvailableLevels();
+  const AppContent: React.FC<{
+	  userId?: string;
+	  userEmail?: string;
+	  onSignOut: () => Promise<void>;
+	}> = ({ userId, userEmail, onSignOut }) => {
+	  // Language management
+	  const { language, setLanguage, copy, languages } = useLanguage();
+	  const [showLangMenu, setShowLangMenu] = useState(false);
+	  const [langMenuVisible, setLangMenuVisible] = useState(false);
+	  const langMenuRef = useRef<HTMLDivElement | null>(null);
+	  const [langMenuPos, setLangMenuPos] = useState<{ top: number; left: number } | null>(null);
+	  const [level, setLevel] = useState<string>('A1');
+	  const { levels: availableLevels, loading: levelsLoading } = useAvailableLevels();
 
-  useEffect(() => {
-    if (levelsLoading) return;
-    if (!availableLevels.includes(level)) {
-      setLevel(availableLevels[0] || 'A1');
-    }
+	  const openLangMenu = () => {
+	    setShowLangMenu(true);
+	  };
+
+	  const closeLangMenu = useCallback(() => {
+	    setLangMenuVisible(false);
+	    window.setTimeout(() => {
+	      setShowLangMenu(false);
+	    }, 320);
+	  }, []);
+
+	  useEffect(() => {
+	    if (!showLangMenu) return;
+	    const raf = window.requestAnimationFrame(() => setLangMenuVisible(true));
+	    return () => window.cancelAnimationFrame(raf);
+	  }, [showLangMenu]);
+
+	  useEffect(() => {
+	    if (levelsLoading) return;
+	    if (!availableLevels.includes(level)) {
+	      setLevel(availableLevels[0] || 'A1');
+	    }
   }, [availableLevels, level, levelsLoading]);
 
   useLayoutEffect(() => {
@@ -113,6 +131,7 @@ const AppContent: React.FC<{
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [showInsightPopup, setShowInsightPopup] = useState(false);
   const [lessonCompleted, setLessonCompleted] = useState(false);
+  const [showCourseTopics, setShowCourseTopics] = useState(false);
   const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -697,14 +716,17 @@ const AppContent: React.FC<{
 	        <div className="flex items-start justify-between gap-3">
 	          <div className="relative" ref={langMenuRef}>
             <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center cursor-pointer"
-                onClick={() => setShowLangMenu((v) => !v)}
-              >
-                <div className="w-full h-full bg-gradient-to-tr from-brand-primary to-brand-primaryLight flex items-center justify-center text-[11px] font-bold text-white">
-                  ME
-                </div>
-              </div>
+	              <div
+	                className="w-10 h-10 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center cursor-pointer"
+	                onClick={() => {
+	                  if (showLangMenu) closeLangMenu();
+	                  else openLangMenu();
+	                }}
+	              >
+	                <div className="w-full h-full bg-gradient-to-tr from-brand-primary to-brand-primaryLight flex items-center justify-center text-[11px] font-bold text-white">
+	                  ME
+	                </div>
+	              </div>
               <div>
                 <div className="text-xs font-medium text-gray-600">{copy.header.greeting}</div>
                 <div className="text-2xl font-semibold leading-tight text-slate-900">
@@ -713,20 +735,26 @@ const AppContent: React.FC<{
 	              </div>
 	            </div>
 
-	            {showLangMenu &&
-                langMenuPos &&
-                createPortal(
-                  <div className="fixed inset-0 z-[9999]">
-                    <button
-                      type="button"
-                      aria-label="Close menu"
-                      className="absolute inset-0 bg-black/25 backdrop-blur-sm cursor-default"
-                      onClick={() => setShowLangMenu(false)}
-                    />
-                    <div
-                      className="absolute bg-white border border-gray-200 rounded-xl shadow-2xl p-3 w-64 space-y-3"
-                      style={{ top: langMenuPos.top, left: langMenuPos.left }}
-                    >
+		            {showLangMenu &&
+	                langMenuPos &&
+	                createPortal(
+	                  <div className="fixed inset-0 z-[9999]">
+	                    <button
+	                      type="button"
+	                      aria-label="Close menu"
+	                      className={`absolute inset-0 bg-black/25 backdrop-blur-sm cursor-default transition-opacity duration-300 ease-in-out ${
+	                        langMenuVisible ? 'opacity-100' : 'opacity-0'
+	                      }`}
+	                      onClick={closeLangMenu}
+	                    />
+	                    <div
+	                      className={`absolute bg-white border border-gray-200 rounded-xl shadow-2xl p-3 w-64 space-y-3 transform-gpu transition-all duration-300 ease-in-out ${
+	                        langMenuVisible
+	                          ? 'opacity-100 scale-100 translate-y-0'
+	                          : 'opacity-0 scale-[0.96] -translate-y-2 pointer-events-none'
+	                      }`}
+	                      style={{ top: langMenuPos.top, left: langMenuPos.left }}
+	                    >
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
               Профиль
             </div>
@@ -741,10 +769,10 @@ const AppContent: React.FC<{
               {languages.map((lang) => (
                 <button
                   key={lang.code}
-                  onClick={() => {
-                    setLanguage(lang.code);
-                    setShowLangMenu(false);
-                  }}
+	                  onClick={() => {
+	                    setLanguage(lang.code);
+	                    closeLangMenu();
+	                  }}
                   className={`w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 text-sm font-medium ${
                     language === lang.code ? 'bg-brand-primary/10 text-brand-primary' : 'text-slate-900'
                   }`}
@@ -760,9 +788,12 @@ const AppContent: React.FC<{
             <div className="flex flex-wrap gap-2">
               {availableLevels.map((lvl) => (
                 <button
-                  key={lvl}
-                  onClick={() => { handleLevelChange(lvl); setShowLangMenu(false); }}
-                  disabled={levelsLoading}
+	                  key={lvl}
+	                  onClick={() => {
+	                    handleLevelChange(lvl);
+	                    closeLangMenu();
+	                  }}
+	                  disabled={levelsLoading}
                   className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition ${
                     level === lvl
                       ? 'bg-brand-primary text-white border-brand-primary'
@@ -775,16 +806,22 @@ const AppContent: React.FC<{
             </div>
             <div className="h-px bg-gray-100" />
             <div className="space-y-2">
-              <button
-                onClick={() => { handleResetProgress(); setShowLangMenu(false); }}
-                className="w-full text-left px-3 py-2 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 text-sm font-semibold"
-              >
+	              <button
+	                onClick={() => {
+	                  handleResetProgress();
+	                  closeLangMenu();
+	                }}
+	                className="w-full text-left px-3 py-2 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 text-sm font-semibold"
+	              >
                 Начать уровень сначала
               </button>
-              <button
-                onClick={() => { onSignOut(); setShowLangMenu(false); }}
-                className="w-full text-left px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-semibold"
-              >
+	              <button
+	                onClick={() => {
+	                  onSignOut();
+	                  closeLangMenu();
+	                }}
+	                className="w-full text-left px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-semibold"
+	              >
                 Выйти
               </button>
             </div>
@@ -803,6 +840,15 @@ const AppContent: React.FC<{
                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{copy.progress.title}</span>
                 <span className="text-[10px] text-brand-primary font-medium">{totalCompletedCount} / {TOTAL_SPRINT_TASKS} {copy.progress.lessons}</span>
               </div>
+              <button
+                type="button"
+                onClick={() => setShowCourseTopics((prev) => !prev)}
+                className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-brand-primary transition-colors"
+                aria-label={showCourseTopics ? 'Скрыть темы курса' : 'Показать темы курса'}
+              >
+                <span>Темы</span>
+                <ChevronRight className={`w-3 h-3 transition-transform ${showCourseTopics ? 'rotate-90' : ''}`} />
+              </button>
             </div>
             <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
               <div 
@@ -826,7 +872,8 @@ const AppContent: React.FC<{
             return (
                 <button 
                     key={d.day}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       if (isLocked) return;
                       setSelectedDayId(d.day);
                     }}
@@ -901,142 +948,204 @@ const AppContent: React.FC<{
             )
           })}
 	          </div>
+
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-out ${
+                showCourseTopics ? 'max-h-[420px] opacity-100' : 'max-h-0 opacity-0'
+              }`}
+            >
+              <div className="pt-2">
+                <div className="h-px bg-gray-100" />
+                <div
+                  className="mt-3 max-h-[320px] overflow-y-auto overscroll-contain pr-1"
+                  style={{ WebkitOverflowScrolling: 'touch' }}
+                >
+                  <div className="space-y-2">
+                    {dayPlans.map((d, idx) => {
+                      const isSelected = selectedDayId === d.day;
+                      const dayDone = dayCompletedStatus[d.day] === true;
+                      const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
+                      const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
+                      const isLocked = idx > 0 && !prevCompleted;
+                      return (
+                        <button
+                          type="button"
+                          key={`course-topic-inline-${d.day}-${d.lesson}-${d.lessonId || ''}`}
+                          onClick={() => {
+                            if (isLocked) return;
+                            setSelectedDayId(d.day);
+                          }}
+                          disabled={isLocked}
+                          className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+                            isSelected
+                              ? 'border-brand-primary bg-brand-primary/5'
+                              : isLocked
+                                ? 'border-gray-200/60 bg-gray-50 opacity-60 cursor-not-allowed'
+                                : 'border-gray-200/60 bg-white hover:border-brand-primary/30'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                                Lesson {d.lesson} · {d.level || level}
+                              </div>
+                              <div className="mt-1 text-sm font-extrabold text-gray-900">
+                                {d.theme || d.title || `Lesson #${d.lesson}`}
+                              </div>
+                            </div>
+                            {dayDone ? (
+                              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                            ) : isLocked ? (
+                              <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                            ) : null}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
 	        </div>
 
-        {/* 3. Insight */}
-        <div
-          onClick={() => setShowInsightPopup(true)}
-          className="bg-white border border-gray-200 rounded-3xl p-5 relative overflow-hidden group hover:border-brand-primary/20 transition-all cursor-pointer shadow-sm w-full"
-        >
-          <div className="absolute top-[-30px] right-[-30px] w-28 h-28 bg-brand-primary/10 rounded-full blur-2xl pointer-events-none"></div>
-          <div className="flex items-start gap-4 relative z-10">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/30 flex items-center justify-center border border-brand-primary/20 shadow-lg shrink-0 group-hover:scale-110 transition-transform duration-500">
-              <Sparkles className={`w-5 h-5 ${aiContent.color}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1 min-w-0">
-                <h3 className={`font-bold text-sm ${aiContent.color} whitespace-nowrap overflow-hidden text-ellipsis`}>
-                  {aiContent.status}
-                </h3>
-              </div>
-              <p className="text-slate-900 text-sm font-medium leading-relaxed line-clamp-2 opacity-90">
-                {aiContent.assessment}
-              </p>
-            </div>
-            <div className="text-gray-400 group-hover:text-brand-primary transition-colors">
-              <ChevronRight className="w-5 h-5" />
-            </div>
-          </div>
-        </div>
-
-        {/* 4. Start Lesson Block */}
-        <button
-          onClick={() => handleTaskClick(chatTask.id, chatLocked)}
-          disabled={chatLocked}
-          className={`
-            w-full rounded-3xl p-5
-            transition-all duration-300 text-left relative overflow-hidden
-            ${chatLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
-            ${lessonCompleted
-              ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_24px_80px_rgba(251,191,36,0.4)] hover:shadow-[0_30px_100px_rgba(251,191,36,0.5)] hover:-translate-y-1'
-              : 'bg-white border border-gray-200 shadow-[0_24px_80px_rgba(99,102,241,0.28)] hover:shadow-[0_30px_100px_rgba(99,102,241,0.38)] hover:-translate-y-1'
-            }
-          `}
-        >
-          {/* Анимированный фон для завершенного урока */}
-          {lessonCompleted && (
-            <>
-              <div className="absolute inset-0 opacity-40">
-                <div className="absolute top-0 left-0 w-40 h-40 bg-gradient-to-br from-amber-400/60 to-orange-400/60 rounded-full blur-3xl animate-pulse"></div>
-                <div className="absolute bottom-0 right-0 w-48 h-48 bg-gradient-to-br from-rose-400/60 to-pink-400/60 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
-              </div>
-              <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 via-orange-400/10 to-rose-400/10 pointer-events-none" />
-            </>
-          )}
-          {!lessonCompleted && (
-            <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-brand-secondary/10 to-transparent pointer-events-none" />
-          )}
-          <div className="relative flex flex-col gap-3">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex flex-col gap-1.5">
-                <span className="inline-flex w-fit px-3 py-1 rounded-full border border-gray-300 text-[11px] font-bold uppercase tracking-widest text-gray-600">
-                  Тема урока
-                </span>
-                <p className="text-base text-gray-900 font-semibold leading-snug">
-                  {currentDayPlan?.theme}
-                </p>
-              </div>
-              <div
-                className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl flex-shrink-0 whitespace-nowrap transition-all overflow-hidden ${
-                  lessonCompleted
-                    ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
-                    : 'bg-white/80 border border-gray-200 text-slate-900 shadow-xs'
-                }`}
-              >
-                {lessonCompleted && (
-                  <>
-                    <div
-                      className="absolute inset-[-4px] rounded-2xl bg-[conic-gradient(at_top,_#fbbf24,_#fb7185,_#6366f1,_#fbbf24)] animate-spin opacity-60"
-                      style={{ animationDuration: '6s' }}
-                    />
-                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/15 via-white/5 to-white/15 blur-md opacity-70" />
-                  </>
-                )}
-                <div className="relative flex items-center gap-1.5">
-                  <GraduationCap className={`w-4 h-4 ${lessonCompleted ? 'text-white drop-shadow-sm' : 'text-brand-primary'}`} />
-                  <span className="text-[11px] font-bold uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.15)]">
-                    {copy.header.dayLabel} {selectedDayId}
-                  </span>
+        {!showCourseTopics ? (
+          <>
+            {/* 3. Insight */}
+            <div
+              onClick={() => setShowInsightPopup(true)}
+              className="bg-white border border-gray-200 rounded-3xl p-5 relative overflow-hidden group hover:border-brand-primary/20 transition-all cursor-pointer shadow-sm w-full"
+            >
+              <div className="absolute top-[-30px] right-[-30px] w-28 h-28 bg-brand-primary/10 rounded-full blur-2xl pointer-events-none"></div>
+              <div className="flex items-start gap-4 relative z-10">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/30 flex items-center justify-center border border-brand-primary/20 shadow-lg shrink-0 group-hover:scale-110 transition-transform duration-500">
+                  <Sparkles className={`w-5 h-5 ${aiContent.color}`} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 min-w-0">
+                    <h3 className={`font-bold text-sm ${aiContent.color} whitespace-nowrap overflow-hidden text-ellipsis`}>
+                      {aiContent.status}
+                    </h3>
+                  </div>
+                  <p className="text-slate-900 text-sm font-medium leading-relaxed line-clamp-2 opacity-90">
+                    {aiContent.assessment}
+                  </p>
+                </div>
+                <div className="text-gray-400 group-hover:text-brand-primary transition-colors">
+                  <ChevronRight className="w-5 h-5" />
                 </div>
               </div>
             </div>
 
-            <div className="relative flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <h3
-                  className={`text-2xl font-extrabold leading-tight mb-2 ${
-                    lessonCompleted
-                      ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent'
-                      : 'text-slate-900'
-                  }`}
-                >
-                  {lessonCompleted ? 'Урок завершен' : 'Начать урок'}
-                </h3>
-              </div>
-              <div className="relative flex-shrink-0">
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            {/* 4. Start Lesson Block */}
+            <button
+              onClick={() => handleTaskClick(chatTask.id, chatLocked)}
+              disabled={chatLocked}
+              className={`
+                w-full rounded-3xl p-5
+                transition-all duration-300 text-left relative overflow-hidden
+                ${chatLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
+                ${lessonCompleted
+                  ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_24px_80px_rgba(251,191,36,0.4)] hover:shadow-[0_30px_100px_rgba(251,191,36,0.5)] hover:-translate-y-1'
+                  : 'bg-white border border-gray-200 shadow-[0_24px_80px_rgba(99,102,241,0.28)] hover:shadow-[0_30px_100px_rgba(99,102,241,0.38)] hover:-translate-y-1'
+                }
+              `}
+            >
+              {/* Анимированный фон для завершенного урока */}
+              {lessonCompleted && (
+                <>
+                  <div className="absolute inset-0 opacity-40">
+                    <div className="absolute top-0 left-0 w-40 h-40 bg-gradient-to-br from-amber-400/60 to-orange-400/60 rounded-full blur-3xl animate-pulse"></div>
+                    <div className="absolute bottom-0 right-0 w-48 h-48 bg-gradient-to-br from-rose-400/60 to-pink-400/60 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-amber-400/10 via-orange-400/10 to-rose-400/10 pointer-events-none" />
+                </>
+              )}
+              {!lessonCompleted && (
+                <div className="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-brand-secondary/10 to-transparent pointer-events-none" />
+              )}
+              <div className="relative flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+	                  <div className="flex flex-col gap-3">
+	                    <span className="inline-flex w-fit px-3 py-1 rounded-full border border-gray-300 text-[11px] font-bold uppercase tracking-widest text-gray-600">
+	                      Тема урока
+	                    </span>
+	                    <p className="text-base text-gray-900 font-semibold leading-snug">
+                      {currentDayPlan?.theme}
+                    </p>
+                  </div>
                   <div
-                    className={`rounded-full animate-ping ${
-                      lessonCompleted ? 'w-14 h-14 border-2 border-amber-400/80' : 'w-12 h-12 border-2 border-brand-primary/60'
+                    className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl flex-shrink-0 whitespace-nowrap transition-all overflow-hidden ${
+                      lessonCompleted
+                        ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+                        : 'bg-white/80 border border-gray-200 text-slate-900 shadow-xs'
                     }`}
-                    style={{ animationDuration: '2s' }}
-                  />
-                  <div
-                    className={`absolute rounded-full animate-ping ${
-                      lessonCompleted ? 'w-14 h-14 border-2 border-orange-400/60' : 'w-12 h-12 border-2 border-brand-secondary/40'
-                    }`}
-                    style={{ animationDuration: '2s', animationDelay: '0.5s' }}
-                  />
-                  {lessonCompleted && (
+                  >
+                    {lessonCompleted && (
+                      <>
+                        <div
+                          className="absolute inset-[-4px] rounded-2xl bg-[conic-gradient(at_top,_#fbbf24,_#fb7185,_#6366f1,_#fbbf24)] animate-spin opacity-60"
+                          style={{ animationDuration: '6s' }}
+                        />
+                        <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/15 via-white/5 to-white/15 blur-md opacity-70" />
+                      </>
+                    )}
+                    <div className="relative flex items-center gap-1.5">
+                      <GraduationCap className={`w-4 h-4 ${lessonCompleted ? 'text-white drop-shadow-sm' : 'text-brand-primary'}`} />
+                      <span className="text-[11px] font-bold uppercase tracking-wide drop-shadow-[0_1px_2px_rgba(0,0,0,0.15)]">
+                        {copy.header.dayLabel} {selectedDayId}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="relative flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <h3
+                      className={`text-2xl font-extrabold leading-tight mb-2 ${
+                        lessonCompleted
+                          ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent'
+                          : 'text-slate-900'
+                      }`}
+                    >
+                      {lessonCompleted ? 'Урок завершен' : 'Начать урок'}
+                    </h3>
+                  </div>
+                  <div className="relative flex-shrink-0">
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <div
+                        className={`rounded-full animate-ping ${
+                          lessonCompleted ? 'w-14 h-14 border-2 border-amber-400/80' : 'w-12 h-12 border-2 border-brand-primary/60'
+                        }`}
+                        style={{ animationDuration: '2s' }}
+                      />
+                      <div
+                        className={`absolute rounded-full animate-ping ${
+                          lessonCompleted ? 'w-14 h-14 border-2 border-orange-400/60' : 'w-12 h-12 border-2 border-brand-secondary/40'
+                        }`}
+                        style={{ animationDuration: '2s', animationDelay: '0.5s' }}
+                      />
+                      {lessonCompleted && (
+                        <div
+                          className="absolute w-14 h-14 rounded-full border-2 border-rose-400/40 animate-ping"
+                          style={{ animationDuration: '2s', animationDelay: '1s' }}
+                        />
+                      )}
+                    </div>
                     <div
-                      className="absolute w-14 h-14 rounded-full border-2 border-rose-400/40 animate-ping"
-                      style={{ animationDuration: '2s', animationDelay: '1s' }}
-                    />
-                  )}
-                </div>
-                <div
-	                  className={`w-12 h-12 rounded-full flex items-center justify-center text-white animate-pulse relative z-10 ${
-	                    lessonCompleted
-	                      ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-[0_0_30px_rgba(251,191,36,0.8),0_0_60px_rgba(251,146,60,0.6)] ring-4 ring-amber-300/60'
-	                      : 'bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary shadow-[0_0_20px_rgba(99,102,241,0.6),0_0_40px_rgba(99,102,241,0.4)] ring-4 ring-brand-primary/50'
-	                  }`}
-	                >
-                  <Play className="w-5 h-5 fill-white" />
+	                      className={`w-12 h-12 rounded-full flex items-center justify-center text-white animate-pulse relative z-10 ${
+	                        lessonCompleted
+	                          ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-[0_0_30px_rgba(251,191,36,0.8),0_0_60px_rgba(251,146,60,0.6)] ring-4 ring-amber-300/60'
+	                          : 'bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary shadow-[0_0_20px_rgba(99,102,241,0.6),0_0_40px_rgba(99,102,241,0.4)] ring-4 ring-brand-primary/50'
+	                      }`}
+	                    >
+                      <Play className="w-5 h-5 fill-white" />
+                    </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
-        </button>
+            </button>
+          </>
+        ) : null}
       </div>
     </div>
   );};
