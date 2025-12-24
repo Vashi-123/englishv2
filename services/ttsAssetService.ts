@@ -71,7 +71,16 @@ function extractTtsPhrases(script: any): string[] {
   const scenarios = script?.situations?.scenarios;
   if (Array.isArray(scenarios)) {
     for (const s of scenarios) {
-      const ai = normalizeText(s?.ai || '');
+      const steps = (s as any)?.steps;
+      if (Array.isArray(steps) && steps.length > 0) {
+        for (const st of steps) {
+          const ai = normalizeText((st as any)?.ai || '');
+          if (ai && /[A-Za-z]/.test(ai)) phrases.push(ai);
+        }
+        continue;
+      }
+
+      const ai = normalizeText((s as any)?.ai || '');
       if (ai && /[A-Za-z]/.test(ai)) phrases.push(ai);
     }
   }

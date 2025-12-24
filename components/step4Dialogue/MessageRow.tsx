@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ChatMessage } from '../../types';
-import { Bot, Languages } from 'lucide-react';
+import { Bot, Check, Languages } from 'lucide-react';
 import { ModuleSeparatorHeading } from './ModuleSeparatorHeading';
 import { MatchingGameCard } from './MatchingGameCard';
 
@@ -21,6 +21,7 @@ type Props = {
   msg: ChatMessage;
   idx: number;
   msgStableId: string;
+  userCorrect?: boolean;
   isVocabulary: boolean;
   isSituationCard: boolean;
   isTaskCard: boolean;
@@ -42,6 +43,7 @@ export const MessageRow: React.FC<Props> = ({
   msg,
   idx,
   msgStableId,
+  userCorrect,
   isVocabulary,
   isSituationCard,
   isTaskCard,
@@ -64,17 +66,6 @@ export const MessageRow: React.FC<Props> = ({
     return (
       <>
         {showSeparatorTitle && typeof separatorTitle === 'string' && <ModuleSeparatorHeading title={separatorTitle} />}
-        {showGrammarGateButton && (
-          <div className="flex justify-start mt-3">
-            <button
-              type="button"
-              onClick={onPressGrammarNext}
-              className="ml-11 relative overflow-hidden px-5 py-2.5 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/20 after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_85%_85%,rgba(255,255,255,0.22),transparent_55%)] after:pointer-events-none"
-            >
-              Далее
-            </button>
-          </div>
-        )}
       </>
     );
   }
@@ -124,6 +115,12 @@ export const MessageRow: React.FC<Props> = ({
               {children}
             </div>
 
+            {msg.role === 'user' && userCorrect === true && (
+              <div className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25 flex items-center justify-center ring-2 ring-white">
+                <Check className="w-4 h-4" />
+              </div>
+            )}
+
             {showTranslationToggle && (
               <button
                 onClick={onToggleTranslation}
@@ -136,18 +133,6 @@ export const MessageRow: React.FC<Props> = ({
           </div>
         </div>
       </div>
-
-      {showGrammarGateButton && (
-        <div className="flex justify-start mt-3">
-          <button
-            type="button"
-            onClick={onPressGrammarNext}
-            className="ml-11 relative overflow-hidden px-5 py-2.5 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/20 after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_85%_85%,rgba(255,255,255,0.22),transparent_55%)] after:pointer-events-none"
-          >
-            Далее
-          </button>
-        </div>
-      )}
     </>
   );
 };

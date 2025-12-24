@@ -30,7 +30,6 @@ export function SituationCard({ title, situation, task, ai, feedback, renderMark
               )}
               {task && (
                 <div className="space-y-1.5">
-                  <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Твоя задача</div>
                   <div className="text-base font-semibold text-gray-900 whitespace-pre-wrap leading-relaxed">
                     {renderMarkdown(task)}
                   </div>

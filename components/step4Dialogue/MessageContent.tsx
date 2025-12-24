@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import type { AudioQueueItem, ChatMessage, LessonScript, VocabWord } from '../../types';
-import { extractIntroText } from './messageUtils';
+import { extractIntroText, deriveFindMistakeKey } from './messageUtils';
 import { VocabularyCard } from './VocabularyCard';
 import { ExerciseCard } from './ExerciseCard';
 import { WordPayloadCard } from './WordPayloadCard';
@@ -113,52 +113,6 @@ export function MessageContent({
     }
   };
 
-  const normalizeFindMistakeOption = (value: unknown) =>
-    String(value || '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .toLowerCase();
-
-  const deriveFindMistakeKey = (params: {
-    parsed: any;
-    msg: ChatMessage;
-    msgStableId: string;
-    optionsFromText?: string[] | null;
-    taskIndexFallback?: number;
-  }) => {
-    const snapshotType = params.msg.currentStepSnapshot?.type;
-    const snapshotIndex = params.msg.currentStepSnapshot?.index;
-    if (snapshotType === 'find_the_mistake' && typeof snapshotIndex === 'number' && Number.isFinite(snapshotIndex)) {
-      return `task-${snapshotIndex}`;
-    }
-    if (typeof params.parsed?.taskIndex === 'number' && Number.isFinite(params.parsed.taskIndex)) {
-      return `task-${params.parsed.taskIndex}`;
-    }
-    if (typeof params.taskIndexFallback === 'number' && Number.isFinite(params.taskIndexFallback)) {
-      return `task-${params.taskIndexFallback}`;
-    }
-
-    const candidateOptions: string[] =
-      (Array.isArray(params.parsed?.options) ? params.parsed.options : params.optionsFromText) || [];
-    const normalized = candidateOptions.slice(0, 2).map(normalizeFindMistakeOption);
-
-    const tasks: any[] = Array.isArray((lessonScript as any)?.find_the_mistake?.tasks)
-      ? (lessonScript as any).find_the_mistake.tasks
-      : [];
-    if (normalized.length === 2 && tasks.length) {
-      for (let taskIndex = 0; taskIndex < tasks.length; taskIndex++) {
-        const task = tasks[taskIndex];
-        const taskOptions = Array.isArray(task?.options) ? task.options : [];
-        const normalizedTask = taskOptions.slice(0, 2).map(normalizeFindMistakeOption);
-        if (normalizedTask.length === 2 && normalizedTask[0] === normalized[0] && normalizedTask[1] === normalized[1]) {
-          return `task-${taskIndex}`;
-        }
-      }
-    }
-
-    return `msg-${params.msgStableId}`;
-  };
-
   // Auto-play the situation's AI line once when that scenario becomes active (mp3-only).
   // This uses processAudioQueue messageId gating + an extra ref guard to avoid rerender loops.
   const autoPlayedSituationAiRef = useRef<Set<string>>(new Set());
@@ -174,6 +128,22 @@ export function MessageContent({
         ? (firstModel.currentStepSnapshot.index as number)
         : null;
 
+    const lastSituationModel = (() => {
+      for (let i = group.length - 1; i >= 0; i--) {
+        const m = group[i];
+        if (m.role !== 'model') continue;
+        const raw = stripModuleTag(m.text || '').trim();
+        if (!raw.startsWith('{')) continue;
+        try {
+          const p = JSON.parse(raw);
+          if (p?.type === 'situation') return { idx: i, msg: m, payload: p };
+        } catch {
+          // ignore
+        }
+      }
+      return null;
+    })();
+
     const parsedSituation =
       parsed && parsed.type === 'situation'
         ? {
@@ -182,17 +152,32 @@ export function MessageContent({
             task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
             ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
           }
-        : firstModel
-          ? parseSituationMessage(firstModel.text || '', stripModuleTag)
+        : lastSituationModel
+          ? (lastSituationModel.payload as any)
+          : firstModel
+            ? parseSituationMessage(firstModel.text || '', stripModuleTag)
           : {};
 
     const isActiveScenario =
       currentStep?.type === 'situations' &&
       typeof currentStep?.index === 'number' &&
       scenarioIndexForCard != null &&
-      currentStep.index === scenarioIndexForCard;
+      currentStep.index === scenarioIndexForCard &&
+      Number(((currentStep as any)?.subIndex) ?? 0) ===
+        Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0);
 
-    const hasUserReplyInSituation = Boolean(group.some((m) => m.role === 'user' && stripModuleTag(m.text || '').trim()));
+    const hasUserReplyInSituation = (() => {
+      // For multi-step situations, we only consider a reply after the latest situation payload.
+      if (!lastSituationModel) {
+        return Boolean(group.some((m) => m.role === 'user' && stripModuleTag(m.text || '').trim()));
+      }
+      for (let i = lastSituationModel.idx + 1; i < group.length; i++) {
+        const m = group[i];
+        if (m.role !== 'user') continue;
+        if (stripModuleTag(m.text || '').trim()) return true;
+      }
+      return false;
+    })();
     const aiText = String((parsedSituation as any)?.ai || '').trim();
 
     autoPlaySituationAiText = aiText || null;
@@ -317,13 +302,20 @@ export function MessageContent({
       [constructorKey, setConstructorUI]
     );
 
+    const constructorTranslation =
+      translationVisible || !task?.translation
+        ? translationVisible
+          ? translationContent
+          : undefined
+        : task.translation;
+
     return (
       <ConstructorCard
         instruction={instructionText || ''}
         note={task?.note}
         words={words.length ? words : (task?.words || [])}
         expected={correctSentence}
-        translation={translationVisible ? translationContent : undefined}
+        translation={constructorTranslation}
         renderMarkdown={renderMarkdown}
         isLoading={isLoading}
         initialPickedWordIndices={Array.isArray(ctorState.pickedWordIndices) ? ctorState.pickedWordIndices : undefined}
@@ -396,6 +388,7 @@ export function MessageContent({
       msgStableId,
       optionsFromText: parsedFromText,
       taskIndexFallback: findMistakeTaskIndexFallback,
+      lessonScript,
     });
 
     const findBlock = (lessonScript as any)?.find_the_mistake;
@@ -502,6 +495,7 @@ export function MessageContent({
         msgStableId,
         optionsFromText: parsedFromText,
         taskIndexFallback: findMistakeTaskIndexFallback,
+        lessonScript,
       });
       const findBlock = lessonScript?.find_the_mistake;
       const task = findBlock?.tasks?.[stepIndex] || findBlock?.tasks?.[0];
@@ -573,18 +567,6 @@ export function MessageContent({
         ? (firstModel.currentStepSnapshot.index as number)
         : null;
 
-    const parsedSituation =
-      parsed && parsed.type === 'situation'
-        ? {
-            title: typeof (parsed as any).title === 'string' ? (parsed as any).title : '',
-            situation: typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '',
-            task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
-            ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
-          }
-        : firstModel
-          ? parseSituationMessage(firstModel.text || '', stripModuleTag)
-          : {};
-
     const lastSituationModel = (() => {
       for (let i = group.length - 1; i >= 0; i--) {
         const m = group[i];
@@ -601,11 +583,27 @@ export function MessageContent({
       return null;
     })();
 
+    const parsedSituation =
+      parsed && parsed.type === 'situation'
+        ? {
+            title: typeof (parsed as any).title === 'string' ? (parsed as any).title : '',
+            situation: typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '',
+            task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
+            ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
+          }
+        : lastSituationModel
+          ? (lastSituationModel.payload as any)
+          : firstModel
+            ? parseSituationMessage(firstModel.text || '', stripModuleTag)
+            : {};
+
     const isActiveScenario =
       currentStep?.type === 'situations' &&
       typeof currentStep?.index === 'number' &&
       scenarioIndexForCard != null &&
-      currentStep.index === scenarioIndexForCard;
+      currentStep.index === scenarioIndexForCard &&
+      Number(((currentStep as any)?.subIndex) ?? 0) ===
+        Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0);
 
     const showContinue =
       Boolean(isActiveScenario) &&
@@ -616,21 +614,45 @@ export function MessageContent({
         ? String(lastSituationModel.payload.continueLabel)
         : 'Далее';
 
-    const items = group
-      .filter((m) => m.role === 'user' || (m.role === 'model' && stripModuleTag(m.text || '').trim().startsWith('{')))
-      .map((m) => {
-        if (m.role === 'user') return { kind: 'user' as const, text: stripModuleTag(m.text || '') };
+    const items: Array<
+      | { kind: 'ai'; text: string; translation?: string; task?: string }
+      | { kind: 'user'; text: string; correct?: boolean }
+      | { kind: 'feedback'; text: string }
+    > = [];
+    for (const m of group) {
+      if (m.role === 'model') {
+        const raw = stripModuleTag(m.text || '').trim();
+        if (!raw.startsWith('{')) continue;
         try {
-          const p = JSON.parse(stripModuleTag(m.text || ''));
-          if (p?.type === 'situation' && typeof p?.feedback === 'string' && p.feedback.trim()) {
-            return { kind: 'feedback' as const, text: p.feedback };
+          const p = JSON.parse(raw);
+          if (p?.type !== 'situation') continue;
+          const prevUserCorrect = (p as any)?.prev_user_correct;
+          if (typeof prevUserCorrect === 'boolean') {
+            for (let j = items.length - 1; j >= 0; j--) {
+              if ((items[j] as any)?.kind === 'user') {
+                items[j] = { ...(items[j] as any), correct: prevUserCorrect } as any;
+                break;
+              }
+            }
           }
+          const aiText = String(p?.ai || '').trim();
+          if (aiText) {
+            const translation = String(p?.ai_translation || '').trim();
+            const task = String(p?.task || '').trim();
+            items.push({ kind: 'ai', text: aiText, translation: translation || undefined, task: task || undefined });
+          }
+          const feedback = String(p?.feedback || '').trim();
+          if (feedback) items.push({ kind: 'feedback', text: feedback });
         } catch {
           // ignore
         }
-        return null;
-      })
-      .filter(Boolean) as Array<{ kind: 'user' | 'feedback'; text: string }>;
+        continue;
+      }
+      if (m.role === 'user') {
+        const text = stripModuleTag(m.text || '').trim();
+        if (text) items.push({ kind: 'user', text });
+      }
+    }
 
     return (
       <SituationThreadCard

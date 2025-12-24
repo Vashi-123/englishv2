@@ -160,6 +160,11 @@ export function DialogueMessages({
 		  onNextLesson?: () => void;
 		}) {
   let findMistakeOrdinal = 0;
+  const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  const suppressGlobalTypingIndicator =
+    Boolean(isAwaitingModelReply) &&
+    Boolean(lastMessage?.role === 'user') &&
+    (currentStep?.type === 'situations' || lastMessage?.currentStepSnapshot?.type === 'situations');
   const lastModelIndex = (() => {
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
       if (visibleMessages[i]?.role === 'model') return i;
@@ -316,12 +321,36 @@ export function DialogueMessages({
           parsed && parsed.type === 'section' && typeof parsed.title === 'string' && stripModuleTag(String(parsed.content || '')).trim() === '';
         const showGrammarGateButton = msg.role === 'model' && grammarGate.gated && msgStableId === grammarGate.sectionId;
 
+        const userCorrect = (() => {
+          if (msg.role !== 'user') return false;
+          if (msg.currentStepSnapshot?.type !== 'grammar') return false;
+
+          for (let k = idx + 1; k < visibleMessages.length; k++) {
+            const next = visibleMessages[k];
+            if (!next) continue;
+            if (next.role !== 'model') continue;
+
+            const nextType = next.currentStepSnapshot?.type;
+            if (nextType === 'grammar') return false;
+
+            const raw = stripModuleTag(String(next.text || '')).trim();
+            // We only want the "successText" hop after grammar, not the next prompt/JSON card itself.
+            if (!raw) return false;
+            if (raw.startsWith('{')) return false;
+            if (/<w>/.test(raw)) return false;
+            if (/<text_input>|<audio_input>/i.test(String(next.text || ''))) return false;
+            return true;
+          }
+          return false;
+        })();
+
         return (
           <MessageRow
             key={msgStableId}
             msg={msg}
             idx={idx}
             msgStableId={msgStableId}
+            userCorrect={userCorrect}
             isVocabulary={isVocabulary}
             isSituationCard={isSituationCard}
             isTaskCard={Boolean(isTaskPayload && !isSituationCard && !isVocabulary && !isSeparatorOnly)}
@@ -425,18 +454,7 @@ export function DialogueMessages({
         />
       )}
 
-      {shouldShowVocabCheckButton && (
-        <div className="flex justify-end mt-6 animate-fade-in">
-          <button
-            onClick={handleCheckVocabulary}
-            className="relative overflow-hidden px-5 py-2.5 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/20 after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_85%_85%,rgba(255,255,255,0.22),transparent_55%)] after:pointer-events-none"
-          >
-            Проверить
-          </button>
-        </div>
-      )}
-
-      {isAwaitingModelReply && messages.length > 0 && messages[messages.length - 1]?.role === 'user' && (
+      {isAwaitingModelReply && !suppressGlobalTypingIndicator && messages.length > 0 && messages[messages.length - 1]?.role === 'user' && (
         <div className="flex justify-start">
           <div className="bg-gray-50 px-4 py-2 rounded-full flex space-x-1">
             <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>

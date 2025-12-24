@@ -55,6 +55,15 @@ function extractTtsPhrases(script: any): string[] {
   const scenarios = script?.situations?.scenarios;
   if (Array.isArray(scenarios)) {
     for (const s of scenarios) {
+      const steps = s?.steps;
+      if (Array.isArray(steps) && steps.length > 0) {
+        for (const st of steps) {
+          const ai = normalizeText(st?.ai || "");
+          if (ai && looksLikeEnglish(ai)) phrases.push(ai);
+        }
+        continue;
+      }
+
       const ai = normalizeText(s?.ai || "");
       if (ai && looksLikeEnglish(ai)) phrases.push(ai);
     }

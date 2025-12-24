@@ -79,17 +79,6 @@ export function VocabularyCard({
           );
         })}
       </div>
-
-      <div className="flex justify-end mt-4">
-        {currentIdx + 1 < words.length && (
-          <button
-            onClick={onNextWord}
-            className="px-4 py-2 text-sm font-semibold rounded-full border transition-colors bg-brand-primary text-white border-brand-primary hover:opacity-90"
-          >
-            Далее
-          </button>
-        )}
-      </div>
     </div>
   );
 }

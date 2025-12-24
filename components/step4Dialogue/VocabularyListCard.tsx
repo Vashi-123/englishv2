@@ -87,17 +87,6 @@ export function VocabularyListCard({
           );
         })}
       </div>
-
-      <div className="flex justify-end mt-4">
-        {currentIdx + 1 < words.length && (
-          <button
-            onClick={onNextWord}
-            className="relative overflow-hidden px-5 py-2.5 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/20 after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_85%_85%,rgba(255,255,255,0.22),transparent_55%)] after:pointer-events-none"
-          >
-            Далее
-          </button>
-        )}
-      </div>
     </div>
   );
 }

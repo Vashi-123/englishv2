@@ -46,6 +46,8 @@ export type Step4DialogueProps = {
   };
 };
 
+import { deriveFindMistakeKey } from './messageUtils';
+
 type MatchingOption = { id: string; text: string; pairId: string; matched: boolean };
 
 function shuffleArray<T>(arr: T[]): T[] {
@@ -515,6 +517,28 @@ export function Step4DialogueScreen({
     setPendingVocabPlay(false);
   }, [pendingVocabPlay, processAudioQueue, setPendingVocabPlay, showVocab, vocabWords]);
 
+  const prevVocabIndexRef = useRef<number>(vocabIndex);
+  useEffect(() => {
+    if (isInitializing) {
+      prevVocabIndexRef.current = vocabIndex;
+      return;
+    }
+    if (!showVocab) return;
+    if (vocabIndex === prevVocabIndexRef.current) return;
+
+    prevVocabIndexRef.current = vocabIndex;
+
+    const word = vocabWords[vocabIndex];
+    if (!word) return;
+    const queue = [
+      { text: String(word.word || ''), lang: 'en', kind: 'word' },
+      { text: String(word.context || ''), lang: 'en', kind: 'example' },
+    ].filter((x) => x.text.trim().length > 0);
+    if (queue.length) {
+      processAudioQueue(queue);
+    }
+  }, [vocabIndex, showVocab, vocabWords, processAudioQueue, isInitializing]);
+
   useAutoScrollToEnd({
     deps: [
       day,
@@ -636,40 +660,198 @@ export function Step4DialogueScreen({
   }, [messages.length, vocabWords]);
 
 	  const effectiveInputMode: InputMode = grammarGate.gated ? 'hidden' : inputMode;
-	  const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
-	  const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
-	  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
-	  const acknowledgeGoalGate = useCallback(async () => {
-	    try {
-	      window.localStorage.setItem(goalAckStorageKey, '1');
-	    } catch {
-	      // ignore
-	    }
-	    setGoalGateAcknowledged(true);
-	    setGoalGatePending(false);
-	    setIsLoading(true);
-	    try {
-	      const script = (await ensureLessonScript()) as LessonScriptV2;
-	      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
-	      if (out.messages?.length) {
-	        await appendEngineMessagesWithDelay(out.messages, 0);
-	      }
-	      setCurrentStep(out.nextStep || null);
-	      await upsertLessonProgress({
-	        day: day || 1,
-	        lesson: lesson || 1,
-	        level: resolvedLevel,
-	        currentStepSnapshot: out.nextStep || null,
-	      });
-	      // Make the transition feel immediate even if effects run later.
-	      setShowVocab(true);
-	      setPendingVocabPlay(true);
-	    } catch (err) {
-	      console.error('[Step4Dialogue] Failed to advance from goal:', err);
-	    } finally {
-	      setIsLoading(false);
-	    }
-	  }, [appendEngineMessagesWithDelay, ensureLessonScript, goalAckStorageKey]);
+  const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
+  const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
+  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
+  const acknowledgeGoalGate = useCallback(async () => {
+    try {
+      window.localStorage.setItem(goalAckStorageKey, '1');
+    } catch {
+      // ignore
+    }
+    setGoalGateAcknowledged(true);
+    setGoalGatePending(false);
+    setIsLoading(true);
+    try {
+      const script = (await ensureLessonScript()) as LessonScriptV2;
+      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
+      if (out.messages?.length) {
+        await appendEngineMessagesWithDelay(out.messages, 0);
+      }
+      setCurrentStep(out.nextStep || null);
+      await upsertLessonProgress({
+        day: day || 1,
+        lesson: lesson || 1,
+        level: resolvedLevel,
+        currentStepSnapshot: out.nextStep || null,
+      });
+      // Make the transition feel immediate even if effects run later.
+      setShowVocab(true);
+      setPendingVocabPlay(true);
+    } catch (err) {
+      console.error('[Step4Dialogue] Failed to advance from goal:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [appendEngineMessagesWithDelay, ensureLessonScript, goalAckStorageKey]);
+
+  const activeCta = useMemo(() => {
+    // 1. Goal Gate
+    if (showGoalGateCta) {
+      return {
+        label: goalGateLabel,
+        onClick: acknowledgeGoalGate,
+        disabled: isLoading,
+      };
+    }
+
+    // 2. Grammar Gate
+    if (grammarGate.gated && grammarGate.sectionId) {
+      return {
+        label: 'Проверить',
+        onClick: () => {
+          persistGrammarGateOpened([grammarGate.sectionId!, grammarGate.ordinalKey!].filter(Boolean) as string[]);
+        },
+      };
+    }
+
+    // 3. Vocabulary Next Word
+    if (showVocab && vocabWords.length > 0 && vocabIndex < vocabWords.length - 1) {
+      return {
+        label: 'Далее',
+        onClick: () => setVocabIndex((prev) => prev + 1),
+      };
+    }
+
+    // 4. Vocabulary Check
+    if (shouldShowVocabCheckButton) {
+      return {
+        label: 'Проверить',
+        onClick: handleCheckVocabulary,
+      };
+    }
+
+    // 5. Find The Mistake Next
+    // Find the latest message that has a selected but not advanced FindMistake state.
+    // We must track the task index manually for the fallback case, similar to DialogueMessages logic.
+    let findMistakeOrdinal = 0;
+    // We iterate forward to correctly count findMistakeOrdinal, then check backwards or store potential matches.
+    // Easier to map messages to their keys first.
+    let targetAction: { label: string; onClick: () => void; disabled: boolean } | null = null;
+
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role !== 'model') continue;
+      
+      const parsed = tryParseJsonMessage(msg.text);
+      const text = stripModuleTag(msg.text || '');
+      
+      // Determine if this message is a Find Mistake card
+      const isFindMistakeMessage = (() => {
+          if (parsed?.type === 'find_the_mistake') return true;
+          const a = text.match(/A\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+          const b = text.match(/B\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+          const parsedFromText = a && b ? [a.trim(), b.trim()] : null;
+          return Boolean(
+            (parsedFromText &&
+              (/Напиши\s*A\s*или\s*B/i.test(text) || /Выбери.*A.*B/i.test(text) || /Найди\s+ошибк/i.test(text))) ||
+              (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(text) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(text)) &&
+                (/Найди\s+ошибк/i.test(text) || /Выбери/i.test(text))))
+          );
+      })();
+
+      if (!isFindMistakeMessage) continue;
+
+      const currentOrdinal = findMistakeOrdinal++;
+      const stableId = getMessageStableId(msg, i);
+      
+      const parsedFromText = (() => {
+          const a = text.match(/A\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+          const b = text.match(/B\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+          if (a && b) return [a.trim(), b.trim()];
+          return null;
+      })();
+
+      const key = deriveFindMistakeKey({
+        parsed,
+        msg,
+        msgStableId: stableId,
+        optionsFromText: parsedFromText,
+        taskIndexFallback: currentOrdinal,
+        lessonScript,
+      });
+
+      const ui = findMistakeUI[key];
+      // We only want to show the button if this is the *last* model message or close to it,
+      // and if the user has selected something but not advanced.
+      if (ui && ui.selected && !ui.advanced) {
+        
+        // Determine the correct answer to know what to send
+        let answer: 'A' | 'B' | undefined = undefined;
+        if ((parsed as any)?.answer === 'A' || (parsed as any)?.answer === 'B') {
+           answer = (parsed as any).answer;
+        } else if (key.startsWith('task-')) {
+           const idx = parseInt(key.replace('task-', ''), 10);
+           const task = (lessonScript as any)?.find_the_mistake?.tasks?.[idx];
+           if (task?.answer === 'A' || task?.answer === 'B') {
+             answer = task.answer;
+           }
+        }
+
+        const choiceToSend: 'A' | 'B' =
+          ui.correct === true
+            ? ui.selected
+            : answer === 'A' || answer === 'B'
+              ? answer
+              : ui.selected;
+
+        targetAction = {
+          label: 'Далее',
+          onClick: async () => {
+             // 1. Mark as advanced in UI
+             setFindMistakeUI((prev) => ({
+                ...prev,
+                [key]: { ...ui, advanced: true }
+             }));
+             
+             // 2. Send answer
+             const stepOverride = msg.currentStepSnapshot ?? currentStep;
+             await handleStudentAnswer('', { 
+                 choice: choiceToSend, 
+                 stepOverride,
+                 silent: true 
+             });
+          },
+          disabled: Boolean(isLoading && ui.advanced),
+        };
+      }
+    }
+    
+    if (targetAction) return targetAction;
+
+    return null;
+  }, [
+    showGoalGateCta,
+    goalGateLabel,
+    acknowledgeGoalGate,
+    isLoading,
+    grammarGate,
+    persistGrammarGateOpened,
+    showVocab,
+    vocabWords.length,
+    vocabIndex,
+    shouldShowVocabCheckButton,
+    handleCheckVocabulary,
+    messages,
+    getMessageStableId,
+    findMistakeUI,
+    handleStudentAnswer,
+    lessonScript,
+    setFindMistakeUI,
+    stripModuleTag,
+    tryParseJsonMessage,
+    currentStep,
+  ]);
 
   const lessonProgress = useMemo(() => {
     const getScriptWordsCount = (script: any | null): number => {
@@ -689,7 +871,17 @@ export function Step4DialogueScreen({
       lessonScript?.grammar?.audio_exercise?.expected || lessonScript?.grammar?.text_exercise?.expected ? 1 : 0;
     const constructorCount = lessonScript?.constructor?.tasks?.length || 0;
     const findMistakeCount = lessonScript?.find_the_mistake?.tasks?.length || 0;
-    const situationsCount = lessonScript?.situations?.scenarios?.length || 0;
+    const situationsCount = (() => {
+      const scenarios = lessonScript?.situations?.scenarios;
+      if (!Array.isArray(scenarios) || scenarios.length === 0) return 0;
+      let totalSteps = 0;
+      for (const s of scenarios) {
+        const steps = (s as any)?.steps;
+        if (Array.isArray(steps) && steps.length > 0) totalSteps += steps.length;
+        else totalSteps += 1;
+      }
+      return totalSteps;
+    })();
 
     const total =
       vocabTaskCount + matchingCount + grammarCount + constructorCount + findMistakeCount + situationsCount;
@@ -704,6 +896,7 @@ export function Step4DialogueScreen({
 
     const stepType = String(currentStep?.type || '');
     const stepIndex = Number.isFinite(currentStep?.index) ? Number(currentStep.index) : 0;
+    const stepSubIndex = Number.isFinite((currentStep as any)?.subIndex) ? Number((currentStep as any).subIndex) : 0;
 
     let completed = 0;
     if (!stepType || stepType === 'goal') {
@@ -723,7 +916,20 @@ export function Step4DialogueScreen({
       const within = Math.min(Math.max(0, stepIndex) + 1, findMistakeCount);
       completed = prefixAfterConstructor + within;
     } else if (stepType === 'situations') {
-      const within = Math.min(Math.max(0, stepIndex) + 1, situationsCount);
+      const within = (() => {
+        const scenarios = lessonScript?.situations?.scenarios;
+        if (!Array.isArray(scenarios) || scenarios.length === 0) return 0;
+        const safeScenarioIndex = Math.max(0, Math.min(stepIndex, scenarios.length - 1));
+        let offset = 0;
+        for (let i = 0; i < safeScenarioIndex; i += 1) {
+          const steps = (scenarios[i] as any)?.steps;
+          offset += Array.isArray(steps) && steps.length > 0 ? steps.length : 1;
+        }
+        const currentScenario = scenarios[safeScenarioIndex] as any;
+        const currentSteps = Array.isArray(currentScenario?.steps) && currentScenario.steps.length > 0 ? currentScenario.steps.length : 1;
+        const safeSubIndex = Math.max(0, Math.min(stepSubIndex, currentSteps - 1));
+        return Math.min(offset + safeSubIndex + 1, situationsCount);
+      })();
       completed = prefixAfterFindMistake + within;
     } else if (stepType === 'completion') {
       completed = total;
@@ -736,6 +942,7 @@ export function Step4DialogueScreen({
     return { percent, label: `${safeCompleted}/${total}` };
   }, [
     currentStep?.index,
+    (currentStep as any)?.subIndex,
     currentStep?.type,
     lessonScript,
     matchesComplete,
@@ -813,25 +1020,17 @@ export function Step4DialogueScreen({
 			            onNextLesson={onNextLesson}
 		          />
 
-	          <DialogueInputBar
-	            inputMode={effectiveInputMode}
-	            input={input}
-	            onInputChange={setInput}
+          <DialogueInputBar
+            inputMode={effectiveInputMode}
+            input={input}
+            onInputChange={setInput}
             onSend={handleSend}
             placeholder={copy.placeholder}
             isLoading={isLoading}
             isRecording={isRecording}
             isTranscribing={isTranscribing}
             onToggleRecording={onToggleRecording}
-            cta={
-              showGoalGateCta
-                ? {
-                    label: goalGateLabel,
-                    onClick: acknowledgeGoalGate,
-                    disabled: isLoading,
-                  }
-                : null
-            }
+            cta={activeCta}
           />
         </div>
       </div>

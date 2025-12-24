@@ -38,6 +38,7 @@ interface LessonScript {
       words: string[];
       correct: string;
       note?: string;
+      translation?: string;
     }>;
   };
   find_the_mistake: {
@@ -55,13 +56,47 @@ interface LessonScript {
     scenarios: Array<{
       title: string;
       situation: string;
-      ai: string;
-      task: string;
-      expected_answer: string;
+      // Legacy single-step scenario fields
+      ai?: string;
+      task?: string;
+      expected_answer?: string;
+      // New multi-step scenario format
+      steps?: Array<{
+        ai: string;
+        ai_translation?: string;
+        task: string;
+        expected_answer: string;
+      }>;
     }>;
   };
   completion: string;
 }
+
+const getSituationStep = (scenario: any, stepIndex: number) => {
+  const steps = Array.isArray(scenario?.steps) ? scenario.steps : null;
+  if (steps && steps.length > 0) {
+    const safeIndex = Math.max(0, Math.min(steps.length - 1, Number.isFinite(stepIndex) ? stepIndex : 0));
+    const step = steps[safeIndex];
+    const ai = String(step?.ai || "").trim();
+    const aiTranslation = typeof step?.ai_translation === "string" ? String(step.ai_translation).trim() : "";
+    const task = String(step?.task || "").trim();
+    const expected = String(step?.expected_answer || "").trim();
+    if (!ai || !task || !expected) return null;
+    return {
+      ai,
+      ai_translation: aiTranslation || undefined,
+      task,
+      expected_answer: expected,
+      stepIndex: safeIndex,
+      stepsTotal: steps.length,
+    };
+  }
+  const ai = String(scenario?.ai || "").trim();
+  const task = String(scenario?.task || "").trim();
+  const expected = String(scenario?.expected_answer || "").trim();
+  if (!ai || !task || !expected) return null;
+  return { ai, ai_translation: undefined, task, expected_answer: expected, stepIndex: 0, stepsTotal: 1 };
+};
 
 const extractWordsData = (words?: LessonScript['words']): { items: LessonWordItem[]; instruction?: string; successText?: string } => {
   if (!words) {
@@ -111,6 +146,7 @@ const buildSituationPayload = (params: {
   title: string;
   situation: string;
   ai: string;
+  ai_translation?: string;
   task: string;
   feedback?: string;
   expected?: string;
@@ -119,6 +155,7 @@ const buildSituationPayload = (params: {
   title: params.title,
   situation: params.situation,
   ai: params.ai,
+  ai_translation: params.ai_translation,
   task: params.task,
   feedback: params.feedback,
   // Compatibility hint for UIs that only show the keyboard when they see a text_exercise
@@ -466,15 +503,18 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
         extra = `Слова: ${(task.words || []).join(" ")}`;
       } else if (currentStep.type === "situations") {
         const scenario = script.situations?.scenarios?.[currentStep.index];
-        if (!scenario?.expected_answer) {
+        const stepIndexRaw = (currentStep as any)?.subIndex;
+        const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
+        const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
+        if (!scenario || !normalized?.expected_answer) {
           return new Response(JSON.stringify({ isCorrect: false, feedback: "Invalid situation scenario" }), {
             status: 400,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        expected = scenario.expected_answer;
+        expected = normalized.expected_answer;
         stepType = "situations";
-        extra = `Ситуация: ${scenario.title}. AI сказал: "${scenario.ai}". Задача: ${scenario.task}`;
+        extra = `Ситуация: ${scenario.title}. AI сказал: "${normalized.ai}". Задача: ${normalized.task}`;
       } else {
         return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -640,8 +680,9 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     // (предпочитаем сохраненный на сервере шаг из последнего model-сообщения).
     let currentLessonResponse = {
       text: "",
-      isCorrect: true, 
-      feedback: ""
+      isCorrect: true,
+      feedback: "",
+      translation: "",
     };
 
     let skipAiResponseInsert = false;
@@ -837,29 +878,34 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
               const successText = script.grammar?.successText || script.grammar?.transition || "Отлично!";
               await updateModelMessageById(pendingId, successText, newCurrentStep);
               await insertModuleSeparator("Конструктор", newCurrentStep);
+              const firstTaskTranslation =
+                typeof script.constructor?.tasks?.[0]?.translation === "string" ? script.constructor!.tasks[0].translation : "";
               currentLessonResponse.text = formatConstructorPrompt(script.constructor!, 0);
+              currentLessonResponse.translation = firstTaskTranslation;
             } else if (hasFindTasks) {
               newCurrentStep = { type: 'find_the_mistake', index: 0 };
               const successText = script.grammar?.successText || script.grammar?.transition || "Отлично!";
               await updateModelMessageById(pendingId, successText, newCurrentStep);
               await insertModuleSeparator("Найди ошибку", newCurrentStep);
               currentLessonResponse.text = formatFindTheMistakePrompt(script.find_the_mistake!, 0);
-            } else if (script.situations?.scenarios?.length) {
-              const scenario = script.situations.scenarios[0];
-              const transitionText = script.grammar?.successText || script.grammar?.transition || "Отлично!";
-              newCurrentStep = { type: 'situations', index: 0 };
-              await updateModelMessageById(pendingId, transitionText, newCurrentStep);
-              await insertModuleSeparator("Ситуации", newCurrentStep);
-              currentLessonResponse.text = JSON.stringify(
-                buildSituationPayload({
-                  title: scenario.title,
-                  situation: scenario.situation,
-                  ai: scenario.ai,
-                  task: scenario.task,
-                  expected: scenario.expected_answer,
-                })
-              );
-            } else {
+	            } else if (script.situations?.scenarios?.length) {
+  	              const scenario = script.situations.scenarios[0];
+	              const normalized = getSituationStep(scenario, 0);
+	              newCurrentStep = { type: 'situations', index: 0, subIndex: 0 };
+	              currentLessonResponse.text = JSON.stringify(
+	                buildSituationPayload({
+	                  title: scenario.title,
+	                  situation: scenario.situation,
+	                  ai: normalized?.ai || "",
+	                  ai_translation: normalized?.ai_translation,
+	                  task: normalized?.task || "",
+	                  expected: normalized?.expected_answer || "",
+	                })
+	              );
+	              // Ensure the "typing…" bubble becomes the actual situation message (no extra model message insert).
+	              await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
+	              skipAiResponseInsert = true;
+	            } else {
               currentLessonResponse.text = `${script.completion} <lesson_complete>`;
               newCurrentStep = { type: 'completion', index: 0 };
               await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
@@ -902,7 +948,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
           currentLessonResponse.feedback = "";
           if (taskIndex + 1 < constructor.tasks.length) {
             newCurrentStep = { type: 'constructor', index: taskIndex + 1 };
+            const nextTaskTranslation =
+              typeof constructor.tasks?.[taskIndex + 1]?.translation === "string"
+                ? constructor.tasks[taskIndex + 1].translation
+                : "";
             currentLessonResponse.text = formatConstructorPrompt(constructor, taskIndex + 1);
+            currentLessonResponse.translation = nextTaskTranslation;
             await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
             skipAiResponseInsert = true;
           } else {
@@ -912,21 +963,24 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
               await updateModelMessageById(pendingId, successText, newCurrentStep);
               await insertModuleSeparator("Найди ошибку", newCurrentStep);
               currentLessonResponse.text = formatFindTheMistakePrompt(script.find_the_mistake, 0);
-            } else if (script.situations?.scenarios?.length) {
-              const scenario = script.situations.scenarios[0];
-              newCurrentStep = { type: 'situations', index: 0 };
-              const successText = script.constructor?.successText || "Супер! Ты справился со всеми заданиями на построение предложений.";
-              await updateModelMessageById(pendingId, successText, newCurrentStep);
-              await insertModuleSeparator("Ситуации", newCurrentStep);
-              currentLessonResponse.text = JSON.stringify(
-                buildSituationPayload({
-                  title: scenario.title,
-                  situation: scenario.situation,
-                  ai: scenario.ai,
-                  task: scenario.task,
-                })
-              );
-            } else {
+	            } else if (script.situations?.scenarios?.length) {
+	              const scenario = script.situations.scenarios[0];
+	              const normalized = getSituationStep(scenario, 0);
+	              newCurrentStep = { type: 'situations', index: 0, subIndex: 0 };
+	              currentLessonResponse.text = JSON.stringify(
+	                buildSituationPayload({
+	                  title: scenario.title,
+	                  situation: scenario.situation,
+	                  ai: normalized?.ai || "",
+	                  ai_translation: normalized?.ai_translation,
+	                  task: normalized?.task || "",
+	                  expected: normalized?.expected_answer || "",
+	                })
+	              );
+	              // Ensure the "typing…" bubble becomes the actual situation message (no extra model message insert).
+	              await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
+	              skipAiResponseInsert = true;
+	            } else {
               newCurrentStep = { type: 'completion', index: 0 };
               const successText = script.constructor?.successText;
               currentLessonResponse.text = `${successText ? `${successText}\n\n` : ""}${script.completion} <lesson_complete>`;
@@ -943,7 +997,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
           skipAiResponseInsert = true;
         }
       } else {
+        const currentTaskTranslation =
+          typeof constructor.tasks?.[taskIndex]?.translation === "string"
+            ? constructor.tasks[taskIndex].translation
+            : "";
         currentLessonResponse.text = formatConstructorPrompt(constructor, taskIndex);
+        currentLessonResponse.translation = currentTaskTranslation;
         newCurrentStep = { type: 'constructor', index: taskIndex };
       }
     } else if (effectiveCurrentStep.type === 'find_the_mistake') {
@@ -967,24 +1026,27 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
           newCurrentStep = { type: 'find_the_mistake', index: taskIndex + 1 };
           currentLessonResponse.text = formatFindTheMistakePrompt(findTheMistake, taskIndex + 1);
         } else {
-          newCurrentStep = { type: 'situations', index: 0 };
-          const successText = script.find_the_mistake?.successText || "Потрясающе! Ты отлично находишь ошибки.";
-	          await insertModelMessage(successText, newCurrentStep);
-	          await insertModuleSeparator("Ситуации", newCurrentStep);
-	          const scenario = script.situations?.scenarios?.[0];
-	          if (scenario) {
-	            currentLessonResponse.text = JSON.stringify(
-	              buildSituationPayload({
-	                title: scenario.title,
-	                situation: scenario.situation,
-	                ai: scenario.ai,
-	                task: scenario.task,
-	              })
-	            );
-	          } else {
-	            currentLessonResponse.text = `${script.completion} <lesson_complete>`;
-	            newCurrentStep = { type: 'completion', index: 0 };
-	          }
+	          newCurrentStep = { type: 'situations', index: 0, subIndex: 0 };
+	          const successText = script.find_the_mistake?.successText || "Потрясающе! Ты отлично находишь ошибки.";
+		          await insertModelMessage(successText, newCurrentStep);
+		          await insertModuleSeparator("Ситуации", newCurrentStep);
+		          const scenario = script.situations?.scenarios?.[0];
+			          if (scenario) {
+                const normalized = getSituationStep(scenario, 0);
+			            currentLessonResponse.text = JSON.stringify(
+			              buildSituationPayload({
+			                title: scenario.title,
+			                situation: scenario.situation,
+			                ai: normalized?.ai || "",
+			                ai_translation: normalized?.ai_translation,
+			                task: normalized?.task || "",
+	                    expected: normalized?.expected_answer || "",
+			              })
+			            );
+			          } else {
+		            currentLessonResponse.text = `${script.completion} <lesson_complete>`;
+		            newCurrentStep = { type: 'completion', index: 0 };
+		          }
         }
       } else {
         // Для кликового UI мы обычно не дергаем сервер на неправильный ответ.
@@ -994,82 +1056,112 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
         currentLessonResponse.text = suppressUserMessage && choice ? "" : formatFindTheMistakePrompt(findTheMistake, taskIndex);
         newCurrentStep = { type: 'find_the_mistake', index: taskIndex };
       }
-    } else if (effectiveCurrentStep.type === 'situations') {
-      const situations = script.situations;
-      const scenarioIndex = effectiveCurrentStep.index;
-      const currentScenario = situations.scenarios[scenarioIndex];
+	    } else if (effectiveCurrentStep.type === 'situations') {
+	      const situations = script.situations;
+	      const scenarioIndex = effectiveCurrentStep.index;
+	      const currentScenario = situations.scenarios[scenarioIndex];
+        const scenarioStepIndexRaw = (effectiveCurrentStep as any)?.subIndex;
+        const scenarioStepIndex =
+          typeof scenarioStepIndexRaw === 'number' && Number.isFinite(scenarioStepIndexRaw) ? scenarioStepIndexRaw : 0;
+        const normalized = currentScenario ? getSituationStep(currentScenario, scenarioStepIndex) : null;
 
-      if (studentLastMessage) {
-        const pendingId = await insertPendingModelMessage(thinkingText, { type: 'situations', index: scenarioIndex });
-        const validation = await validateAnswer({
-          step: "situations",
-          expected: currentScenario.expected_answer,
-          studentAnswer: studentLastMessage,
-          extra: `Ситуация: ${currentScenario.title}. AI сказал: "${currentScenario.ai}". Задача: ${currentScenario.task}`
-        });
-        currentLessonResponse.isCorrect = validation.isCorrect;
+	      if (studentLastMessage) {
+	        const pendingId = await insertPendingModelMessage(thinkingText, { type: 'situations', index: scenarioIndex, subIndex: scenarioStepIndex });
+	        const validation = await validateAnswer({
+	          step: "situations",
+	          expected: normalized?.expected_answer || "",
+	          studentAnswer: studentLastMessage,
+	          extra: `Ситуация: ${currentScenario.title}. AI сказал: "${normalized?.ai || ""}". Задача: ${normalized?.task || ""}`
+	        });
+	        currentLessonResponse.isCorrect = validation.isCorrect;
 
-        if (currentLessonResponse.isCorrect) {
-          currentLessonResponse.feedback = "";
-	          if (scenarioIndex + 1 < situations.scenarios.length) {
-	            newCurrentStep = { type: 'situations', index: scenarioIndex + 1 };
-	            const nextScenario = situations.scenarios[scenarioIndex + 1];
-	            currentLessonResponse.text = JSON.stringify(
-	              buildSituationPayload({
-	                title: nextScenario.title,
-	                situation: nextScenario.situation,
-	                ai: nextScenario.ai,
-	                task: nextScenario.task,
-                  expected: nextScenario.expected_answer,
-	              })
-	            );
-              await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
-              skipAiResponseInsert = true;
-	          } else {
-	            newCurrentStep = { type: 'completion', index: 0 };
-	            const successText = script.situations?.successText;
-	            if (successText) {
-              await updateModelMessageById(pendingId, successText, newCurrentStep);
-              await insertModuleSeparator("Финал", newCurrentStep);
-            }
-            currentLessonResponse.text = `${script.completion} <lesson_complete>`;
-            if (!successText) {
-              await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
-              skipAiResponseInsert = true;
-            }
-          }
-	        } else {
-	          const fb = validation.feedback || `В этой ситуации тебе нужно было: ${currentScenario.task}. Ожидаемый ответ: "${currentScenario.expected_answer}".`;
-	          currentLessonResponse.feedback = fb; 
-	          currentLessonResponse.text = JSON.stringify(
-	            buildSituationPayload({
-	              title: currentScenario.title,
-	              situation: currentScenario.situation,
-	              ai: currentScenario.ai,
-	              task: currentScenario.task,
-	              feedback: fb,
-                expected: currentScenario.expected_answer,
-	            })
-	          );
-	          newCurrentStep = { type: 'situations', index: scenarioIndex }; 
-            await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
-            skipAiResponseInsert = true;
-	        }
-	      } else {
-	        currentLessonResponse.text = JSON.stringify(
-	          buildSituationPayload({
-	            title: currentScenario.title,
-	            situation: currentScenario.situation,
-	            ai: currentScenario.ai,
-	            task: currentScenario.task,
-              expected: currentScenario.expected_answer,
-	          })
-	        );
-	        newCurrentStep = { type: 'situations', index: scenarioIndex };
-	      }
-    } else if (effectiveCurrentStep.type === 'completion') {
-      currentLessonResponse.text = `${script.completion} <lesson_complete>`;
-      currentLessonResponse.isCorrect = true;
+	        if (currentLessonResponse.isCorrect) {
+	          currentLessonResponse.feedback = "";
+              const steps = Array.isArray(currentScenario?.steps) ? currentScenario.steps : null;
+              const stepsTotal = steps && steps.length > 0 ? steps.length : 1;
+              const hasNextStepInScenario = scenarioStepIndex + 1 < stepsTotal;
+
+	              if (hasNextStepInScenario) {
+	                newCurrentStep = { type: 'situations', index: scenarioIndex, subIndex: scenarioStepIndex + 1 };
+	                const nextNormalized = getSituationStep(currentScenario, scenarioStepIndex + 1);
+	                currentLessonResponse.text = JSON.stringify(
+	                  buildSituationPayload({
+	                    title: currentScenario.title,
+	                    situation: currentScenario.situation,
+	                    ai: nextNormalized?.ai || '',
+	                    ai_translation: nextNormalized?.ai_translation,
+	                    task: nextNormalized?.task || '',
+	                    expected: nextNormalized?.expected_answer || '',
+	                  })
+	                );
+	                await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
+                skipAiResponseInsert = true;
+              } else if (scenarioIndex + 1 < situations.scenarios.length) {
+                newCurrentStep = { type: 'situations', index: scenarioIndex + 1, subIndex: 0 };
+	                const nextScenario = situations.scenarios[scenarioIndex + 1];
+	                const nextNormalized = getSituationStep(nextScenario, 0);
+	                currentLessonResponse.text = JSON.stringify(
+	                  buildSituationPayload({
+	                    title: nextScenario.title,
+	                    situation: nextScenario.situation,
+	                    ai: nextNormalized?.ai || '',
+	                    ai_translation: nextNormalized?.ai_translation,
+	                    task: nextNormalized?.task || '',
+	                    expected: nextNormalized?.expected_answer || '',
+	                  })
+	                );
+	                await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
+                skipAiResponseInsert = true;
+              } else {
+		            newCurrentStep = { type: 'completion', index: 0 };
+		            const successText = script.situations?.successText;
+		            if (successText) {
+	              await updateModelMessageById(pendingId, successText, newCurrentStep);
+	              await insertModuleSeparator("Финал", newCurrentStep);
+	            }
+	            currentLessonResponse.text = `${script.completion} <lesson_complete>`;
+	            if (!successText) {
+	              await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
+	              skipAiResponseInsert = true;
+	            }
+	          }
+		        } else {
+		          const fb =
+                validation.feedback ||
+                `В этой ситуации тебе нужно было: ${normalized?.task || ""}. Ожидаемый ответ: "${normalized?.expected_answer || ""}".`;
+		          currentLessonResponse.feedback = fb; 
+			          currentLessonResponse.text = JSON.stringify(
+			            buildSituationPayload({
+			              title: currentScenario.title,
+			              situation: currentScenario.situation,
+			              ai: normalized?.ai || "",
+			              ai_translation: normalized?.ai_translation,
+			              task: normalized?.task || "",
+			              feedback: fb,
+	                expected: normalized?.expected_answer || "",
+			            })
+			          );
+			          newCurrentStep = { type: 'situations', index: scenarioIndex, subIndex: scenarioStepIndex }; 
+	            await updateModelMessageById(pendingId, currentLessonResponse.text, newCurrentStep);
+	            skipAiResponseInsert = true;
+		        }
+		      } else {
+            const initialNormalized = normalized || getSituationStep(currentScenario, 0);
+			        currentLessonResponse.text = JSON.stringify(
+			          buildSituationPayload({
+			            title: currentScenario.title,
+			            situation: currentScenario.situation,
+			            ai: initialNormalized?.ai || "",
+			            ai_translation: initialNormalized?.ai_translation,
+			            task: initialNormalized?.task || "",
+	              expected: initialNormalized?.expected_answer || "",
+			          })
+			        );
+			        newCurrentStep = { type: 'situations', index: scenarioIndex, subIndex: initialNormalized?.stepIndex ?? 0 };
+			      }
+	    } else if (effectiveCurrentStep.type === 'completion') {
+	      currentLessonResponse.text = `${script.completion} <lesson_complete>`;
+	      currentLessonResponse.isCorrect = true;
       currentLessonResponse.feedback = "";
       newCurrentStep = null; 
     } else {
@@ -1109,12 +1201,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     }
 
     // Return response
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       response: parsedResponse.text,
       isCorrect: parsedResponse.isCorrect,
       feedback: parsedResponse.feedback,
-      nextStep: newCurrentStep, 
-      translation: "" 
+      nextStep: newCurrentStep,
+      translation: parsedResponse.translation || "",
     }), {
       headers: {
         ...corsHeaders,

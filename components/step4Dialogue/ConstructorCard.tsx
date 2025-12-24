@@ -187,6 +187,12 @@ export function ConstructorCard({
           </div>
         )}
 
+        {translation && (
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+            {renderMarkdown(translation)}
+          </div>
+        )}
+
         {words.length > 0 && (
           <>
             <div className="flex flex-wrap gap-2 pt-2">
@@ -227,10 +233,6 @@ export function ConstructorCard({
               )}
             </div>
           </>
-        )}
-
-        {translation && (
-          <div className="text-sm text-gray-500 border-t border-gray-100 pt-2">{renderMarkdown(translation)}</div>
         )}
       </div>
     </div>

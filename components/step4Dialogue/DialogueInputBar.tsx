@@ -37,7 +37,7 @@ export function DialogueInputBar({
               type="button"
               disabled={isLoading || isTranscribing}
               onClick={onToggleRecording}
-              className={`p-6 rounded-full transition-all shadow-lg ${
+              className={`p-6 rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${
                 isRecording
                   ? 'bg-red-500 text-white animate-pulse'
                   : isTranscribing
@@ -73,7 +73,7 @@ export function DialogueInputBar({
             <button
               type="submit"
               disabled={isLoading || !input.trim()}
-              className="p-4 bg-brand-primary text-white rounded-full hover:opacity-90 transition-opacity"
+              className="p-4 bg-brand-primary text-white rounded-full hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100"
             >
               <Send className="w-5 h-5" />
             </button>
@@ -85,7 +85,7 @@ export function DialogueInputBar({
                 type="button"
                 onClick={cta.onClick}
                 disabled={Boolean(cta.disabled || isLoading)}
-                className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full h-11 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {cta.label}
               </button>
