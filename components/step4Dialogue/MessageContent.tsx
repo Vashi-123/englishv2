@@ -28,6 +28,7 @@ type Props = {
   setVocabIndex: (idx: number) => void;
   vocabRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
   currentAudioItem: AudioQueueItem | null;
+  isAwaitingModelReply: boolean;
   translationVisible: boolean;
   translationContent: string;
   baseMessageContent: string;
@@ -83,6 +84,7 @@ export function MessageContent({
   setVocabIndex,
   vocabRefs,
   currentAudioItem,
+  isAwaitingModelReply,
   translationVisible,
   translationContent,
   baseMessageContent,
@@ -188,7 +190,9 @@ export function MessageContent({
       (typeof (lastSituationModel?.msg as any)?.messageOrder === 'number' ? `order-${(lastSituationModel?.msg as any).messageOrder}` : null) ??
       msgStableId;
     autoPlaySituationAiMessageId = situationPayloadKey ? `situation-ai:${String(situationPayloadKey)}` : null;
-    shouldAutoPlaySituationAi = Boolean(isActiveScenario && aiText && !hasUserReplyInSituation && !situationCompletedCorrect);
+    shouldAutoPlaySituationAi = Boolean(
+      isActiveScenario && aiText && !hasUserReplyInSituation && !situationCompletedCorrect && !isAwaitingModelReply
+    );
   }
 
   useEffect(() => {
@@ -589,19 +593,18 @@ export function MessageContent({
       return null;
     })();
 
-    const parsedSituation =
-      parsed && parsed.type === 'situation'
-        ? {
-            title: typeof (parsed as any).title === 'string' ? (parsed as any).title : '',
-            situation: typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '',
-            task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
-            ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
-          }
-        : lastSituationModel
-          ? (lastSituationModel.payload as any)
-          : firstModel
-            ? parseSituationMessage(firstModel.text || '', stripModuleTag)
-            : {};
+    const parsedSituation = (() => {
+      if (lastSituationModel) return lastSituationModel.payload as any;
+      if (parsed && parsed.type === 'situation') {
+        return {
+          title: typeof (parsed as any).title === 'string' ? (parsed as any).title : '',
+          situation: typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '',
+          task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
+          ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
+        };
+      }
+      return firstModel ? parseSituationMessage(firstModel.text || '', stripModuleTag) : {};
+    })();
 
     const isActiveScenario =
       currentStep?.type === 'situations' &&
@@ -611,10 +614,19 @@ export function MessageContent({
       Number(((currentStep as any)?.subIndex) ?? 0) ===
         Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0);
 
+    const hasNextScenario = (() => {
+      const scenarios = (lessonScript as any)?.situations?.scenarios;
+      if (!Array.isArray(scenarios) || scenarios.length === 0) return false;
+      if (scenarioIndexForCard == null) return false;
+      return scenarioIndexForCard + 1 < scenarios.length;
+    })();
+
     const showContinue =
       Boolean(isActiveScenario) &&
       Boolean(lastSituationModel?.payload?.awaitingContinue) &&
-      String(lastSituationModel?.payload?.result || '') === 'correct';
+      (String(lastSituationModel?.payload?.result || '') === 'correct' ||
+        (lastSituationModel?.payload?.awaitingContinue && lastSituationModel?.payload?.prev_user_correct === true)) &&
+      hasNextScenario;
     const continueLabel =
       typeof lastSituationModel?.payload?.continueLabel === 'string' && lastSituationModel.payload.continueLabel.trim()
         ? String(lastSituationModel.payload.continueLabel)
@@ -669,11 +681,21 @@ export function MessageContent({
         completedCorrect={situationCompletedCorrect}
         showContinue={showContinue}
         continueLabel={continueLabel}
-        isLoading={isLoading}
+        isLoading={Boolean(isAwaitingModelReply) && Boolean(isActiveScenario)}
+        currentAudioItem={currentAudioItem}
+        processAudioQueue={processAudioQueue}
         onContinue={
           showContinue
             ? async () => {
-                const stepForAdvance = lastSituationModel?.msg?.currentStepSnapshot ?? currentStep;
+                const baseStep = lastSituationModel?.msg?.currentStepSnapshot ?? currentStep;
+                if (!baseStep) return;
+                const stepForAdvance = (() => {
+                  if ((baseStep as any)?.type !== 'situations') return baseStep;
+                  if (!(baseStep as any)?.awaitingContinue) return baseStep;
+                  if (typeof (baseStep as any)?.nextIndex === 'number' && Number.isFinite((baseStep as any).nextIndex)) return baseStep;
+                  if (scenarioIndexForCard == null) return baseStep;
+                  return { ...(baseStep as any), nextIndex: scenarioIndexForCard + 1, nextSubIndex: 0 };
+                })();
                 if (!stepForAdvance) return;
                 setIsLoading(true);
                 try {

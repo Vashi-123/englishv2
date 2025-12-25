@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { FEEDBACK_CORRECT_EN, FEEDBACK_INCORRECT_EN } from './feedbackPhrases';
 
 type TtsAssetRow = {
   public_url: string | null;
@@ -114,6 +115,17 @@ function extractTtsPhrases(script: any): string[] {
     seen.add(p);
     out.push(p);
   }
+
+  // Global micro-feedback phrases (used across exercises).
+  for (const p of [...FEEDBACK_CORRECT_EN, ...FEEDBACK_INCORRECT_EN]) {
+    const text = normalizeText(p);
+    if (!text) continue;
+    if (seen.has(text)) continue;
+    if (!/[A-Za-z]/.test(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+
   return out;
 }
 

@@ -198,7 +198,7 @@ Deno.serve(async (req: Request) => {
     console.log("[groq-lesson-v2] Fetching lesson script for lesson_id:", lessonId);
     const { data: lessonData, error: dbError } = await supabase
       .from("lesson_scripts")
-      .select("script")
+      .select("script, day, lesson, level")
       .eq("lesson_id", lessonId)
       .single();
 
@@ -727,7 +727,19 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     }
 
     const validation = await validateAnswer({ step: stepType, expected, studentAnswer, extra });
-    return new Response(JSON.stringify({ isCorrect: validation.isCorrect, feedback: validation.feedback || "" }), {
+
+    let reactionText: string | undefined = undefined;
+    if (currentStep.type === "situations" && validation.isCorrect) {
+      const scenario = script.situations?.scenarios?.[currentStep.index];
+      const stepIndexRaw = (currentStep as any)?.subIndex;
+      const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
+      const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
+      if (normalized && normalized.stepIndex >= Math.max((normalized.stepsTotal || 1) - 1, 0)) {
+        reactionText = "👍";
+      }
+    }
+
+    return new Response(JSON.stringify({ isCorrect: validation.isCorrect, feedback: validation.feedback || "", reactionText }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 

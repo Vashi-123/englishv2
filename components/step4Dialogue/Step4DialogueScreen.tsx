@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage } from '../../types';
 import type { LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { advanceLesson } from '../../services/lessonV2ClientEngine';
@@ -13,6 +13,8 @@ import {
 } from '../../services/generationService';
 import { useLanguage } from '../../hooks/useLanguage';
 import { getOrCreateLocalUser } from '../../services/userService';
+import { applySrsReview, getSrsReviewBatch, upsertSrsCardsFromVocab } from '../../services/srsService';
+import { pickFeedbackPhraseEn } from '../../services/feedbackPhrases';
 import { parseMarkdown } from './markdown';
 import {
   determineInputMode,
@@ -120,10 +122,22 @@ export function Step4DialogueScreen({
     }
   }, [isInitializing, isLoading, messages.length, onReady]);
 
-  const { currentAudioItem, processAudioQueue, resetTtsState } = useTtsQueue();
+  const { currentAudioItem, isPlayingQueue, processAudioQueue, resetTtsState } = useTtsQueue();
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const lastFeedbackPhraseRef = useRef<string | null>(null);
+
+  const playFeedbackAudio = useCallback(
+    async (params: { isCorrect: boolean; stepType: string }) => {
+      if (isPlayingQueue) return;
+      const phrase = pickFeedbackPhraseEn(Boolean(params.isCorrect), lastFeedbackPhraseRef.current);
+      if (!phrase) return;
+      lastFeedbackPhraseRef.current = phrase;
+      await processAudioQueue([{ text: phrase, lang: 'en', kind: 'feedback' }], `feedback:${params.stepType}:${phrase}`);
+    },
+    [isPlayingQueue, processAudioQueue]
+  );
 
   const goalSeenRef = useRef<boolean>(false);
   const hasRecordedLessonCompleteRef = useRef<boolean>(false);
@@ -178,16 +192,29 @@ export function Step4DialogueScreen({
     };
   }, [day, isInitializing, lesson, messages, resolvedLevel]);
 
-  const lessonIdRef = useRef<string | null>(null);
-  const userIdRef = useRef<string | null>(null);
+	  const lessonIdRef = useRef<string | null>(null);
+	  const userIdRef = useRef<string | null>(null);
+	  const [ankiUserId, setAnkiUserId] = useState<string | null>(null);
 
-  const ensureLessonContext = useCallback(async () => {
-    if (lessonIdRef.current && userIdRef.current) return;
-    if (!day || !lesson) return;
-    const resolvedLevel = level || 'A1';
-    lessonIdRef.current = await getLessonIdForDayLesson(day, lesson, resolvedLevel);
-    userIdRef.current = (await getAuthUserIdFromSession()) || (await getOrCreateLocalUser());
-  }, [day, lesson, level]);
+	  const ensureLessonContext = useCallback(async () => {
+	    if (lessonIdRef.current && userIdRef.current) return;
+	    if (!day || !lesson) return;
+	    const resolvedLevel = level || 'A1';
+	    lessonIdRef.current = await getLessonIdForDayLesson(day, lesson, resolvedLevel);
+	    userIdRef.current = (await getAuthUserIdFromSession()) || (await getOrCreateLocalUser());
+	  }, [day, lesson, level]);
+
+	  useEffect(() => {
+	    let cancelled = false;
+	    void (async () => {
+	      await ensureLessonContext();
+	      if (cancelled) return;
+	      setAnkiUserId(userIdRef.current);
+	    })();
+	    return () => {
+	      cancelled = true;
+	    };
+	  }, [ensureLessonContext]);
 
   const ensureLessonScript = useCallback(async (): Promise<any> => {
     if (lessonScript) return lessonScript;
@@ -211,6 +238,7 @@ export function Step4DialogueScreen({
     setCurrentStep,
     setIsLoading,
     setIsAwaitingModelReply,
+    playFeedbackAudio,
     ensureLessonContext,
     ensureLessonScript,
     lessonIdRef,
@@ -627,21 +655,338 @@ export function Step4DialogueScreen({
     setConstructorUI,
   });
 
-  const { grammarGate, visibleMessages, separatorTitlesBefore, consumedSeparatorIndices, situationGrouping } =
-    useDialogueDerivedMessages({
-      messages,
-      gatedGrammarSectionIdsRef,
-      grammarGateHydrated,
-      grammarGateRevision,
-      getMessageStableId,
-      tryParseJsonMessage,
-      stripModuleTag,
+	  const { grammarGate, visibleMessages, separatorTitlesBefore, consumedSeparatorIndices, situationGrouping } =
+	    useDialogueDerivedMessages({
+	      messages,
+	      gatedGrammarSectionIdsRef,
+	      grammarGateHydrated,
+	      grammarGateRevision,
+	      getMessageStableId,
+	      tryParseJsonMessage,
+	      stripModuleTag,
+	    });
+
+	  const ankiDoneStorageKey = useMemo(
+	    () => `step4dialogue:ankiDone:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
+	    [day, lesson, resolvedLanguage, resolvedLevel]
+	  );
+	  const [ankiDone, setAnkiDone] = useState<boolean>(() => {
+	    try {
+	      if (typeof window === 'undefined') return false;
+	      return window.localStorage.getItem(ankiDoneStorageKey) === '1';
+	    } catch {
+	      return false;
+	    }
+	  });
+	  useEffect(() => {
+	    try {
+	      if (typeof window === 'undefined') return;
+	      setAnkiDone(window.localStorage.getItem(ankiDoneStorageKey) === '1');
+	    } catch {
+	      // ignore
+	    }
+	  }, [ankiDoneStorageKey]);
+
+		  const ankiDeckStorageKey = useMemo(() => {
+		    if (!ankiUserId) return null;
+		    return `englishv2:ankiDeck:${ankiUserId}:${resolvedLevel}:${resolvedLanguage}`;
+		  }, [ankiUserId, resolvedLanguage, resolvedLevel]);
+
+      const lastSrsUpsertSignatureRef = useRef<string | null>(null);
+      useEffect(() => {
+        if (!ankiUserId) return;
+        if (!vocabWords || vocabWords.length === 0) return;
+        const items = (vocabWords as any[])
+          .map((w) => ({
+            word: String(w?.word || '').trim(),
+            translation: String(w?.translation || '').trim(),
+          }))
+          .filter((x) => x.word && x.translation);
+        if (!items.length) return;
+
+        const signature = JSON.stringify({
+          level: resolvedLevel,
+          lang: resolvedLanguage,
+          items: items.map((x) => `${x.word.toLowerCase()}=${x.translation.toLowerCase()}`).sort(),
+        });
+        if (signature === lastSrsUpsertSignatureRef.current) return;
+        lastSrsUpsertSignatureRef.current = signature;
+
+        void upsertSrsCardsFromVocab({ level: resolvedLevel, targetLang: resolvedLanguage, items }).catch((err) =>
+          console.error('[SRS] upsert vocab failed:', err)
+        );
+      }, [ankiUserId, resolvedLanguage, resolvedLevel, vocabWords]);
+
+	  useEffect(() => {
+	    const deckKey = ankiDeckStorageKey;
+	    if (!deckKey) return;
+	    if (!vocabWords || vocabWords.length === 0) return;
+	    const now = Date.now();
+	    try {
+	      const raw = window.localStorage.getItem(deckKey);
+	      const parsed = raw ? JSON.parse(raw) : [];
+	      const base: Array<{ word: string; translation: string; lastSeenAt: number }> = Array.isArray(parsed) ? parsed : [];
+	      const byWord = new Map<string, { word: string; translation: string; lastSeenAt: number }>();
+	      for (const it of base) {
+	        if (!it) continue;
+	        const w = String((it as any).word || '').trim();
+	        const t = String((it as any).translation || '').trim();
+	        if (!w || !t) continue;
+	        byWord.set(w.toLowerCase(), { word: w, translation: t, lastSeenAt: Number((it as any).lastSeenAt) || 0 });
+	      }
+	      for (const w of vocabWords as any[]) {
+	        const word = String(w?.word || '').trim();
+	        const translation = String(w?.translation || '').trim();
+	        if (!word || !translation) continue;
+	        const key = word.toLowerCase();
+	        const prev = byWord.get(key);
+	        byWord.set(key, { word, translation: prev?.translation || translation, lastSeenAt: now });
+	      }
+	      const next = Array.from(byWord.values())
+	        .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0))
+	        .slice(0, 800);
+	      window.localStorage.setItem(deckKey, JSON.stringify(next));
+	    } catch {
+	      // ignore
+	    }
+	  }, [ankiDeckStorageKey, vocabWords]);
+
+	  const ankiGateIndex = useMemo(() => {
+	    if (tutorMode) return null;
+	    if (ankiDone) return null;
+	    if (grammarGate.gated) return null;
+	    for (let i = 0; i < visibleMessages.length; i++) {
+	      const m = visibleMessages[i];
+	      const parsed = tryParseJsonMessage(m?.text);
+	      const isSituationsSeparator =
+	        parsed?.type === 'section' && typeof parsed.title === 'string' && /ситуац|situat/i.test(parsed.title);
+	      const isSituationsStep = m?.currentStepSnapshot?.type === 'situations';
+	      if (isSituationsSeparator || isSituationsStep) return i;
+	    }
+	    return null;
+	  }, [ankiDone, grammarGate.gated, tutorMode, tryParseJsonMessage, visibleMessages]);
+
+	  const ankiGateActive = typeof ankiGateIndex === 'number' && ankiGateIndex >= 0;
+
+		  const gatedVisibleMessages = useMemo(() => {
+		    if (!ankiGateActive) return visibleMessages;
+		    return visibleMessages.slice(0, ankiGateIndex);
+		  }, [ankiGateActive, ankiGateIndex, visibleMessages]);
+
+      const [ankiReviewItems, setAnkiReviewItems] = useState<Array<{ id: number; word: string; translation: string }>>([]);
+      const ankiReviewLoadedOnceRef = useRef<string | null>(null);
+      useEffect(() => {
+        if (!ankiGateActive) return;
+        if (!ankiUserId) return;
+        const token = `${resolvedLevel}:${resolvedLanguage}:${day || 1}:${lesson || 1}`;
+        if (ankiReviewLoadedOnceRef.current === token) return;
+        ankiReviewLoadedOnceRef.current = token;
+
+        void (async () => {
+          try {
+            const batch = await getSrsReviewBatch({ level: resolvedLevel, targetLang: resolvedLanguage, limit: 8 });
+            setAnkiReviewItems(batch);
+          } catch (err) {
+            console.error('[SRS] get review batch failed:', err);
+            setAnkiReviewItems([]);
+          }
+        })();
+      }, [ankiGateActive, ankiUserId, day, lesson, resolvedLanguage, resolvedLevel]);
+
+		  const ankiQuizItems = useMemo(() => {
+		    if (ankiReviewItems.length > 0) return ankiReviewItems;
+		    const deckKey = ankiDeckStorageKey;
+		    const deck: Array<{ id?: number; word: string; translation: string }> = [];
+		    try {
+		      if (deckKey && typeof window !== 'undefined') {
+		        const raw = window.localStorage.getItem(deckKey);
+		        const parsed = raw ? JSON.parse(raw) : [];
+		        if (Array.isArray(parsed)) {
+		          for (const it of parsed) {
+		            const word = String((it as any)?.word || '').trim();
+		            const translation = String((it as any)?.translation || '').trim();
+		            if (word && translation) deck.push({ word, translation });
+		          }
+		        }
+		      }
+		    } catch {
+	      // ignore
+	    }
+		    if (deck.length === 0 && Array.isArray(vocabWords)) {
+		      for (const w of vocabWords as any[]) {
+		        const word = String(w?.word || '').trim();
+		        const translation = String(w?.translation || '').trim();
+		        if (word && translation) deck.push({ word, translation });
+		      }
+		    }
+		    return deck;
+		  }, [ankiDeckStorageKey, ankiReviewItems, vocabWords]);
+
+    const ankiIntroText =
+      resolvedLanguage.toLowerCase().startsWith('ru')
+        ? 'Сейчас повторим слова. Выбери правильное английское слово.'
+        : 'Quick review: pick the correct English word.';
+
+	    const handleAnkiComplete = useCallback(() => {
+	      try {
+	        window.localStorage.setItem(ankiDoneStorageKey, '1');
+	      } catch {
+	        // ignore
+	      }
+	      setAnkiDone(true);
+        setAnkiReviewItems([]);
+	      window.setTimeout(() => {
+	        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+	      }, 0);
+        // If inputMode was forced hidden while gated, restore it based on the latest model message
+        // (often the first "situations" message is already in history but was hidden by the gate).
+        window.setTimeout(() => {
+          try {
+            if (tutorMode) return;
+            if (grammarGate.gated) return;
+            setInputMode((prev) => {
+              if (prev !== 'hidden') return prev;
+              for (let i = messages.length - 1; i >= 0; i--) {
+                const msg = messages[i];
+                if (!msg || msg.role !== 'model' || !msg.text) continue;
+                const parsed = tryParseJsonMessage(msg.text);
+                const next = determineInputMode(parsed, msg as any);
+                if (next !== 'hidden') return next;
+              }
+              return 'text';
+            });
+          } catch {
+            setInputMode('text');
+          }
+        }, 0);
+	    }, [ankiDoneStorageKey, determineInputMode, grammarGate.gated, messages, setInputMode, tutorMode]);
+
+	      const reviewedSrsCardIdsRef = useRef<Set<number>>(new Set());
+	      const handleAnkiAnswer = useCallback(async (p: { id?: number; isCorrect: boolean }) => {
+	        await Promise.resolve(playFeedbackAudio({ isCorrect: Boolean(p.isCorrect), stepType: 'anki' }));
+	        const id = typeof p.id === 'number' ? p.id : null;
+	        if (!id) return;
+	        if (reviewedSrsCardIdsRef.current.has(id)) return;
+	        reviewedSrsCardIdsRef.current.add(id);
+	        const quality = p.isCorrect ? 5 : 2;
+	        applySrsReview({ cardId: id, quality }).catch((err) => console.error('[SRS] apply review failed:', err));
+	      }, [playFeedbackAudio]);
+
+  const situationsIntegritySignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (isInitializing) return;
+    if (isAwaitingModelReply) return;
+    if (currentStep?.type !== 'situations') return;
+    if (!lessonScript || !lessonScript?.situations || !Array.isArray((lessonScript as any)?.situations?.scenarios)) return;
+
+    const scenarios = (lessonScript as any).situations.scenarios as any[];
+    if (!scenarios.length) return;
+
+    const getStepsCount = (scenario: any) => {
+      const steps = Array.isArray(scenario?.steps) ? scenario.steps : null;
+      return steps && steps.length > 0 ? steps.length : 1;
+    };
+
+    const normalizeSituationsStep = (step: any) => {
+      if (!step || step.type !== 'situations') return null;
+      const idxRaw = (step as any).index;
+      const subRaw = (step as any).subIndex;
+      const idx = typeof idxRaw === 'number' && Number.isFinite(idxRaw) ? idxRaw : 0;
+      const safeIdx = Math.max(0, Math.min(scenarios.length - 1, idx));
+      const stepsCount = getStepsCount(scenarios[safeIdx]);
+      const subIndex = typeof subRaw === 'number' && Number.isFinite(subRaw) ? subRaw : 0;
+      const safeSubIndex = Math.max(0, Math.min(stepsCount - 1, subIndex));
+
+      const awaitingContinue = Boolean((step as any).awaitingContinue);
+      const nextType = typeof (step as any).nextType === 'string' ? String((step as any).nextType) : undefined;
+      const nextIndexRaw = (step as any).nextIndex;
+      const nextIndex =
+        typeof nextIndexRaw === 'number' && Number.isFinite(nextIndexRaw)
+          ? nextIndexRaw
+          : safeIdx + 1 < scenarios.length
+            ? safeIdx + 1
+            : undefined;
+      const nextSubIndexRaw = (step as any).nextSubIndex;
+      const nextSubIndex = typeof nextSubIndexRaw === 'number' && Number.isFinite(nextSubIndexRaw) ? nextSubIndexRaw : 0;
+
+      const normalized: any = { type: 'situations', index: safeIdx, subIndex: safeSubIndex };
+      if (awaitingContinue) {
+        normalized.awaitingContinue = true;
+        if (nextType) normalized.nextType = nextType;
+        if (typeof nextIndex === 'number' && Number.isFinite(nextIndex)) normalized.nextIndex = nextIndex;
+        if (typeof nextSubIndex === 'number' && Number.isFinite(nextSubIndex)) normalized.nextSubIndex = nextSubIndex;
+        if (safeIdx + 1 >= scenarios.length && !normalized.nextType) normalized.nextType = 'completion';
+      }
+      return normalized;
+    };
+
+    const latestPersistedSituationStep = (() => {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (!m || m.role !== 'model') continue;
+        if (typeof m.id === 'string' && m.id.startsWith('optimistic-')) continue;
+        const parsed = tryParseJsonMessage(m.text);
+        if (parsed?.type !== 'situation') continue;
+        const snap = (m as any).currentStepSnapshot;
+        if (snap?.type !== 'situations') continue;
+        return normalizeSituationsStep(snap);
+      }
+      return null;
+    })();
+
+    const normalizedCurrent = normalizeSituationsStep(currentStep);
+    const target = latestPersistedSituationStep || normalizedCurrent;
+    if (!target) return;
+
+    const isSame = (a: any, b: any) =>
+      String(a?.type) === String(b?.type) &&
+      Number(a?.index) === Number(b?.index) &&
+      Number(a?.subIndex) === Number(b?.subIndex) &&
+      Boolean(a?.awaitingContinue) === Boolean(b?.awaitingContinue) &&
+      (a?.nextType ?? null) === (b?.nextType ?? null) &&
+      (typeof a?.nextIndex === 'number' ? a.nextIndex : null) === (typeof b?.nextIndex === 'number' ? b.nextIndex : null) &&
+      (typeof a?.nextSubIndex === 'number' ? a.nextSubIndex : null) ===
+        (typeof b?.nextSubIndex === 'number' ? b.nextSubIndex : null);
+
+    if (isSame(target, currentStep)) return;
+
+    const signature = JSON.stringify({
+      type: target.type,
+      index: target.index,
+      subIndex: target.subIndex,
+      awaitingContinue: Boolean(target.awaitingContinue),
+      nextType: target.nextType ?? null,
+      nextIndex: typeof target.nextIndex === 'number' ? target.nextIndex : null,
+      nextSubIndex: typeof target.nextSubIndex === 'number' ? target.nextSubIndex : null,
     });
+    if (signature === situationsIntegritySignatureRef.current) return;
+    situationsIntegritySignatureRef.current = signature;
+
+    setCurrentStep(target);
+    upsertLessonProgress({
+      day: day || 1,
+      lesson: lesson || 1,
+      level: resolvedLevel,
+      currentStepSnapshot: target,
+    }).catch((err) => console.error('[Step4Dialogue] situations progress reconcile error:', err));
+  }, [
+    currentStep,
+    day,
+    isAwaitingModelReply,
+    isInitializing,
+    lesson,
+    lessonScript,
+    messages,
+    resolvedLevel,
+    setCurrentStep,
+    tryParseJsonMessage,
+  ]);
 
   useMessageDrivenUi({
     messages,
     determineInputMode,
     processAudioQueue,
+    uiGateHidden: ankiGateActive,
     vocabProgressStorageKey,
     grammarGateHydrated,
     grammarGateRevision,
@@ -711,13 +1056,35 @@ export function Step4DialogueScreen({
     }
   }, [vocabIndex, showVocab, vocabWords, processAudioQueue, isInitializing]);
 
+  const lastGrammarScrollTokenRef = useRef<string | null>(null);
+  const grammarHeadingScrollToken = useMemo(() => {
+    if (isInitializing) return null;
+    if (currentStep?.type !== 'grammar') return null;
+
+    const isGrammarTitle = (value: unknown) => /граммат|grammar/i.test(String(value || ''));
+
+    for (let i = visibleMessages.length - 1; i >= 0; i -= 1) {
+      const titles = separatorTitlesBefore[i];
+      if (Array.isArray(titles) && titles.some(isGrammarTitle)) return `before:${i}`;
+
+      const msg = visibleMessages[i];
+      const parsed = tryParseJsonMessage(msg?.text);
+      if (parsed?.type === 'section' && typeof parsed.title === 'string' && isGrammarTitle(parsed.title)) return `section:${i}`;
+    }
+
+    return null;
+  }, [currentStep?.type, isInitializing, separatorTitlesBefore, tryParseJsonMessage, visibleMessages]);
+
+  const shouldScrollToGrammarHeading =
+    Boolean(grammarHeadingScrollToken) && grammarHeadingScrollToken !== lastGrammarScrollTokenRef.current;
+
   useAutoScrollToEnd({
     deps: [
       day,
       lesson,
       resolvedLevel,
       resolvedLanguage,
-      visibleMessages.length,
+      gatedVisibleMessages.length,
       showMatching,
       showVocab,
       vocabIndex,
@@ -727,10 +1094,25 @@ export function Step4DialogueScreen({
       lessonCompletedPersisted,
     ],
     endRef: messagesEndRef,
-    enabled: !isInitializing,
+    enabled: !isInitializing && !shouldScrollToGrammarHeading && !ankiGateActive,
     containerRef: scrollContainerRef,
     behavior: 'smooth',
   });
+
+  useLayoutEffect(() => {
+    if (!shouldScrollToGrammarHeading) return;
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const headings = container.querySelectorAll('[data-module-separator-kind="grammar"]');
+    const target = headings.length ? (headings[headings.length - 1] as HTMLElement) : null;
+    if (!target) return;
+
+    window.requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      lastGrammarScrollTokenRef.current = grammarHeadingScrollToken;
+    });
+  }, [grammarHeadingScrollToken, shouldScrollToGrammarHeading]);
 
   useVocabScroll({ showVocab, vocabIndex, vocabRefs });
 
@@ -830,7 +1212,7 @@ export function Step4DialogueScreen({
     window.setTimeout(() => matchingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }, [messages.length, vocabWords]);
 
-	  const effectiveInputMode: InputMode = tutorMode ? 'text' : grammarGate.gated ? 'hidden' : inputMode;
+	  const effectiveInputMode: InputMode = tutorMode ? 'text' : grammarGate.gated || ankiGateActive ? 'hidden' : inputMode;
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
   const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
   const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
@@ -1152,7 +1534,7 @@ export function Step4DialogueScreen({
             messagesEndRef={messagesEndRef}
             messageRefs={messageRefs}
             messages={messages}
-            visibleMessages={visibleMessages}
+            visibleMessages={gatedVisibleMessages}
             separatorTitlesBefore={separatorTitlesBefore}
             consumedSeparatorIndices={consumedSeparatorIndices}
             situationGrouping={situationGrouping}
@@ -1204,7 +1586,12 @@ export function Step4DialogueScreen({
 			            tutorBannerText={tutorGreeting}
 			            tutorThreadMessages={tutorThreadMessages}
 			            tutorIsAwaitingReply={tutorMode && isAwaitingModelReply}
-			          />
+	                  ankiGateActive={ankiGateActive}
+	                  ankiIntroText={ankiIntroText}
+	                  ankiQuizItems={ankiQuizItems}
+	                  onAnkiAnswer={(p) => handleAnkiAnswer({ id: p.id, isCorrect: p.isCorrect })}
+	                  onAnkiComplete={handleAnkiComplete}
+				          />
 
           <DialogueInputBar
             inputMode={effectiveInputMode}
@@ -1216,7 +1603,7 @@ export function Step4DialogueScreen({
             isRecording={isRecording}
             isTranscribing={isTranscribing}
             onToggleRecording={onToggleRecording}
-            cta={activeCta}
+            cta={ankiGateActive ? null : activeCta}
           />
         </div>
       </div>

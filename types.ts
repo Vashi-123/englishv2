@@ -112,6 +112,13 @@ export interface ChatMessage {
   messageOrder?: number;
   createdAt?: string; // ISO timestamp (preferred ordering key)
   currentStepSnapshot?: DialogueStep | null;
+  // Local-only metadata for UI/integrity control (never persisted to DB).
+  local?: {
+    source?: 'engine' | 'db' | 'realtime' | 'cache';
+    saveStatus?: 'pending' | 'saved' | 'failed';
+    updatedAt?: number;
+    error?: string;
+  };
 }
 
 export type DialogueStep = {
@@ -191,6 +198,8 @@ export type LessonScript = {
     tasks?: Array<{
       words: string[];
       note?: string;
+      correct?: string;
+      translation?: string;
     }>;
   };
   find_the_mistake?: {

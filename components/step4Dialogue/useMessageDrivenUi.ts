@@ -7,6 +7,7 @@ export function useMessageDrivenUi({
   messages,
   determineInputMode,
   processAudioQueue,
+  uiGateHidden,
   vocabProgressStorageKey,
   grammarGateHydrated,
   grammarGateRevision,
@@ -28,6 +29,7 @@ export function useMessageDrivenUi({
   messages: ChatMessage[];
   determineInputMode: (parsed: any, msg: ChatMessage) => InputMode;
   processAudioQueue: (queue: Array<{ text: string; lang: string; kind: string }>, messageId?: string) => void;
+  uiGateHidden?: boolean;
   vocabProgressStorageKey: string;
   grammarGateHydrated: boolean;
   grammarGateRevision: number;
@@ -50,6 +52,10 @@ export function useMessageDrivenUi({
 
   // Watch for messages with audioQueue and decide which input to show
   useEffect(() => {
+    if (uiGateHidden) {
+      setInputMode('hidden');
+      return;
+    }
     if (messages.length === 0) return;
     const lastMsg = messages[messages.length - 1];
     if (lastMsg.role !== 'model' || !lastMsg.text) return;

@@ -6,6 +6,7 @@ type AudioQueueItem = { text: string; lang: string; kind: string };
 export function useTtsQueue() {
   const [isPlayingQueue, setIsPlayingQueue] = useState(false);
   const [playedMessageIds, setPlayedMessageIds] = useState<Set<string>>(new Set());
+  const playedMessageIdsRef = useRef<Set<string>>(new Set());
   const [currentAudioItem, setCurrentAudioItem] = useState<AudioQueueItem | null>(null);
 
   const debuggedSituationMissesRef = useRef<Set<string>>(new Set());
@@ -34,6 +35,7 @@ export function useTtsQueue() {
 
   const resetTtsState = useCallback(() => {
     cancel();
+    playedMessageIdsRef.current = new Set();
     setPlayedMessageIds(new Set());
   }, [cancel]);
 
@@ -132,7 +134,9 @@ export function useTtsQueue() {
       if (!queue?.length) return;
 
       if (messageId) {
-        if (playedMessageIds.has(messageId)) return;
+        // Important: use a ref for immediate dedupe (state updates are async and can race).
+        if (playedMessageIdsRef.current.has(messageId)) return;
+        playedMessageIdsRef.current.add(messageId);
         // If something is already playing (e.g. vocab auto-play), interrupt it so situation auto-play isn't dropped.
         if (isPlayingRef.current) {
           cancel();
@@ -154,10 +158,11 @@ export function useTtsQueue() {
       for (const item of queue) {
         if (runIdRef.current !== runId) break;
         setCurrentAudioItem(item);
-        await tryPlayCachedAudio(item, runId);
+        const played = await tryPlayCachedAudio(item, runId);
 
         if (runIdRef.current !== runId) break;
-        await new Promise((r) => setTimeout(r, 500));
+        if (!played) continue;
+        await new Promise((r) => setTimeout(r, item.kind === 'feedback' ? 150 : 500));
       }
 
       if (runIdRef.current === runId) {
@@ -166,7 +171,7 @@ export function useTtsQueue() {
         isPlayingRef.current = false;
       }
     },
-    [cancel, playedMessageIds, tryPlayCachedAudio]
+    [cancel, tryPlayCachedAudio]
   );
 
   useEffect(() => {

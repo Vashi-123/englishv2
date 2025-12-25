@@ -4,6 +4,7 @@ import type { ChatMessage } from '../../types';
 import { saveChatMessage, upsertLessonProgress, validateDialogueAnswerV2 } from '../../services/generationService';
 import { advanceLesson, type EngineMessage, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { checkAudioInput, checkTextInput, tryParseJsonMessage } from './messageParsing';
+import { isStep4DebugEnabled } from './debugFlags';
 
 type EnsureLessonContext = () => Promise<void>;
 type EnsureLessonScript = () => Promise<any>;
@@ -19,6 +20,7 @@ export function useLessonFlow({
   setCurrentStep,
   setIsLoading,
   setIsAwaitingModelReply,
+  playFeedbackAudio,
   ensureLessonContext,
   ensureLessonScript,
   lessonIdRef,
@@ -34,6 +36,7 @@ export function useLessonFlow({
   setCurrentStep: Dispatch<SetStateAction<any | null>>;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
   setIsAwaitingModelReply: Dispatch<SetStateAction<boolean>>;
+  playFeedbackAudio?: (params: { isCorrect: boolean; stepType: string }) => Promise<void> | void;
   ensureLessonContext: EnsureLessonContext;
   ensureLessonScript: EnsureLessonScript;
   lessonIdRef: MutableRefObject<string | null>;
@@ -45,6 +48,18 @@ export function useLessonFlow({
   const messagesRef = useRef<ChatMessage[]>(messages);
   const ensureLessonContextRef = useRef<EnsureLessonContext>(ensureLessonContext);
   const ensureLessonScriptRef = useRef<EnsureLessonScript>(ensureLessonScript);
+
+  const withTimeout = useCallback(<T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    let timeoutId: number | null = null;
+    return new Promise<T>((resolve, reject) => {
+      timeoutId = window.setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+      promise
+        .then(resolve, reject)
+        .finally(() => {
+          if (timeoutId != null) window.clearTimeout(timeoutId);
+        });
+    });
+  }, []);
 
   useEffect(() => {
     currentStepRef.current = currentStep;
@@ -63,34 +78,76 @@ export function useLessonFlow({
       role,
       text,
       currentStepSnapshot: stepSnapshot ?? currentStepRef.current ?? null,
+      local: { source: 'engine', saveStatus: 'pending', updatedAt: Date.now() },
     }),
     []
   );
 
   const enqueueSaveMessage = useCallback(
-    (role: 'user' | 'model', text: string, stepSnapshot: any | null) => {
+    (role: 'user' | 'model', text: string, stepSnapshot: any | null, optimisticId?: string) => {
       if (!day || !lesson) return;
       const trimmed = String(text || '').trim();
       if (!trimmed) return;
       saveChainRef.current = saveChainRef.current
-        .then(() => saveChatMessage(day || 1, lesson || 1, role, trimmed, stepSnapshot, level || 'A1'))
-        .catch((err) => console.error('[Step4Dialogue] saveChatMessage error:', err));
+        .then(async () => {
+          const saved = await saveChatMessage(day || 1, lesson || 1, role, trimmed, stepSnapshot, level || 'A1');
+          if (!optimisticId) return;
+          if (saved?.id) {
+            setMessages((prev) => {
+              const idx = prev.findIndex((m) => m.id === optimisticId);
+              if (idx === -1) return prev;
+              const next = [...prev];
+              next[idx] = {
+                ...next[idx],
+                ...saved,
+                local: { source: 'db', saveStatus: 'saved', updatedAt: Date.now() },
+              };
+              return next;
+            });
+            return;
+          }
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === optimisticId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = {
+              ...next[idx],
+              local: { ...(next[idx].local || {}), saveStatus: 'failed', updatedAt: Date.now() },
+            };
+            return next;
+          });
+        })
+        .catch((err) => {
+          console.error('[Step4Dialogue] saveChatMessage error:', err);
+          if (!optimisticId) return;
+          setMessages((prev) => {
+            const idx = prev.findIndex((m) => m.id === optimisticId);
+            if (idx === -1) return prev;
+            const next = [...prev];
+            next[idx] = {
+              ...next[idx],
+              local: { ...(next[idx].local || {}), saveStatus: 'failed', error: String(err?.message || err), updatedAt: Date.now() },
+            };
+            return next;
+          });
+        });
     },
-    [day, lesson, level]
+    [day, lesson, level, setMessages]
   );
 
-  const MESSAGE_BLOCK_PAUSE_MS = 1000;
+  const MESSAGE_BLOCK_PAUSE_MS = isStep4DebugEnabled('instant') ? 0 : 1000;
   const pauseMilliseconds = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
   const appendEngineMessagesWithDelay = useCallback(
     async (engineMessages: EngineMessage[], delayMs = MESSAGE_BLOCK_PAUSE_MS) => {
       for (let i = 0; i < engineMessages.length; i += 1) {
         const message = engineMessages[i];
+        const optimistic = makeOptimisticChatMessage(message.role, message.text, message.currentStepSnapshot ?? null);
         setMessages((prev) => [
           ...prev,
-          makeOptimisticChatMessage(message.role, message.text, message.currentStepSnapshot ?? null),
+          optimistic,
         ]);
-        enqueueSaveMessage(message.role, message.text, message.currentStepSnapshot ?? null);
+        enqueueSaveMessage(message.role, message.text, message.currentStepSnapshot ?? null, optimistic.id);
         if (delayMs > 0 && i < engineMessages.length - 1) {
           await pauseMilliseconds(delayMs);
         }
@@ -131,8 +188,9 @@ export function useLessonFlow({
 
       inFlightRef.current = true;
       if (studentAnswer && !opts?.silent) {
-        setMessages((prev) => [...prev, makeOptimisticChatMessage('user', studentAnswer, currentStepRef.current ?? null)]);
-        enqueueSaveMessage('user', studentAnswer, currentStepRef.current ?? null);
+        const optimistic = makeOptimisticChatMessage('user', studentAnswer, currentStepRef.current ?? null);
+        setMessages((prev) => [...prev, optimistic]);
+        enqueueSaveMessage('user', studentAnswer, currentStepRef.current ?? null, optimistic.id);
       }
 
       setIsAwaitingModelReply(true);
@@ -148,8 +206,14 @@ export function useLessonFlow({
         const script = (await ensureLessonScriptRef.current()) as LessonScriptV2;
         let isCorrect = true;
         let feedback = '';
+        let reactionText: string | undefined = undefined;
 
         if (stepForInput.type === 'find_the_mistake' && opts?.choice) {
+          const task = (script as any)?.find_the_mistake?.tasks?.[Number((stepForInput as any)?.index) || 0];
+          const expected = task?.answer === 'A' || task?.answer === 'B' ? task.answer : null;
+          const isCorrectChoice = expected ? expected === opts.choice : true;
+          await Promise.resolve(playFeedbackAudio?.({ isCorrect: isCorrectChoice, stepType: 'find_the_mistake' }));
+
           const out = advanceLesson({ script, currentStep: stepForInput, choice: opts.choice });
           const messagesWithSnapshot = out.messages.map((m) => ({
             ...m,
@@ -173,19 +237,38 @@ export function useLessonFlow({
             feedback = '';
           } else {
             if (!lessonId || !userId) throw new Error('Missing lesson context');
-            const validation = await validateDialogueAnswerV2({
-              lessonId,
-              userId,
-              currentStep: stepForInput,
-              studentAnswer,
-              uiLang: language,
-            });
-            isCorrect = validation.isCorrect;
-            feedback = validation.feedback || '';
+            try {
+              const validation = await withTimeout(
+                validateDialogueAnswerV2({
+                  lessonId,
+                  userId,
+                  currentStep: stepForInput,
+                  studentAnswer,
+                  uiLang: language,
+                }),
+                12000,
+                'validateDialogueAnswer'
+              );
+              isCorrect = validation.isCorrect;
+              feedback = validation.feedback || '';
+              reactionText = validation.reactionText;
+            } catch (err: any) {
+              // Never leave the UI stuck on "three dots". Fall back to a safe retry prompt.
+              console.error('[Step4Dialogue] validateDialogueAnswer error:', err);
+              isCorrect = false;
+              feedback = language?.toLowerCase?.().startsWith('ru')
+                ? 'Похоже, связь нестабильна и я не смог проверить ответ. Попробуй отправить ещё раз.'
+                : "Connection seems unstable and I couldn't validate your answer. Please try sending again.";
+              reactionText = undefined;
+            }
           }
         }
 
-        const out = advanceLesson({ script, currentStep: stepForInput, isCorrect, feedback });
+        if (['grammar', 'constructor', 'situations'].includes(String(stepForInput.type))) {
+          await Promise.resolve(playFeedbackAudio?.({ isCorrect, stepType: String(stepForInput.type) }));
+        }
+
+        const out = advanceLesson({ script, currentStep: stepForInput, isCorrect, feedback, reactionText });
         const messagesWithSnapshot = out.messages.map((m) => ({
           ...m,
           currentStepSnapshot: m.currentStepSnapshot ?? stepForInput,
@@ -221,6 +304,7 @@ export function useLessonFlow({
       setIsLoading,
       setMessages,
       userIdRef,
+      playFeedbackAudio,
     ]
   );
 

@@ -6,6 +6,8 @@ import { MessageContent } from './MessageContent';
 import { MessageRow } from './MessageRow';
 import { AchievementCard } from './AchievementCard';
 import { tryParseJsonMessage } from './messageParsing';
+import { AnkiQuizCard } from './AnkiQuizCard';
+import { Bot } from 'lucide-react';
 
 type MatchingOption = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -89,7 +91,13 @@ export function DialogueMessages({
 			  tutorBannerText,
 			  tutorThreadMessages,
 			  tutorIsAwaitingReply,
-			}: {
+
+	        ankiGateActive,
+	        ankiIntroText,
+	        ankiQuizItems,
+	        onAnkiAnswer,
+	        onAnkiComplete,
+				}: {
   scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
   messageRefs: MutableRefObject<Map<number, HTMLDivElement>>;
@@ -168,6 +176,12 @@ export function DialogueMessages({
 			  tutorBannerText?: string;
 			  tutorThreadMessages?: Array<{ role: 'user' | 'model'; text: string }>;
 			  tutorIsAwaitingReply?: boolean;
+
+        ankiGateActive?: boolean;
+        ankiIntroText?: string;
+        ankiQuizItems?: Array<{ id?: number; word: string; translation: string }>;
+        onAnkiAnswer?: (params: { id?: number; word: string; translation: string; isCorrect: boolean }) => void;
+        onAnkiComplete?: () => void;
 			}) {
   let findMistakeOrdinal = 0;
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -313,6 +327,9 @@ export function DialogueMessages({
               const p = JSON.parse(raw);
               if (p?.type !== 'situation') continue;
               if (typeof p?.result === 'string') return String(p.result);
+              // Some completions (end of last scenario) may omit `result`,
+              // but still indicate success via `awaitingContinue` + `prev_user_correct`.
+              if (p?.awaitingContinue && p?.prev_user_correct === true) return 'correct';
             } catch {
               // ignore
             }
@@ -414,15 +431,15 @@ export function DialogueMessages({
               persistGrammarGateOpened([grammarGate.sectionId, grammarGate.ordinalKey].filter(Boolean) as string[]);
             }}
           >
-		            <MessageContent
-		              msg={msg}
-		              idx={idx}
+	              <MessageContent
+	                msg={msg}
+	                idx={idx}
                   isLastModelMessage={idx === lastModelIndex}
                   isLastModelWithStepSnapshot={idx === lastModelWithStepSnapshotIndex}
-		              parsed={parsed}
-		              displayText={displayText}
-		              baseMessageContent={baseMessageContent}
-		              msgStableId={msgStableId}
+	                parsed={parsed}
+	                displayText={displayText}
+	                baseMessageContent={baseMessageContent}
+	                msgStableId={msgStableId}
 	              isSituationCard={isSituationCard}
 	              situationGroupMessages={situationGroupMessages || null}
 	              situationCompletedCorrect={situationCompletedCorrect}
@@ -431,21 +448,22 @@ export function DialogueMessages({
 	              vocabIndex={vocabIndex}
 	              setVocabIndex={setVocabIndex}
 	              currentAudioItem={currentAudioItem}
-              vocabRefs={vocabRefs}
-              processAudioQueue={processAudioQueue}
-              lessonScript={lessonScript}
-              currentStep={currentStep}
-              translationVisible={translationVisible}
-              translationContent={translationContent}
-              findMistakeTaskIndexFallback={findMistakeTaskIndexFallback}
-              findMistakeUI={findMistakeUI}
-              setFindMistakeUI={setFindMistakeUI}
+	              vocabRefs={vocabRefs}
+	              processAudioQueue={processAudioQueue}
+	              lessonScript={lessonScript}
+	              currentStep={currentStep}
+	              isAwaitingModelReply={Boolean(isAwaitingModelReply)}
+	              translationVisible={translationVisible}
+	              translationContent={translationContent}
+	              findMistakeTaskIndexFallback={findMistakeTaskIndexFallback}
+	              findMistakeUI={findMistakeUI}
+	              setFindMistakeUI={setFindMistakeUI}
               findMistakeStorageKey={findMistakeStorageKey}
-              constructorUI={constructorUI}
-              setConstructorUI={setConstructorUI}
-              isLoading={isLoading}
-              setIsLoading={setIsLoading}
-              handleStudentAnswer={handleStudentAnswer}
+	              constructorUI={constructorUI}
+	              setConstructorUI={setConstructorUI}
+	              isLoading={isLoading}
+	              setIsLoading={setIsLoading}
+	              handleStudentAnswer={handleStudentAnswer}
               extractStructuredSections={extractStructuredSections}
               stripModuleTag={stripModuleTag}
               renderMarkdown={renderMarkdown}
@@ -491,9 +509,9 @@ export function DialogueMessages({
         </div>
       )}
 
-		      {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
-		        <>
-		          <AchievementCard />
+      {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
+        <>
+          <AchievementCard />
 		          {(onNextLesson || onAskTutor) && (
 		            <div className="flex flex-col items-center -mt-2 mb-8 gap-3 animate-fade-in w-full">
 		              {onNextLesson && (
@@ -545,8 +563,34 @@ export function DialogueMessages({
 		              )}
 		            </div>
 		          )}
-		        </>
-		      )}
+        </>
+      )}
+
+	      {ankiGateActive && !lessonCompletedPersisted && !tutorPanelOpen && (
+	        <>
+	          <div className="flex justify-start">
+              <div className="flex flex-row items-end gap-3 min-w-0 max-w-[85%]">
+                <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div className="px-5 py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap bg-gray-50 text-gray-900 rounded-bl-none">
+                  {String(ankiIntroText || 'Сейчас повторим слова. Выбери правильный перевод.')}
+                </div>
+              </div>
+	          </div>
+	          <div className="w-full flex justify-center">
+	            <div className="w-full max-w-2xl">
+	              <AnkiQuizCard
+	                items={ankiQuizItems || []}
+	                total={8}
+	                direction="ru->en"
+	                onAnswer={(p) => onAnkiAnswer?.(p)}
+	                onComplete={() => onAnkiComplete?.()}
+	              />
+	            </div>
+	          </div>
+	        </>
+	      )}
 
       <div ref={messagesEndRef} />
     </div>

@@ -4,6 +4,7 @@ import type { ChatMessage } from '../../types';
 import { loadChatMessages, loadLessonProgress, loadLessonScript, peekCachedChatMessages, upsertLessonProgress } from '../../services/generationService';
 import { createInitialLessonMessages, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { parseJsonBestEffort } from './lessonScriptUtils';
+import { isStep4DebugEnabled } from './debugFlags';
 
 type EnsureLessonContext = () => Promise<void>;
 type EnsureLessonScript = () => Promise<any>;
@@ -130,14 +131,20 @@ export function useChatInitialization({
           console.log('[Step4Dialogue] No history found, starting new chat');
 
           if (!force) {
-            await new Promise((resolve) => setTimeout(resolve, 500));
-            const recheckMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
-            if (recheckMessages && recheckMessages.length > 0) {
-              console.log('[Step4Dialogue] Messages appeared after delay (preloaded), using them:', recheckMessages.length);
-              setMessages(recheckMessages);
-              setIsLoading(false);
-              setIsInitializing(false);
-              return;
+            const retryDelays = isStep4DebugEnabled('instant') ? [0] : [60, 140, 260];
+            for (const ms of retryDelays) {
+              await new Promise((resolve) => setTimeout(resolve, ms));
+              const recheckMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
+              if (recheckMessages && recheckMessages.length > 0) {
+                console.log(
+                  '[Step4Dialogue] Messages appeared after delay (preloaded), using them:',
+                  recheckMessages.length
+                );
+                setMessages(recheckMessages);
+                setIsLoading(false);
+                setIsInitializing(false);
+                return;
+              }
             }
           }
 

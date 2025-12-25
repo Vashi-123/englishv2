@@ -21,6 +21,9 @@ export function useDialogueRealtime({
   setLessonCompletedPersisted,
   hasRecordedLessonCompleteRef,
 }: Params) {
+  void setLessonCompletedPersisted;
+  void hasRecordedLessonCompleteRef;
+
   useEffect(() => {
     let unsubMessages: (() => void) | null = null;
     let unsubProgress: (() => void) | null = null;
@@ -30,6 +33,30 @@ export function useDialogueRealtime({
       try {
         unsubMessages = await subscribeChatMessages(day, lesson, (msg) => {
           setMessages((prev) => {
+            // If we have an optimistic client-side message (id starts with `optimistic-`),
+            // replace it with the persisted row once it arrives via realtime.
+            if (msg.id) {
+              const optimisticIdx = prev.findIndex(
+                (m) =>
+                  typeof m.id === 'string' &&
+                  m.id.startsWith('optimistic-') &&
+                  m.role === msg.role &&
+                  m.text === msg.text
+              );
+              if (optimisticIdx !== -1) {
+                const before = prev[optimisticIdx];
+                const nextMsg: ChatMessage = {
+                  ...before,
+                  ...msg,
+                  messageOrder: msg.messageOrder ?? before.messageOrder,
+                  currentStepSnapshot: msg.currentStepSnapshot ?? before.currentStepSnapshot,
+                };
+                const next = [...prev];
+                next[optimisticIdx] = nextMsg;
+                return next;
+              }
+            }
+
             if (msg.id) {
               const idx = prev.findIndex((m) => m.id === msg.id);
               if (idx !== -1) {

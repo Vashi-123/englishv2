@@ -74,6 +74,7 @@ export function ConstructorCard({
   const [wrongAttempt, setWrongAttempt] = useState(false);
   const hydratedFromPropsRef = useRef<boolean>(false);
   const wrongTimerRef = useRef<number | null>(null);
+  const wrongAttemptTokenRef = useRef<number>(0);
 
   const pickedTokens = useMemo(() => pickedWordIndices.map((i) => words[i]).filter(Boolean), [pickedWordIndices, words]);
   const sentence = useMemo(() => formatSentence(pickedTokens), [pickedTokens]);
@@ -151,8 +152,8 @@ export function ConstructorCard({
       return;
     }
 
-    // Gentle feedback: once the user has roughly the expected number of words, show an error hint,
-    // but don't wipe their selection (so they can fix it by toggling words).
+    // Feedback: once the user has roughly the expected number of words and it's incorrect,
+    // show a red hint briefly, then reset the selection so they can try again cleanly.
     const shouldHint = expectedWordsCount > 0 && pickedWordIndices.length >= expectedWordsCount;
     if (!shouldHint) return;
 
@@ -163,7 +164,20 @@ export function ConstructorCard({
       // ignore
     }
     if (wrongTimerRef.current) window.clearTimeout(wrongTimerRef.current);
-    wrongTimerRef.current = window.setTimeout(() => setWrongAttempt(false), 900);
+    wrongAttemptTokenRef.current += 1;
+    const token = wrongAttemptTokenRef.current;
+    wrongTimerRef.current = window.setTimeout(() => {
+      if (wrongAttemptTokenRef.current !== token) return;
+      setWrongAttempt(false);
+      setPickedWordIndices((prev) => {
+        if (!expected) return prev;
+        if (prev.length < expectedWordsCount) return prev;
+        const currentSentence = formatSentence(prev.map((i) => words[i]).filter(Boolean));
+        if (!currentSentence) return prev;
+        const ok = normalizeLenient(currentSentence) === normalizeLenient(expected);
+        return ok ? prev : [];
+      });
+    }, 900);
   }, [completed, expected, expectedWordsCount, isCorrect, isLoading, onComplete, pickedWordIndices.length, sentence]);
 
   return (

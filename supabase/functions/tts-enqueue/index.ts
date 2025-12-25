@@ -18,6 +18,22 @@ const DEFAULT_LANG = Deno.env.get("TTS_LANG") || "en-US";
 // OpenAI TTS voice (examples: cedar, marin)
 const DEFAULT_VOICE = Deno.env.get("TTS_VOICE") || "cedar";
 
+const FEEDBACK_CORRECT_EN = [
+  "Nice!",
+  "Great!",
+  "Perfect!",
+  "Exactly!",
+  "You got it!",
+];
+
+const FEEDBACK_INCORRECT_EN = [
+  "Oops.",
+  "Not quite.",
+  "Try again.",
+  "Almost.",
+  "Nope.",
+];
+
 function normalizeText(input: string): string {
   return String(input || "")
     .replace(/\s+/g, " ")
@@ -79,6 +95,17 @@ function extractTtsPhrases(script: any): string[] {
     seen.add(p);
     out.push(p);
   }
+
+  // Global micro-feedback phrases (used across exercises).
+  for (const p of [...FEEDBACK_CORRECT_EN, ...FEEDBACK_INCORRECT_EN]) {
+    const text = normalizeText(p);
+    if (!text) continue;
+    if (!looksLikeEnglish(text)) continue;
+    if (seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+
   return out;
 }
 

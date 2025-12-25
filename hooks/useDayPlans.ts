@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
 import { DayPlan } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { clearLessonScriptCacheFor } from '../services/generationService';
@@ -6,13 +6,32 @@ import { clearLessonScriptCacheFor } from '../services/generationService';
 // План берём из lesson_scripts (level = 'A1'), подписываемся на realtime.
 export const useDayPlans = (level: string = 'A1') => {
   const cacheKey = `englishv2:dayPlans:${level}`;
+  const sanitizePlans = (value: unknown): DayPlan[] => {
+    if (!Array.isArray(value)) return [];
+    return (value as any[])
+      .filter((row) => row && typeof row === 'object')
+      .map((row: any) => ({
+        day: Number(row.day),
+        lesson: Number(row.lesson),
+        lessonId: typeof row.lessonId === 'string' ? row.lessonId : (typeof row.lesson_id === 'string' ? row.lesson_id : undefined),
+        title: typeof row.title === 'string' ? row.title : `Lesson #${Number(row.lesson) || 1}`,
+        theme: typeof row.theme === 'string' ? row.theme : `Lesson #${Number(row.lesson) || 1}`,
+        isLocked: Boolean(row.isLocked),
+        isCompleted: Boolean(row.isCompleted),
+        grammarFocus: typeof row.grammarFocus === 'string' ? row.grammarFocus : '',
+        wordIds: Array.isArray(row.wordIds) ? row.wordIds : [],
+        level: typeof row.level === 'string' ? row.level : level,
+      }))
+      .filter((row) => Number.isFinite(row.day) && row.day > 0 && Number.isFinite(row.lesson) && row.lesson > 0);
+  };
+
   const [dayPlans, setDayPlans] = useState<DayPlan[]>(() => {
     try {
       if (typeof window === 'undefined') return [];
       const raw = window.sessionStorage.getItem(cacheKey);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? (parsed as DayPlan[]) : [];
+      return sanitizePlans(parsed);
     } catch {
       return [];
     }
@@ -21,9 +40,21 @@ export const useDayPlans = (level: string = 'A1') => {
   const [error, setError] = useState<Error | null>(null);
   const prevThemeByLessonIdRef = useRef<Record<string, string>>({});
   const themeStoragePrefix = 'englishv2:lessonTheme:';
+  const retryTimerRef = useRef<number | null>(null);
+  const retryAttemptRef = useRef<number>(0);
+
+  const hasPlans = dayPlans.length > 0;
 
   const loadPlans = async () => {
-        setPlanLoading(true);
+	  if (retryTimerRef.current != null) {
+	    try {
+	      if (typeof window !== 'undefined') window.clearTimeout(retryTimerRef.current);
+	    } catch {
+	      // ignore
+	    }
+	    retryTimerRef.current = null;
+	  }
+	  setPlanLoading(true);
     try {
       const { data, error: fetchError } = await supabase
         .from('lesson_scripts')
@@ -89,18 +120,42 @@ export const useDayPlans = (level: string = 'A1') => {
       } catch {
         // ignore
       }
-        setError(null);
+      retryAttemptRef.current = 0;
+	        setError(null);
       } catch (e) {
         const err = e instanceof Error ? e : new Error(String(e));
         setError(err);
+        // Mobile Safari (and some Android WebViews) can lag in persisting the auth session after sign-in.
+        // If the first fetch happens "too early" (RLS-protected table), retry a few times.
+        if (!hasPlans && typeof window !== 'undefined') {
+          const attempt = retryAttemptRef.current;
+          if (attempt < 4) {
+            const delay = Math.min(4000, 500 * Math.pow(2, attempt));
+            retryAttemptRef.current = attempt + 1;
+            retryTimerRef.current = window.setTimeout(() => {
+              void loadPlans();
+            }, delay);
+          }
+        }
         // Keep the last known plan on transient failures (offline/reconnect) to avoid a "cold start" feel.
       } finally {
         setPlanLoading(false);
     }
   };
 
+  // Derive a stable signature so auth state changes can force a retry without re-running too often.
+  const levelKey = useMemo(() => String(level || 'A1'), [level]);
+
   useEffect(() => {
     loadPlans();
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((event) => {
+      if (!event) return;
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        // If we have no plans yet (or had an error), try again after auth becomes available.
+        if (!hasPlans || error) void loadPlans();
+      }
+    });
 
     const channel = supabase
       .channel(`lesson_scripts_${level}`)
@@ -112,9 +167,18 @@ export const useDayPlans = (level: string = 'A1') => {
       .subscribe();
 
     return () => {
+      authListener?.subscription?.unsubscribe();
       supabase.removeChannel(channel);
+      if (retryTimerRef.current != null) {
+        try {
+          if (typeof window !== 'undefined') window.clearTimeout(retryTimerRef.current);
+        } catch {
+          // ignore
+        }
+        retryTimerRef.current = null;
+      }
     };
-  }, [cacheKey, level]);
+  }, [cacheKey, levelKey]);
 
   return {
     dayPlans,

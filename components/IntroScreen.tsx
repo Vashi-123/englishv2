@@ -18,8 +18,15 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     const mq = window.matchMedia('(max-width: 767px)');
     const update = () => setIsMobile(mq.matches);
     update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', update);
+      return () => mq.removeEventListener('change', update);
+    }
+    // Safari < 14
+    // eslint-disable-next-line deprecation/deprecation
+    mq.addListener(update);
+    // eslint-disable-next-line deprecation/deprecation
+    return () => mq.removeListener(update);
   }, []);
 
   // Если переключились на десктоп — показываем оба блока сразу

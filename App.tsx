@@ -469,10 +469,17 @@ const ConnectionRequiredScreen = () => {
   const planState = renderPlanState();
   if (planState) return planState;
 
-  // Early return if no plan available
-  if (!currentDayPlan || dayPlans.length === 0) {
-    return null;
-  }
+	  // Early return if no plan available
+	  if (!currentDayPlan) {
+	    return (
+	      <div className="min-h-screen bg-slate-50 text-slate-900 px-6 flex items-center justify-center">
+	        <div className="text-center space-y-3">
+	          <div className="h-12 w-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin mx-auto" />
+	          <div className="text-sm text-gray-600 font-semibold">Загружаем главный экран…</div>
+	        </div>
+	      </div>
+	    );
+	  }
 
   // Calculate Global Sprint Progress
   const TASKS_PER_DAY = 1;

@@ -452,7 +452,7 @@ export const validateDialogueAnswerV2 = async (params: {
   studentAnswer: string;
   uiLang?: string;
   choice?: "A" | "B";
-}): Promise<{ isCorrect: boolean; feedback: string }> => {
+}): Promise<{ isCorrect: boolean; feedback: string; reactionText?: string }> => {
   const { data, error } = await supabase.functions.invoke("groq-lesson-v2", {
     body: {
       lessonId: params.lessonId,
@@ -473,6 +473,7 @@ export const validateDialogueAnswerV2 = async (params: {
   return {
     isCorrect: Boolean(data?.isCorrect),
     feedback: String(data?.feedback || ""),
+    reactionText: typeof data?.reactionText === 'string' && data.reactionText.trim() ? String(data.reactionText) : undefined,
   };
 };
 
@@ -689,17 +690,17 @@ export const saveChatMessage = async (
   text: string,
   currentStepSnapshot?: DialogueStep | null,
   level: string = 'A1'
-): Promise<void> => {
+): Promise<ChatMessage | null> => {
   try {
     // Валидация параметров
     if (!day || !lesson) {
       console.error("[saveChatMessage] Invalid parameters:", { day, lesson, role });
-      return;
+      return null;
     }
 
     if (!text || text.trim().length === 0) {
       console.error("[saveChatMessage] Empty text, skipping save");
-      return;
+      return null;
     }
 
     const userId = await requireAuthUserId();
@@ -732,6 +733,7 @@ export const saveChatMessage = async (
         details: error.details,
         hint: error.hint
       });
+      return null;
     } else {
       console.log("[saveChatMessage] Message saved successfully:", insertedData);
     }
@@ -741,8 +743,23 @@ export const saveChatMessage = async (
     if (text.includes('<lesson_complete>')) {
       await upsertLessonProgress({ day, lesson, level, lessonId, completed: true });
     }
+
+    const row = Array.isArray(insertedData) ? (insertedData[0] as any) : null;
+    if (!row?.id) return null;
+    return {
+      id: String(row.id),
+      role,
+      text: String(row.text ?? text).trim(),
+      translation: undefined,
+      moduleId: undefined,
+      messageOrder: typeof row.message_order === 'number' ? row.message_order : undefined,
+      createdAt: typeof row.created_at === 'string' ? row.created_at : undefined,
+      currentStepSnapshot: row.current_step_snapshot ?? currentStepSnapshot ?? null,
+      local: { source: 'db', saveStatus: 'saved' as const },
+    };
   } catch (error) {
     console.error("[saveChatMessage] Exception saving chat message:", error);
+    return null;
   }
 };
 
@@ -790,21 +807,22 @@ export const loadChatMessages = async (
       return [];
     }
 
-    console.log("[loadChatMessages] Loaded", data.length, "messages");
-    const mapped = data.map(msg => ({
-      id: msg.id,
-      role: msg.role as 'user' | 'model',
-      text: msg.text,
-      translation: undefined,
-      moduleId: undefined,
-      messageOrder: msg.message_order || undefined,
-      createdAt: (msg as any).created_at || undefined,
-      currentStepSnapshot: msg.current_step_snapshot,
-    }));
-    if (cacheKey) {
-      chatMessagesMemoryCache.set(cacheKey, mapped);
-      writeChatMessagesToSession(cacheKey, mapped);
-    }
+	    console.log("[loadChatMessages] Loaded", data.length, "messages");
+		    const mapped = data.map(msg => ({
+		      id: msg.id,
+		      role: msg.role as 'user' | 'model',
+		      text: msg.text,
+		      translation: undefined,
+		      moduleId: undefined,
+		      messageOrder: msg.message_order || undefined,
+		      createdAt: (msg as any).created_at || undefined,
+		      currentStepSnapshot: msg.current_step_snapshot,
+		      local: { source: 'db' as const, saveStatus: 'saved' as const },
+		    }));
+	    if (cacheKey) {
+	      chatMessagesMemoryCache.set(cacheKey, mapped);
+	      writeChatMessagesToSession(cacheKey, mapped);
+	    }
     return mapped;
   } catch (error) {
     console.error("[loadChatMessages] Exception loading chat messages:", error);
@@ -956,6 +974,23 @@ export const clearLessonScriptCacheForLevel = (level: string) => {
 const chatMessagesStoragePrefix = 'englishv2:chatMessages:';
 const chatMessagesMemoryCache = new Map<string, ChatMessage[]>();
 
+const stripLocalChatMessageFields = (msg: ChatMessage): ChatMessage => {
+  if (!msg || !msg.local) return msg;
+  const { local, ...rest } = msg as any;
+  return rest as ChatMessage;
+};
+
+const isPersistedChatMessage = (msg: ChatMessage | null | undefined): msg is ChatMessage => {
+  if (!msg) return false;
+  if (typeof msg.text !== 'string' || typeof msg.role !== 'string') return false;
+  if (typeof msg.id !== 'string') return false;
+  const id = msg.id.trim();
+  if (!id) return false;
+  // Step4 client uses optimistic IDs before the DB insert is confirmed.
+  if (id.startsWith('optimistic-')) return false;
+  return true;
+};
+
 const getChatMessagesCacheKey = (
   day: number,
   lesson: number,
@@ -973,7 +1008,9 @@ const readChatMessagesFromSession = (cacheKey: string): ChatMessage[] | null => 
     const raw = window.sessionStorage.getItem(`${chatMessagesStoragePrefix}${cacheKey}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as ChatMessage[]) : null;
+    if (!Array.isArray(parsed)) return null;
+    const sanitized = (parsed as any[]).filter(isPersistedChatMessage) as ChatMessage[];
+    return sanitized.map((m) => ({ ...m, local: { source: 'cache', saveStatus: 'saved' } }));
   } catch {
     return null;
   }
@@ -982,7 +1019,8 @@ const readChatMessagesFromSession = (cacheKey: string): ChatMessage[] | null => 
 const writeChatMessagesToSession = (cacheKey: string, messages: ChatMessage[]) => {
   try {
     if (typeof window === 'undefined') return;
-    window.sessionStorage.setItem(`${chatMessagesStoragePrefix}${cacheKey}`, JSON.stringify(messages));
+    const serializable = Array.isArray(messages) ? messages.map(stripLocalChatMessageFields) : [];
+    window.sessionStorage.setItem(`${chatMessagesStoragePrefix}${cacheKey}`, JSON.stringify(serializable));
   } catch {
     // ignore
   }
@@ -991,8 +1029,13 @@ const writeChatMessagesToSession = (cacheKey: string, messages: ChatMessage[]) =
 export const cacheChatMessages = (day: number, lesson: number, level: string, messages: ChatMessage[]) => {
   const cacheKey = getChatMessagesCacheKey(day, lesson, level);
   if (!cacheKey) return;
-  chatMessagesMemoryCache.set(cacheKey, messages);
-  writeChatMessagesToSession(cacheKey, messages);
+  const persistedOnly = Array.isArray(messages) ? messages.filter(isPersistedChatMessage) : [];
+  // Memory cache can retain local metadata; session cache should not.
+  chatMessagesMemoryCache.set(
+    cacheKey,
+    persistedOnly.map((m) => (m.local ? m : { ...m, local: { source: 'cache', saveStatus: 'saved' } }))
+  );
+  writeChatMessagesToSession(cacheKey, persistedOnly);
 };
 
 export const peekCachedChatMessages = (day: number, lesson: number, level: string): ChatMessage[] | null => {
@@ -1057,6 +1100,7 @@ export const subscribeChatMessages = async (
       messageOrder: row.message_order || undefined,
       createdAt: row.created_at || undefined,
       currentStepSnapshot: row.current_step_snapshot,
+      local: { source: 'realtime', saveStatus: 'saved' as const },
     });
   };
 

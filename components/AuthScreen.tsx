@@ -32,6 +32,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           setError('Заполни email и пароль');
           return;
         }
+        if (password.length < 6) {
+          setError('Пароль должен быть минимум 6 символов');
+          return;
+        }
         const { error: signInError } = await supabase.auth.signInWithPassword({
           email,
           password,
@@ -44,11 +48,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           return;
         }
 
-        if (!otpRequested) {
-          if (!password || password.length < 6) {
-            setError('Придумай пароль (мин. 6 символов)');
-            return;
-          }
+        if (!password || password.length < 6) {
+          setError('Придумай пароль (мин. 6 символов)');
+          return;
         }
 
         if (!otpRequested) {

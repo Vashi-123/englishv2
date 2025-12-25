@@ -8,6 +8,7 @@ import {
   sendDialogueMessageV2,
   startDialogueSessionV2,
 } from '../../services/generationService';
+import { isStep4DebugEnabled } from './debugFlags';
 
 type Params = {
   day: number;
@@ -71,13 +72,29 @@ const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(r
 
 const getStorageKey = (day: number, lesson: number, language: string) => `dialogue_messages_v2:${day}:${lesson}:${language}`;
 
+const isPersistedChatMessage = (msg: ChatMessage | null | undefined): msg is ChatMessage => {
+  if (!msg) return false;
+  if (typeof msg.text !== 'string' || typeof msg.role !== 'string') return false;
+  if (typeof msg.id !== 'string') return false;
+  const id = msg.id.trim();
+  if (!id) return false;
+  if (id.startsWith('optimistic-')) return false;
+  return true;
+};
+
+const stripLocalChatMessageFields = (msg: ChatMessage): ChatMessage => {
+  if (!msg || !msg.local) return msg;
+  const { local, ...rest } = msg as any;
+  return rest as ChatMessage;
+};
+
 function loadCachedMessages(key: string): ChatMessage[] {
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(Boolean) as ChatMessage[];
+    return (parsed as any[]).filter(isPersistedChatMessage);
   } catch {
     return [];
   }
@@ -85,7 +102,9 @@ function loadCachedMessages(key: string): ChatMessage[] {
 
 function persistCachedMessages(key: string, messages: ChatMessage[]) {
   try {
-    window.localStorage.setItem(key, JSON.stringify(messages.slice(-200)));
+    const persistedOnly = Array.isArray(messages) ? messages.filter(isPersistedChatMessage) : [];
+    const serializable = persistedOnly.map(stripLocalChatMessageFields);
+    window.localStorage.setItem(key, JSON.stringify(serializable.slice(-200)));
   } catch {
     // ignore quota/unavailable
   }
@@ -196,19 +215,22 @@ export function useDialogueSession({ day, lesson, language, onError }: Params): 
           return;
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const recheckMessages = await withTimeout(loadChatMessages(day, lesson), 15000, 'loadChatMessages');
-        if (recheckMessages && recheckMessages.length > 0) {
-          if (!mountedRef.current || token !== sessionTokenRef.current) return;
-          setMessages(recheckMessages);
-          persistCachedMessages(storageKey, recheckMessages);
-          const lastModelMsg = [...recheckMessages]
-            .reverse()
-            .find((m) => m.role === 'model' && m.currentStepSnapshot);
-          if (lastModelMsg?.currentStepSnapshot) {
-            setCurrentStep(lastModelMsg.currentStepSnapshot);
+        const retryDelays = isStep4DebugEnabled('instant') ? [0] : [60, 140, 260];
+        for (const ms of retryDelays) {
+          await new Promise((resolve) => setTimeout(resolve, ms));
+          const recheckMessages = await withTimeout(loadChatMessages(day, lesson), 15000, 'loadChatMessages');
+          if (recheckMessages && recheckMessages.length > 0) {
+            if (!mountedRef.current || token !== sessionTokenRef.current) return;
+            setMessages(recheckMessages);
+            persistCachedMessages(storageKey, recheckMessages);
+            const lastModelMsg = [...recheckMessages]
+              .reverse()
+              .find((m) => m.role === 'model' && m.currentStepSnapshot);
+            if (lastModelMsg?.currentStepSnapshot) {
+              setCurrentStep(lastModelMsg.currentStepSnapshot);
+            }
+            return;
           }
-          return;
         }
 
         const firstMessage = await withTimeout(startDialogueSessionV2(day, lesson, language), 30000, 'startDialogue');
