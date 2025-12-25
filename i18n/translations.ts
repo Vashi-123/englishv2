@@ -188,43 +188,43 @@ export const translations = {
       lessons: "уроков"
     },
     ai: {
-      tapForDetails: "Подробнее",
+      tapForDetails: "Узнать подробности",
       currentFocus: "Текущий фокус",
       gotIt: "Понял",
       loading: {
-        status: "Загрузка",
-        assessment: "Готовим ваш учебный план...",
+        status: "",
+        assessment: "Узнать подробности",
         learningGoal: "Пожалуйста, подождите",
         motivation: "Терпение — добродетель."
       },
       states: {
         base: {
           status: "Сессия обучения",
-          assessment: "Вы стабильно продвигаетесь.",
+          assessment: "Узнать подробности",
           learningGoal: (topic: string) => `Сегодня в модуле "${topic}". Важно для ежедневной практики.`,
           motivation: "Образование — пропуск в будущее."
         },
         vocab: {
-          status: "Лексика выучена",
-          assessment: "Отличная память, база крепнет.",
+          status: "",
+          assessment: "Узнать подробности",
           learningGoal: "Дальше — применять эти слова в грамматике.",
           motivation: "Повторение — мать учения."
         },
         grammar: {
-          status: "Понято",
-          assessment: "Логика грамматики ясна. Вперед к применению.",
+          status: "",
+          assessment: "Узнать подробности",
           learningGoal: "Практика для точности.",
           motivation: "Точность рождает уверенность."
         },
         practice: {
-          status: "Почти готовы",
-          assessment: "Хорошие исправления. Готовы к диалогу.",
+          status: "",
+          assessment: "Узнать подробности",
           learningGoal: "Синтез: применяем все в разговоре.",
           motivation: "Свободная речь приходит от практики."
         }
       },
       sprintOverride: {
-        assessment: "Вы прошли середину курса!",
+        assessment: "Узнать подробности",
         motivation: "Настойчивость приносит результат."
       }
     },

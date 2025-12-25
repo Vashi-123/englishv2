@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState, useEffect, useRef, useCallback } from 'react';
+import React, { useLayoutEffect, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Session } from '@supabase/supabase-js';
 import { ActivityType, ViewState } from './types';
@@ -6,6 +6,7 @@ import { useLanguage } from './hooks/useLanguage';
 import { useDayPlans } from './hooks/useDayPlans';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useAvailableLevels } from './hooks/useAvailableLevels';
+import { useCourseModules } from './hooks/useCourseModules';
 import Step4Dialogue from './components/Step4Dialogue';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
@@ -54,6 +55,7 @@ const ConnectionRequiredScreen = () => {
 	  const [langMenuPos, setLangMenuPos] = useState<{ top: number; left: number } | null>(null);
 	  const [level, setLevel] = useState<string>('A1');
 	  const { levels: availableLevels, loading: levelsLoading } = useAvailableLevels();
+  const { modules: courseModules, loading: modulesLoading } = useCourseModules(level, language || 'ru');
 
 	  const openLangMenu = () => {
 	    setShowLangMenu(true);
@@ -130,6 +132,8 @@ const ConnectionRequiredScreen = () => {
   const [completedTasks, setCompletedTasks] = useState<ActivityType[]>([]);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   const [showInsightPopup, setShowInsightPopup] = useState(false);
+  const [insightPopupActive, setInsightPopupActive] = useState(false);
+  const insightPopupTimerRef = useRef<number | null>(null);
   const [lessonCompleted, setLessonCompleted] = useState(false);
   const [showCourseTopics, setShowCourseTopics] = useState(false);
   const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>(() => {
@@ -145,6 +149,53 @@ const ConnectionRequiredScreen = () => {
     }
   });
   const statusesInitKeyRef = useRef<string | null>(null);
+  const INSIGHT_POPUP_ANIM_MS = 360;
+
+  const openInsightPopup = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (insightPopupTimerRef.current != null) {
+      window.clearTimeout(insightPopupTimerRef.current);
+      insightPopupTimerRef.current = null;
+    }
+    setShowInsightPopup(true);
+    window.requestAnimationFrame(() => setInsightPopupActive(true));
+  }, []);
+
+  const closeInsightPopup = useCallback(() => {
+    if (typeof window === 'undefined') {
+      setShowInsightPopup(false);
+      setInsightPopupActive(false);
+      return;
+    }
+    setInsightPopupActive(false);
+    if (insightPopupTimerRef.current != null) {
+      window.clearTimeout(insightPopupTimerRef.current);
+      insightPopupTimerRef.current = null;
+    }
+    insightPopupTimerRef.current = window.setTimeout(() => {
+      setShowInsightPopup(false);
+      insightPopupTimerRef.current = null;
+    }, INSIGHT_POPUP_ANIM_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (typeof window === 'undefined') return;
+      if (insightPopupTimerRef.current != null) {
+        window.clearTimeout(insightPopupTimerRef.current);
+        insightPopupTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!showInsightPopup) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeInsightPopup();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [closeInsightPopup, showInsightPopup]);
 
   const statusStorageKey = userId ? `englishv2:dayCompletedStatus:${userId}:${level}` : null;
   const selectedDayStorageKey = userId ? `englishv2:selectedDayId:${userId}:${level}` : null;
@@ -439,6 +490,9 @@ const ConnectionRequiredScreen = () => {
 	    }
 	    return dayPlans[0]?.day || 1;
 	  })();
+  const actualDayPlan = dayPlans.find((d) => d.day === actualDayId);
+  const insightDayPlan = actualDayPlan || currentDayPlan;
+  const insightLessonNumber = insightDayPlan?.lesson || 1;
 	  // Считаем завершенные уроки на основе dayCompletedStatus
 	  const totalCompletedCount = Object.values(dayCompletedStatus).filter(Boolean).length;
 	  const sprintProgressPercent = Math.round((totalCompletedCount / TOTAL_SPRINT_TASKS) * 100);
@@ -448,10 +502,10 @@ const ConnectionRequiredScreen = () => {
 
   // Expanded AI Insight Logic
   const getExtendedAIInsight = () => {
-    if (!currentDayPlan) {
+    if (!insightDayPlan) {
       return { ...copy.ai.loading, color: "text-gray-400" };
     }
-    const topic = currentDayPlan.theme.split('(')[0];
+    const topic = insightDayPlan.theme.split('(')[0];
     
     // Dynamic content based on progress
     let feedback = {
@@ -463,7 +517,7 @@ const ConnectionRequiredScreen = () => {
     };
 
     // Используем dayCompletedStatus для определения состояния
-    const isCurrentDayCompleted = dayCompletedStatus[currentDayPlan.day] === true;
+    const isCurrentDayCompleted = dayCompletedStatus[insightDayPlan.day] === true;
     
     if (isCurrentDayCompleted) {
         feedback = {
@@ -485,6 +539,44 @@ const ConnectionRequiredScreen = () => {
   };
 
   const aiContent = getExtendedAIInsight();
+  const activeModule = courseModules.find(
+    (m) => insightLessonNumber >= m.lessonFrom && insightLessonNumber <= m.lessonTo
+  );
+  const modulesByStage = useMemo(() => {
+    const groups = new Map<
+      number,
+      {
+        stageOrder: number;
+        stageTitle: string;
+        lessonFrom: number;
+        lessonTo: number;
+        modules: typeof courseModules;
+      }
+    >();
+
+    courseModules.forEach((m) => {
+      const current = groups.get(m.stageOrder) || {
+        stageOrder: m.stageOrder,
+        stageTitle: m.stageTitle,
+        lessonFrom: m.lessonFrom,
+        lessonTo: m.lessonTo,
+        modules: [] as typeof courseModules,
+      };
+
+      current.stageTitle = m.stageTitle;
+      current.lessonFrom = Math.min(current.lessonFrom, m.lessonFrom);
+      current.lessonTo = Math.max(current.lessonTo, m.lessonTo);
+      current.modules = [...current.modules, m];
+      groups.set(m.stageOrder, current);
+    });
+
+    return Array.from(groups.values())
+      .sort((a, b) => a.stageOrder - b.stageOrder)
+      .map((group) => ({
+        ...group,
+        modules: group.modules.sort((a, b) => a.moduleOrder - b.moduleOrder),
+      }));
+  }, [courseModules]);
 
   // Single lesson card definition
   const TASKS = [
@@ -645,52 +737,143 @@ const ConnectionRequiredScreen = () => {
     }
 
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 animate-fade-in-up">
-         <div 
-           className="absolute inset-0 bg-black/40 backdrop-blur-md"
-           onClick={() => setShowInsightPopup(false)}
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+         <div
+           className={`absolute inset-0 z-0 bg-black/40 transition-[opacity,backdrop-filter] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+             insightPopupActive ? 'opacity-100 backdrop-blur-md' : 'opacity-0 backdrop-blur-none'
+           }`}
+           onClick={closeInsightPopup}
          ></div>
-         <div className="relative w-full max-w-sm bg-white border border-gray-200 rounded-[2.5rem] shadow-2xl overflow-hidden">
+         <div
+           className={`relative z-10 w-full max-w-3xl lg:max-w-4xl h-[90vh] transform-gpu transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+             insightPopupActive ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-[0.96] translate-y-2'
+           }`}
+         >
+	             {/* Card */}
+             <div className="relative z-10 bg-white border border-gray-200 rounded-3xl sm:rounded-[2.5rem] overflow-hidden shadow-[0_30px_90px_-30px_rgba(15,23,42,0.45)] h-full flex flex-col">
              {/* Header / Decor */}
-             <div className="relative h-32 bg-gradient-to-b from-brand-primary/10 to-transparent p-6 flex flex-col items-center justify-center">
-                 <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl mb-4 relative z-10">
-                     <Sparkles className={`w-8 h-8 ${aiContent.color}`} />
+             <div className="relative bg-gradient-to-b from-brand-primary/10 to-transparent p-5 sm:p-6">
+                 <div className="flex items-center gap-4">
+                     <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
+                         <Sparkles className="w-7 h-7 text-brand-primary" />
+                     </div>
+                     <div className="flex-1 min-w-0">
+                       <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                         Дорожная карта курса
+                       </h2>
+                       <div className="mt-1 text-[11px] font-semibold text-gray-500">
+                         {activeModule ? `Сейчас: ${activeModule.moduleTitle}` : ' '}
+                       </div>
+                     </div>
                  </div>
                  <div className="absolute top-4 right-4">
-                    <button onClick={() => setShowInsightPopup(false)} className="bg-white/80 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm">
+                    <button
+                      onClick={closeInsightPopup}
+                      className="bg-white/80 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm"
+                    >
                         <X className="w-4 h-4" />
                     </button>
                  </div>
              </div>
              
              {/* Body */}
-             <div className="px-8 pb-8 text-center -mt-6 relative z-20">
-                 <h2 className={`text-2xl font-bold mb-2 ${aiContent.color}`}>{aiContent.status}</h2>
-                 <p className="text-gray-600 font-medium mb-8 text-sm">{aiContent.assessment}</p>
-                 
-                 <div className="bg-gradient-to-br from-brand-primary/5 to-brand-secondary/30 rounded-2xl p-6 border border-brand-primary/10 text-left mb-6">
-                     <div className="flex items-center gap-2 mb-3">
-                         <GraduationCap className="w-4 h-4 text-brand-primary" />
-                         <span className="text-xs font-bold uppercase tracking-widest text-gray-600">{copy.ai.currentFocus}</span>
-                     </div>
-                     <p className="text-slate-900 text-sm leading-relaxed font-medium">
-                         {aiContent.learningGoal}
-                     </p>
-                 </div>
+             <div className="px-5 sm:px-6 lg:px-8 pb-6 sm:pb-7 pt-2 relative z-20 flex-1 overflow-hidden">
+                  <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden h-full">
+                    <div className="h-full overflow-y-auto">
+                      {modulesLoading && courseModules.length === 0 ? (
+                        <div className="p-5 space-y-3">
+                          {[1, 2, 3, 4, 5].map((skeleton) => (
+                            <div
+                              key={`module-skeleton-${skeleton}`}
+                              className="w-full rounded-2xl border border-gray-100 bg-gray-50/70 animate-pulse p-4"
+                            >
+                              <div className="h-3 w-28 bg-gray-200 rounded mb-2" />
+                              <div className="h-3 w-44 bg-gray-200 rounded mb-2" />
+                              <div className="h-2.5 w-36 bg-gray-200 rounded" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        modulesByStage.map((stage) => (
+                          <div key={`stage-${stage.stageOrder}`} className="border-t border-gray-100 first:border-t-0">
+                            {(() => {
+                              const stageIsActive =
+                                insightLessonNumber >= stage.lessonFrom && insightLessonNumber <= stage.lessonTo;
+                              return (
+                                <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-100 px-5 py-3">
+                                  <div>
+                                    <div
+                                      className={`text-[11px] font-bold uppercase tracking-[0.2em] ${
+                                        stageIsActive ? 'text-brand-primary' : 'text-gray-500'
+                                      }`}
+                                    >
+                                      {stage.stageTitle}
+                                    </div>
+                                    <div className="mt-1 text-[11px] font-semibold text-gray-600">
+                                      Уроки {stage.lessonFrom}–{stage.lessonTo}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })()}
 
-                 <div className="flex gap-4 items-start">
-                     <Quote className="w-4 h-4 text-brand-primary/60 shrink-0 mt-1" />
-                     <p className="text-xs text-gray-600 italic text-left">
-                         "{aiContent.motivation}"
-                     </p>
-                 </div>
-                 
-                 <button 
-                    onClick={() => setShowInsightPopup(false)}
-                    className="w-full mt-8 bg-brand-primary text-white font-bold py-4 rounded-2xl hover:opacity-90 transition-colors shadow-md"
-                 >
-                     {copy.ai.gotIt}
-                 </button>
+                            <div className="p-5 space-y-3 bg-gradient-to-b from-white to-slate-50/40">
+                              {stage.modules.map((module) => {
+                                const isActive =
+                                  insightLessonNumber >= module.lessonFrom && insightLessonNumber <= module.lessonTo;
+                                const isCompleted = insightLessonNumber > module.lessonTo;
+                                return (
+                                  <div
+                                    key={module.id}
+                                    className={`w-full rounded-2xl border relative overflow-hidden transition-all duration-200 p-4 pl-5 ${
+                                      isActive
+                                        ? 'border-brand-primary bg-gradient-to-br from-brand-primary/10 via-brand-secondary/10 to-white shadow-md shadow-brand-primary/10 ring-1 ring-brand-primary/30'
+                                        : isCompleted
+                                          ? 'border-emerald-100 bg-emerald-50/70 text-emerald-900'
+                                          : 'border-gray-200 bg-white hover:border-brand-primary/30'
+                                    }`}
+                                  >
+                                    <div
+                                      className={`absolute left-0 top-0 h-full w-1.5 ${
+                                        isActive
+                                          ? 'bg-gradient-to-b from-brand-primary to-brand-secondary animate-pulse'
+                                          : isCompleted
+                                            ? 'bg-emerald-400'
+                                            : 'bg-gray-200'
+                                      }`}
+                                    />
+                                    <div className="relative flex items-center justify-between gap-2">
+                                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                                        Модуль {module.moduleOrder}
+                                      </span>
+                                      <span className="text-[10px] font-semibold text-gray-500">
+                                        Уроки {module.lessonFrom}-{module.lessonTo}
+                                      </span>
+                                    </div>
+                                    <div className="relative mt-2 text-[15px] font-extrabold text-slate-900">
+                                      {module.moduleTitle}
+                                    </div>
+                                    <div className="relative mt-1 text-[11px] text-gray-700 leading-snug">
+                                      {module.goal}
+                                    </div>
+                                    <div className="relative mt-1.5 text-[11px] text-gray-500 leading-snug">
+                                      {module.summary}
+                                    </div>
+                                    <div className="relative mt-3 flex items-center gap-2 flex-wrap">
+                                      <span className="text-[11px] font-semibold text-gray-600">
+                                        {module.statusBefore} → {module.statusAfter}
+                                      </span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+             </div>
              </div>
          </div>
       </div>
@@ -1011,30 +1194,29 @@ const ConnectionRequiredScreen = () => {
         {!showCourseTopics ? (
           <>
             {/* 3. Insight */}
-            <div
-              onClick={() => setShowInsightPopup(true)}
-              className="bg-white border border-gray-200 rounded-3xl p-5 relative overflow-hidden group hover:border-brand-primary/20 transition-all cursor-pointer shadow-sm w-full"
+            <button
+              type="button"
+              onClick={openInsightPopup}
+              className="bg-white border border-gray-200 rounded-3xl p-5 relative overflow-hidden group hover:border-brand-primary/20 transition-all cursor-pointer shadow-sm w-full text-left"
             >
               <div className="absolute top-[-30px] right-[-30px] w-28 h-28 bg-brand-primary/10 rounded-full blur-2xl pointer-events-none"></div>
               <div className="flex items-start gap-4 relative z-10">
                 <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/30 flex items-center justify-center border border-brand-primary/20 shadow-lg shrink-0 group-hover:scale-110 transition-transform duration-500">
-                  <Sparkles className={`w-5 h-5 ${aiContent.color}`} />
+                  <Sparkles className="w-5 h-5 text-brand-primary" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 min-w-0">
-                    <h3 className={`font-bold text-sm ${aiContent.color} whitespace-nowrap overflow-hidden text-ellipsis`}>
-                      {aiContent.status}
-                    </h3>
-                  </div>
-                  <p className="text-slate-900 text-sm font-medium leading-relaxed line-clamp-2 opacity-90">
-                    {aiContent.assessment}
+                  <h3 className="font-bold text-sm text-slate-900 whitespace-nowrap overflow-hidden text-ellipsis mb-1">
+                    {copy.ai.states.base.status}
+                  </h3>
+                  <p className="text-slate-700 text-sm font-medium leading-relaxed line-clamp-2 opacity-90">
+                    {copy.ai.tapForDetails}
                   </p>
                 </div>
                 <div className="text-gray-400 group-hover:text-brand-primary transition-colors">
                   <ChevronRight className="w-5 h-5" />
                 </div>
               </div>
-            </div>
+            </button>
 
             {/* 4. Start Lesson Block */}
             <button

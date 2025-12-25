@@ -47,6 +47,7 @@ export type Step4DialogueProps = {
   onFinish: () => void;
   onNextLesson?: () => void;
   onBack?: () => void;
+  onReady?: () => void;
   copy: {
     active: string;
     placeholder: string;
@@ -75,6 +76,7 @@ export function Step4DialogueScreen({
   onFinish,
   onNextLesson,
   onBack,
+  onReady,
   copy,
 }: Step4DialogueProps) {
   const { language } = useLanguage();
@@ -108,6 +110,16 @@ export function Step4DialogueScreen({
   const [tutorHistory, setTutorHistory] = useState<Array<{ role: 'user' | 'model'; text: string }>>([]);
   const [tutorThreadMessages, setTutorThreadMessages] = useState<Array<{ role: 'user' | 'model'; text: string }>>([]);
 
+  const didSignalReadyRef = useRef(false);
+  useEffect(() => {
+    if (didSignalReadyRef.current) return;
+    const isOverlayVisible = isInitializing || (isLoading && messages.length === 0);
+    if (!isOverlayVisible && messages.length > 0) {
+      didSignalReadyRef.current = true;
+      onReady?.();
+    }
+  }, [isInitializing, isLoading, messages.length, onReady]);
+
   const { currentAudioItem, processAudioQueue, resetTtsState } = useTtsQueue();
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
@@ -119,6 +131,31 @@ export function Step4DialogueScreen({
   useEffect(() => {
     isInitializingRef.current = isInitializing;
   }, [isInitializing]);
+
+  const didInitialScrollKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${day || 1}_${lesson || 1}_${resolvedLevel}_${resolvedLanguage}`;
+    if (didInitialScrollKeyRef.current !== key) {
+      didInitialScrollKeyRef.current = null;
+    }
+    if (isInitializing) {
+      didInitialScrollKeyRef.current = null;
+      return;
+    }
+    if (didInitialScrollKeyRef.current === key) return;
+
+    didInitialScrollKeyRef.current = key;
+    const container = scrollContainerRef.current;
+    const end = messagesEndRef.current;
+    window.requestAnimationFrame(() => {
+      if (container) {
+        const targetTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        container.scrollTo({ top: targetTop, behavior: 'auto' });
+      } else {
+        end?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      }
+    });
+  }, [day, isInitializing, lesson, resolvedLanguage, resolvedLevel]);
 
   // Persist chat messages to a lightweight session cache so leaving/re-entering the lesson is instant.
   const cacheTimerRef = useRef<number | null>(null);
@@ -680,7 +717,6 @@ export function Step4DialogueScreen({
       lesson,
       resolvedLevel,
       resolvedLanguage,
-      isInitializing,
       visibleMessages.length,
       showMatching,
       showVocab,
@@ -691,9 +727,9 @@ export function Step4DialogueScreen({
       lessonCompletedPersisted,
     ],
     endRef: messagesEndRef,
-    enabled: true,
+    enabled: !isInitializing,
     containerRef: scrollContainerRef,
-    behavior: isInitializing ? 'auto' : 'smooth',
+    behavior: 'smooth',
   });
 
   useVocabScroll({ showVocab, vocabIndex, vocabRefs });
@@ -1087,12 +1123,22 @@ export function Step4DialogueScreen({
     vocabWords,
   ]);
 
-  void onFinish;
-
-  return (
-    <>
-      <div className="flex flex-col h-full bg-white relative w-full">
-	        <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
+	  void onFinish;
+	
+	  return (
+	    <>
+	      <div className="flex flex-col h-full bg-white relative w-full">
+	        {(isInitializing || (isLoading && messages.length === 0)) && (
+	          <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/85 backdrop-blur-sm">
+	            <div className="flex flex-col items-center gap-3 rounded-2xl border border-black/5 bg-white px-5 py-4 shadow-xl">
+	              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
+	              <div className="text-sm font-medium text-zinc-800">
+	                {resolvedLanguage?.toLowerCase().startsWith("ru") ? "Загружаю урок…" : "Loading lesson…"}
+	              </div>
+	            </div>
+	          </div>
+	        )}
+		        <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
           <DialogueHeader
             progressPercent={lessonProgress.percent}
             progressLabel={lessonProgress.label}

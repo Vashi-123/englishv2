@@ -287,9 +287,26 @@ Deno.serve(async (req: Request) => {
     };
 
     if (tutorMode) {
-      const lessonContext = (() => {
-        const safeText = (value: unknown) => String(value ?? "").trim();
+      const safeText = (value: unknown) => String(value ?? "").trim();
 
+      const insertTutorMessage = async (role: "user" | "model", text: string) => {
+        const trimmed = safeText(text);
+        if (!trimmed) return;
+        const { error } = await supabase.from("chat_messages").insert({
+          lesson_id: lessonId,
+          user_id: userId,
+          role,
+          text: trimmed,
+          day: (script as any).day || 0,
+          lesson: (script as any).lesson || 0,
+          current_step_snapshot: { type: "completion", index: 0, tutor: true },
+        });
+        if (error) {
+          console.error("[groq-lesson-v2] Failed to save tutor message:", error.message, "payload:", { lessonId, userId, role });
+        }
+      };
+
+      const lessonContext = (() => {
         const goal = safeText(script?.goal);
 
         const wordsItems = Array.isArray((script as any)?.words?.items)
@@ -468,6 +485,40 @@ Lesson context (for you):\n\n${lessonContext}`;
 
       const userQuestion = String(lastUserMessageContent || "").trim();
 
+      const userQuestionsCount = history.filter((m) => m.role === "user").length + (userQuestion ? 1 : 0);
+      if (userQuestionsCount > 5) {
+        const limitReached =
+          userLang.toLowerCase().startsWith("ru")
+            ? "Мы уже разобрали 5 вопросов по этому уроку. Если хочешь — начнем следующий урок."
+            : "We've already covered 5 questions for this lesson. If you want, let's start the next lesson.";
+        await insertTutorMessage("model", limitReached);
+        return new Response(
+          JSON.stringify({
+            response: limitReached,
+            isCorrect: true,
+            feedback: "",
+            nextStep: currentStep ?? null,
+            translation: "",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      // If the user just opened tutor mode (no question yet), return a greeting and persist it so it shows on re-entry.
+      if (!userQuestion) {
+        await insertTutorMessage("model", greeting);
+        return new Response(
+          JSON.stringify({
+            response: greeting,
+            isCorrect: true,
+            feedback: "",
+            nextStep: currentStep ?? null,
+            translation: "",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const messages = [
         { role: "system", content: tutorSystemPrompt },
         ...(history.length
@@ -481,12 +532,16 @@ Lesson context (for you):\n\n${lessonContext}`;
         const fallback = userLang.toLowerCase().startsWith("ru")
           ? "Не получилось ответить прямо сейчас. Попробуй еще раз."
           : "Couldn't answer right now. Please try again.";
+        await insertTutorMessage("user", userQuestion);
+        await insertTutorMessage("model", fallback);
         return new Response(
           JSON.stringify({ response: fallback, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
+      await insertTutorMessage("user", userQuestion);
+      await insertTutorMessage("model", result.text.trim());
       return new Response(
         JSON.stringify({
           response: result.text.trim(),

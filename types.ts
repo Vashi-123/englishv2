@@ -29,6 +29,22 @@ export interface DayPlan {
   lessonId?: string; // lesson_scripts.lesson_id (uuid)
 }
 
+export interface CourseModule {
+  id: string;
+  level: string;
+  lang: string;
+  stageOrder: number;
+  stageTitle: string;
+  moduleOrder: number;
+  moduleTitle: string;
+  lessonFrom: number;
+  lessonTo: number;
+  goal: string;
+  statusBefore: string;
+  statusAfter: string;
+  summary: string;
+}
+
 // Content rows (Supabase)
 export interface LessonRow {
   level: string;

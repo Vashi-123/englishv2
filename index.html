@@ -25,24 +25,68 @@
                 surface: '#27272A', // Zinc 800
               }
             },
-            animation: {
-              'float': 'float 6s ease-in-out infinite',
-              'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
-              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-            },
-            keyframes: {
-              float: {
-                '0%, 100%': { transform: 'translateY(0)' },
-                '50%': { transform: 'translateY(-10px)' },
-              },
-              fadeInUp: {
-                '0%': { opacity: '0', transform: 'translateY(20px)' },
-                '100%': { opacity: '1', transform: 'translateY(0)' },
-              },
-            }
-          }
-        }
-      }
+	            animation: {
+	              'float': 'float 6s ease-in-out infinite',
+	              'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+	              'fade-in-up-fast': 'fadeInUp 0.22s ease-out forwards',
+              'fade-in-fast': 'fadeIn 0.22s ease-out forwards',
+              'fade-in-smooth': 'fadeIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+	              'fade-in-up-shadow': 'fadeInUpShadow 0.22s ease-out forwards',
+              'fade-in-up-shadow-smooth': 'fadeInUpShadow 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+              'pop-in-shadow': 'popInShadow 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+	              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+	            },
+	            keyframes: {
+	              float: {
+	                '0%, 100%': { transform: 'translateY(0)' },
+	                '50%': { transform: 'translateY(-10px)' },
+	              },
+	              fadeIn: {
+	                '0%': { opacity: '0' },
+	                '100%': { opacity: '1' },
+	              },
+	              fadeInUp: {
+	                '0%': { opacity: '0', transform: 'translateY(20px)' },
+	                '100%': { opacity: '1', transform: 'translateY(0)' },
+	              },
+		              fadeInUpShadow: {
+		                '0%': {
+		                  opacity: '0.55',
+		                  transform: 'translateY(10px) scale(0.985)',
+		                  boxShadow: '0 24px 70px -26px rgba(15, 23, 42, 0.38)',
+		                },
+		                '35%': {
+		                  opacity: '0.85',
+		                  transform: 'translateY(4px) scale(0.993)',
+		                  boxShadow: '0 22px 58px -22px rgba(15, 23, 42, 0.30)',
+		                },
+		                '100%': {
+		                  opacity: '1',
+		                  transform: 'translateY(0) scale(1)',
+		                  boxShadow: '0 28px 72px -24px rgba(15, 23, 42, 0.32)',
+		                },
+		              },
+                popInShadow: {
+                  '0%': {
+                    opacity: '0',
+                    transform: 'scale(0.92)',
+                    boxShadow: '0 14px 42px -24px rgba(15, 23, 42, 0.22)',
+                  },
+                  '70%': {
+                    opacity: '1',
+                    transform: 'scale(1.01)',
+                    boxShadow: '0 28px 74px -26px rgba(15, 23, 42, 0.34)',
+                  },
+                  '100%': {
+                    opacity: '1',
+                    transform: 'scale(1)',
+                    boxShadow: '0 26px 70px -26px rgba(15, 23, 42, 0.32)',
+                  },
+                },
+	            }
+	          }
+	        }
+	      }
     </script>
     <style>
       body {
