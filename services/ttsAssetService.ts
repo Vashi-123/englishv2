@@ -1,5 +1,4 @@
 import { supabase } from './supabaseClient';
-import { FEEDBACK_CORRECT_EN, FEEDBACK_INCORRECT_EN } from './feedbackPhrases';
 
 type TtsAssetRow = {
   public_url: string | null;
@@ -18,6 +17,15 @@ const sessionKey = (hash: string) => `tts:assetUrl:${hash}`;
 
 function normalizeText(input: string): string {
   return String(input || '').replace(/\s+/g, ' ').trim();
+}
+
+function ensureMp3BlobType(blob: Blob): Blob {
+  const type = String((blob as any)?.type || '').toLowerCase();
+  if (type === 'audio/mpeg' || type === 'audio/mp3') return blob;
+  if (!type || type === 'application/octet-stream' || type === 'binary/octet-stream') {
+    return new Blob([blob], { type: 'audio/mpeg' });
+  }
+  return blob;
 }
 
 async function hasAuthSession(): Promise<boolean> {
@@ -116,16 +124,6 @@ function extractTtsPhrases(script: any): string[] {
     out.push(p);
   }
 
-  // Global micro-feedback phrases (used across exercises).
-  for (const p of [...FEEDBACK_CORRECT_EN, ...FEEDBACK_INCORRECT_EN]) {
-    const text = normalizeText(p);
-    if (!text) continue;
-    if (seen.has(text)) continue;
-    if (!/[A-Za-z]/.test(text)) continue;
-    seen.add(text);
-    out.push(text);
-  }
-
   return out;
 }
 
@@ -150,14 +148,30 @@ async function getTtsAudioUrl(params: { text: string; lang?: string; voice?: str
   try {
     const stored = sessionStorage.getItem(sessionKey(hash));
     if (stored != null) {
-      const value = stored === '__missing__' ? null : stored;
-      if (value) {
-        urlCache.set(hash, value);
-        return value;
+      if (stored === '__missing__') {
+        // Same story as above: ignore "missing" markers once we have an auth session.
+        if (!(await hasAuthSession())) return null;
+        sessionStorage.removeItem(sessionKey(hash));
+      } else {
+        // Back-compat: older builds stored JSON like {"url":"...","expiresAt":...}
+        let value: string | null = stored;
+        const trimmed = stored.trim();
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            const parsedUrl = typeof parsed?.url === 'string' ? parsed.url : '';
+            value = parsedUrl || null;
+            if (value) sessionStorage.setItem(sessionKey(hash), value);
+          } catch {
+            value = null;
+          }
+        }
+        if (value) {
+          urlCache.set(hash, value);
+          return value;
+        }
       }
       // Same story as above: ignore "missing" markers once we have an auth session.
-      if (!(await hasAuthSession())) return null;
-      sessionStorage.removeItem(sessionKey(hash));
     }
   } catch {
     // ignore (private mode / disabled storage)
@@ -239,7 +253,7 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
   if (cache) {
     const hit = await cache.match(cacheReq);
     if (hit) {
-      const blob = await hit.blob();
+      const blob = ensureMp3BlobType(await hit.blob());
       return URL.createObjectURL(blob);
     }
   }
@@ -251,7 +265,7 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
   try {
     const res = await fetch(remoteUrl);
     if (!res.ok) return null;
-    const blob = await res.blob();
+    const blob = ensureMp3BlobType(await res.blob());
     if (!blob || blob.size === 0) return null;
 
     if (cache) {
@@ -411,6 +425,7 @@ export async function clearAllTtsCache(): Promise<void> {
     for (let i = 0; i < sessionStorage.length; i += 1) {
       const key = sessionStorage.key(i);
       if (key && key.startsWith('englishv2:lessonTtsHashes:')) keysToRemove.push(key);
+      if (key && key.startsWith('tts:assetUrl:')) keysToRemove.push(key);
     }
     keysToRemove.forEach((k) => sessionStorage.removeItem(k));
   } catch {

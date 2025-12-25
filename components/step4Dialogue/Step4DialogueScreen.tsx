@@ -14,7 +14,6 @@ import {
 import { useLanguage } from '../../hooks/useLanguage';
 import { getOrCreateLocalUser } from '../../services/userService';
 import { applySrsReview, getSrsReviewBatch, upsertSrsCardsFromVocab } from '../../services/srsService';
-import { pickFeedbackPhraseEn } from '../../services/feedbackPhrases';
 import { parseMarkdown } from './markdown';
 import {
   determineInputMode,
@@ -126,18 +125,6 @@ export function Step4DialogueScreen({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-  const lastFeedbackPhraseRef = useRef<string | null>(null);
-
-  const playFeedbackAudio = useCallback(
-    async (params: { isCorrect: boolean; stepType: string }) => {
-      if (isPlayingQueue) return;
-      const phrase = pickFeedbackPhraseEn(Boolean(params.isCorrect), lastFeedbackPhraseRef.current);
-      if (!phrase) return;
-      lastFeedbackPhraseRef.current = phrase;
-      await processAudioQueue([{ text: phrase, lang: 'en', kind: 'feedback' }], `feedback:${params.stepType}:${phrase}`);
-    },
-    [isPlayingQueue, processAudioQueue]
-  );
 
   const goalSeenRef = useRef<boolean>(false);
   const hasRecordedLessonCompleteRef = useRef<boolean>(false);
@@ -238,7 +225,6 @@ export function Step4DialogueScreen({
     setCurrentStep,
     setIsLoading,
     setIsAwaitingModelReply,
-    playFeedbackAudio,
     ensureLessonContext,
     ensureLessonScript,
     lessonIdRef,
@@ -861,16 +847,15 @@ export function Step4DialogueScreen({
         }, 0);
 	    }, [ankiDoneStorageKey, determineInputMode, grammarGate.gated, messages, setInputMode, tutorMode]);
 
-	      const reviewedSrsCardIdsRef = useRef<Set<number>>(new Set());
-	      const handleAnkiAnswer = useCallback(async (p: { id?: number; isCorrect: boolean }) => {
-	        await Promise.resolve(playFeedbackAudio({ isCorrect: Boolean(p.isCorrect), stepType: 'anki' }));
-	        const id = typeof p.id === 'number' ? p.id : null;
-	        if (!id) return;
-	        if (reviewedSrsCardIdsRef.current.has(id)) return;
-	        reviewedSrsCardIdsRef.current.add(id);
-	        const quality = p.isCorrect ? 5 : 2;
-	        applySrsReview({ cardId: id, quality }).catch((err) => console.error('[SRS] apply review failed:', err));
-	      }, [playFeedbackAudio]);
+      const reviewedSrsCardIdsRef = useRef<Set<number>>(new Set());
+      const handleAnkiAnswer = useCallback(async (p: { id?: number; isCorrect: boolean }) => {
+        const id = typeof p.id === 'number' ? p.id : null;
+        if (!id) return;
+        if (reviewedSrsCardIdsRef.current.has(id)) return;
+        reviewedSrsCardIdsRef.current.add(id);
+        const quality = p.isCorrect ? 5 : 2;
+        applySrsReview({ cardId: id, quality }).catch((err) => console.error('[SRS] apply review failed:', err));
+      }, []);
 
   const situationsIntegritySignatureRef = useRef<string | null>(null);
   useEffect(() => {

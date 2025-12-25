@@ -85,6 +85,12 @@ export function useTtsQueue() {
       audio.preload = 'auto';
       audioRef.current = audio;
 
+      try {
+        audio.load();
+      } catch {
+        // ignore
+      }
+
       await audio.play();
 
       await new Promise<void>((resolve) => {
@@ -117,6 +123,13 @@ export function useTtsQueue() {
       }
       return false;
     } finally {
+      if (url && url.startsWith('blob:')) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore
+        }
+      }
       if (audioRef.current) {
         try {
           audioRef.current.pause();
@@ -162,7 +175,6 @@ export function useTtsQueue() {
 
         if (runIdRef.current !== runId) break;
         if (!played) continue;
-        await new Promise((r) => setTimeout(r, item.kind === 'feedback' ? 150 : 500));
       }
 
       if (runIdRef.current === runId) {
