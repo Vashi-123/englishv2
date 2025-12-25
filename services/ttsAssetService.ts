@@ -19,6 +19,15 @@ function normalizeText(input: string): string {
   return String(input || '').replace(/\s+/g, ' ').trim();
 }
 
+async function hasAuthSession(): Promise<boolean> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return Boolean(data.session?.user?.id);
+  } catch {
+    return false;
+  }
+}
+
 function cacheRequestForHash(hash: string) {
   return new Request(`/__tts/${hash}.mp3`, { method: 'GET' });
 }
@@ -52,6 +61,18 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+export async function debugComputeTtsHash(params: { text: string; lang?: string; voice?: string }): Promise<string | null> {
+  try {
+    const lang = params.lang || DEFAULT_LANG;
+    const voice = params.voice || DEFAULT_VOICE;
+    const text = normalizeText(params.text);
+    if (!text) return null;
+    return await sha256Hex(`${lang}|${voice}|${text}`);
+  } catch {
+    return null;
+  }
 }
 
 function extractTtsPhrases(script: any): string[] {
@@ -104,15 +125,27 @@ async function getTtsAudioUrl(params: { text: string; lang?: string; voice?: str
 
   // Hash must match server enqueue/worker: sha256(`${lang}|${voice}|${text}`)
   const hash = await sha256Hex(`${lang}|${voice}|${text}`);
-  if (urlCache.has(hash)) return urlCache.get(hash) ?? null;
+  if (urlCache.has(hash)) {
+    const cached = urlCache.get(hash) ?? null;
+    if (cached) return cached;
+    // Important: don't permanently poison the cache with "missing" while unauthenticated.
+    // RLS can make the row appear missing (empty result) before the session is established.
+    if (!(await hasAuthSession())) return null;
+    urlCache.delete(hash);
+  }
 
   // Cross-reload cache (best-effort).
   try {
     const stored = sessionStorage.getItem(sessionKey(hash));
     if (stored != null) {
       const value = stored === '__missing__' ? null : stored;
-      urlCache.set(hash, value);
-      return value;
+      if (value) {
+        urlCache.set(hash, value);
+        return value;
+      }
+      // Same story as above: ignore "missing" markers once we have an auth session.
+      if (!(await hasAuthSession())) return null;
+      sessionStorage.removeItem(sessionKey(hash));
     }
   } catch {
     // ignore (private mode / disabled storage)
@@ -131,26 +164,18 @@ async function getTtsAudioUrl(params: { text: string; lang?: string; voice?: str
   }
 
   if (!data) {
-    urlCache.set(hash, null);
+    // Only cache "missing" if we are authenticated; otherwise we might be seeing RLS-filtered emptiness.
+    const authed = await hasAuthSession();
+    if (authed) urlCache.set(hash, null);
     try {
-      sessionStorage.setItem(sessionKey(hash), '__missing__');
+      if (authed) sessionStorage.setItem(sessionKey(hash), '__missing__');
     } catch {
       // ignore
     }
     return null;
   }
 
-  if (data.public_url) {
-    urlCache.set(hash, data.public_url);
-    try {
-      sessionStorage.setItem(sessionKey(hash), data.public_url);
-    } catch {
-      // ignore
-    }
-    return data.public_url;
-  }
-
-  // If bucket is private, signed URLs are the most reliable way.
+  // Prefer signed URLs when possible (works for private buckets; also works for public buckets).
   const signed = await supabase.storage.from(data.storage_bucket).createSignedUrl(data.storage_path, SIGNED_URL_TTL_SECONDS);
   const signedUrl = signed.data?.signedUrl || null;
   if (signedUrl) {
@@ -161,6 +186,16 @@ async function getTtsAudioUrl(params: { text: string; lang?: string; voice?: str
       // ignore
     }
     return signedUrl;
+  }
+
+  if (data.public_url) {
+    urlCache.set(hash, data.public_url);
+    try {
+      sessionStorage.setItem(sessionKey(hash), data.public_url);
+    } catch {
+      // ignore
+    }
+    return data.public_url;
   }
 
   // Fallback: works when bucket is public.
@@ -212,6 +247,38 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
     }
 
     return URL.createObjectURL(blob);
+  } catch {
+    return null;
+  }
+}
+
+export async function debugListTtsAssetVoicesForText(params: {
+  text: string;
+  lang?: string;
+}): Promise<Array<{ voice: string; hash: string; public_url: string | null }> | null> {
+  try {
+    const lang = params.lang || DEFAULT_LANG;
+    const text = normalizeText(params.text);
+    if (!text) return null;
+    if (lang !== 'en-US') return null;
+    if (!/[A-Za-z]/.test(text)) return null;
+
+    const { data, error } = await supabase
+      .from('tts_assets')
+      .select('voice, hash, public_url')
+      .eq('lang', lang)
+      .eq('text', text)
+      .limit(10);
+
+    if (error) return null;
+    const rows = Array.isArray(data) ? data : [];
+    return rows
+      .map((r: any) => ({
+        voice: String(r?.voice || ''),
+        hash: String(r?.hash || ''),
+        public_url: (r?.public_url as string | null) ?? null,
+      }))
+      .filter((r) => Boolean(r.voice && r.hash));
   } catch {
     return null;
   }

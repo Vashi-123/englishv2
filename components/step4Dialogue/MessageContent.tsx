@@ -144,19 +144,20 @@ export function MessageContent({
       return null;
     })();
 
-    const parsedSituation =
-      parsed && parsed.type === 'situation'
-        ? {
-            title: typeof (parsed as any).title === 'string' ? (parsed as any).title : '',
-            situation: typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '',
-            task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
-            ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
-          }
-        : lastSituationModel
-          ? (lastSituationModel.payload as any)
-          : firstModel
-            ? parseSituationMessage(firstModel.text || '', stripModuleTag)
-          : {};
+    const parsedSituation = (() => {
+      // In multi-step situations, the card is rendered from the *start* message, but the "active" payload is the latest
+      // situation JSON in the thread. Prefer `lastSituationModel` so `ai` reflects the current step.
+      if (lastSituationModel) return lastSituationModel.payload as any;
+      if (parsed && parsed.type === 'situation') {
+        return {
+          title: typeof (parsed as any).title === 'string' ? (parsed as any).title : '',
+          situation: typeof (parsed as any).situation === 'string' ? (parsed as any).situation : '',
+          task: typeof (parsed as any).task === 'string' ? (parsed as any).task : '',
+          ai: typeof (parsed as any).ai === 'string' ? (parsed as any).ai : '',
+        };
+      }
+      return firstModel ? parseSituationMessage(firstModel.text || '', stripModuleTag) : {};
+    })();
 
     const isActiveScenario =
       currentStep?.type === 'situations' &&
@@ -181,7 +182,12 @@ export function MessageContent({
     const aiText = String((parsedSituation as any)?.ai || '').trim();
 
     autoPlaySituationAiText = aiText || null;
-    autoPlaySituationAiMessageId = msgStableId ? `situation-ai:${msgStableId}` : null;
+    // Important for multi-step situations: messageId must change per step payload, otherwise only the first step auto-plays.
+    const situationPayloadKey =
+      (lastSituationModel?.msg as any)?.id ??
+      (typeof (lastSituationModel?.msg as any)?.messageOrder === 'number' ? `order-${(lastSituationModel?.msg as any).messageOrder}` : null) ??
+      msgStableId;
+    autoPlaySituationAiMessageId = situationPayloadKey ? `situation-ai:${String(situationPayloadKey)}` : null;
     shouldAutoPlaySituationAi = Boolean(isActiveScenario && aiText && !hasUserReplyInSituation && !situationCompletedCorrect);
   }
 

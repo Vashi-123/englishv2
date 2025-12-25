@@ -3,7 +3,8 @@ import { createClient } from "npm:@supabase/supabase-js";
 
 type EnqueueRequest =
   | { lessonId: string; lang?: string; voice?: string }
-  | { day: number; lesson: number; level: string; lang?: string; voice?: string };
+  | { day: number; lesson: number; level: string; lang?: string; voice?: string }
+  | { lesson: number; level: string; lang?: string; voice?: string };
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,11 +107,24 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (error) throw error;
       lessonRow = data;
-    } else {
+    } else if ("day" in body) {
       const { data, error } = await supabase
         .from("lesson_scripts")
         .select("lesson_id, day, lesson, level, script, updated_at")
         .eq("day", body.day)
+        .eq("lesson", body.lesson)
+        .eq("level", body.level)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      lessonRow = data;
+    } else {
+      // Allow enqueueing by (lesson, level) without specifying day.
+      // Useful when lessons are unique by lesson+level across days, or you just want "latest".
+      const { data, error } = await supabase
+        .from("lesson_scripts")
+        .select("lesson_id, day, lesson, level, script, updated_at")
         .eq("lesson", body.lesson)
         .eq("level", body.level)
         .order("updated_at", { ascending: false })
