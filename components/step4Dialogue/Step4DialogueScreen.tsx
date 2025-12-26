@@ -998,26 +998,26 @@ export function Step4DialogueScreen({
     if (!vocabWords.length) return;
     const first = vocabWords[0];
     if (!first) return;
+    const normalizedWord = String(first.word || '').replace(/\s+/g, ' ').trim();
+    const normalizedExample = String(first.context || '').replace(/\s+/g, ' ').trim();
     const queue = [
-      { text: String(first.word || ''), lang: 'en', kind: 'word' },
-      { text: String(first.context || ''), lang: 'en', kind: 'example' },
+      { text: normalizedWord, lang: 'en', kind: 'word' },
+      // Avoid playing identical word twice when the example equals the word (e.g. "Hello" / "Hello").
+      ...(normalizedExample && normalizedExample !== normalizedWord
+        ? [{ text: normalizedExample, lang: 'en', kind: 'example' }]
+        : []),
     ].filter((x) => x.text.trim().length > 0);
     if (!queue.length) return;
-    // React StrictMode can run effects twice in development; use messageId gating
-    // so the first vocab item doesn't play twice.
-    let lastWordsListStableId = 'words_list';
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-      const msg = messages[i];
-      if (!msg || msg.role !== 'model') continue;
-      const parsed = tryParseJsonMessage(msg.text);
-      if (parsed?.type === 'words_list') {
-        lastWordsListStableId = getMessageStableId(msg, i);
-        break;
-      }
-    }
-    processAudioQueue(queue, `vocab:first:${lastWordsListStableId}`);
+    processAudioQueue(queue, `vocab:first:${vocabProgressStorageKey}`);
     setPendingVocabPlay(false);
-  }, [getMessageStableId, messages, pendingVocabPlay, processAudioQueue, setPendingVocabPlay, showVocab, vocabWords]);
+  }, [
+    pendingVocabPlay,
+    processAudioQueue,
+    setPendingVocabPlay,
+    showVocab,
+    vocabProgressStorageKey,
+    vocabWords,
+  ]);
 
   const prevVocabIndexRef = useRef<number>(vocabIndex);
   useEffect(() => {
@@ -1025,21 +1025,30 @@ export function Step4DialogueScreen({
       prevVocabIndexRef.current = vocabIndex;
       return;
     }
+    if (pendingVocabPlay) return;
     if (!showVocab) return;
     if (vocabIndex === prevVocabIndexRef.current) return;
+    if (vocabIndex === 0) {
+      prevVocabIndexRef.current = vocabIndex;
+      return;
+    }
 
     prevVocabIndexRef.current = vocabIndex;
 
     const word = vocabWords[vocabIndex];
     if (!word) return;
+    const normalizedWord = String(word.word || '').replace(/\s+/g, ' ').trim();
+    const normalizedExample = String(word.context || '').replace(/\s+/g, ' ').trim();
     const queue = [
-      { text: String(word.word || ''), lang: 'en', kind: 'word' },
-      { text: String(word.context || ''), lang: 'en', kind: 'example' },
+      { text: normalizedWord, lang: 'en', kind: 'word' },
+      ...(normalizedExample && normalizedExample !== normalizedWord
+        ? [{ text: normalizedExample, lang: 'en', kind: 'example' }]
+        : []),
     ].filter((x) => x.text.trim().length > 0);
     if (queue.length) {
       processAudioQueue(queue);
     }
-  }, [vocabIndex, showVocab, vocabWords, processAudioQueue, isInitializing]);
+  }, [vocabIndex, showVocab, vocabWords, processAudioQueue, isInitializing, pendingVocabPlay]);
 
   const lastGrammarScrollTokenRef = useRef<string | null>(null);
   const grammarHeadingScrollToken = useMemo(() => {
@@ -1200,38 +1209,56 @@ export function Step4DialogueScreen({
 	  const effectiveInputMode: InputMode = tutorMode ? 'text' : grammarGate.gated || ankiGateActive ? 'hidden' : inputMode;
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
   const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
-  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
-  const acknowledgeGoalGate = useCallback(async () => {
-    try {
-      window.localStorage.setItem(goalAckStorageKey, '1');
-    } catch {
-      // ignore
-    }
-    setGoalGateAcknowledged(true);
-    setGoalGatePending(false);
-    setIsLoading(true);
-    try {
-      const script = (await ensureLessonScript()) as LessonScriptV2;
-      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
-      if (out.messages?.length) {
-        await appendEngineMessagesWithDelay(out.messages, 0);
-      }
-      setCurrentStep(out.nextStep || null);
-      upsertLessonProgress({
-        day: day || 1,
-        lesson: lesson || 1,
-        level: resolvedLevel,
-        currentStepSnapshot: out.nextStep || null,
-      }).catch((err) => console.error('[Step4Dialogue] Goal background save error:', err));
-      // Make the transition feel immediate even if effects run later.
-      setShowVocab(true);
-      setPendingVocabPlay(true);
-    } catch (err) {
-      console.error('[Step4Dialogue] Failed to advance from goal:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [appendEngineMessagesWithDelay, ensureLessonScript, goalAckStorageKey]);
+	  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
+	  const acknowledgeGoalGate = useCallback(async () => {
+	    try {
+	      window.localStorage.setItem(goalAckStorageKey, '1');
+	    } catch {
+	      // ignore
+	    }
+	    setGoalGateAcknowledged(true);
+	    setGoalGatePending(false);
+	    setIsLoading(true);
+	    try {
+	      const script = (await ensureLessonScript()) as LessonScriptV2;
+	      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
+	      if (out.messages?.length) {
+	        await appendEngineMessagesWithDelay(out.messages, 0);
+	      }
+	      setCurrentStep(out.nextStep || null);
+	      upsertLessonProgress({
+	        day: day || 1,
+	        lesson: lesson || 1,
+	        level: resolvedLevel,
+	        currentStepSnapshot: out.nextStep || null,
+	      }).catch((err) => console.error('[Step4Dialogue] Goal background save error:', err));
+	      // Make the transition feel immediate even if effects run later.
+	      setShowVocab(true);
+	      const advancedIntoWordsList = Boolean(
+	        out.messages?.some((msg) => {
+	          if (!msg || msg.role !== 'model') return false;
+	          const parsed = tryParseJsonMessage(msg.text);
+	          return parsed?.type === 'words_list';
+	        })
+	      );
+	      // If we advanced into a words_list message, useMessageDrivenUi will set pendingVocabPlay for us.
+	      // Otherwise, if the vocab is already present (e.g. restored history), start the first word once.
+	      if (!advancedIntoWordsList && vocabWords.length > 0) setPendingVocabPlay(true);
+	    } catch (err) {
+	      console.error('[Step4Dialogue] Failed to advance from goal:', err);
+	    } finally {
+	      setIsLoading(false);
+	    }
+	  }, [
+	    appendEngineMessagesWithDelay,
+	    day,
+	    ensureLessonScript,
+	    goalAckStorageKey,
+	    lesson,
+	    resolvedLevel,
+	    tryParseJsonMessage,
+	    vocabWords.length,
+	  ]);
 
   const activeCta = useMemo(() => {
     // 1. Goal Gate

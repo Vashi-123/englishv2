@@ -96,7 +96,7 @@ const ConnectionRequiredScreen = () => {
       const anchor = langMenuRef.current;
       if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
-      const menuWidth = 256; // w-64
+      const menuWidth = 320; // w-80
       const margin = 12;
       const minLeft = 16;
       const maxLeft = Math.max(minLeft, window.innerWidth - menuWidth - minLeft);
@@ -807,161 +807,154 @@ const ConnectionRequiredScreen = () => {
     }
   };
 
-  const renderInsightPopup = () => {
-    if (!showInsightPopup) return null;
+	  const renderInsightPopup = () => {
+	    if (!showInsightPopup) return null;
+	
+	    // If no plans loaded yet
+	    if (dayPlans.length === 0) {
+	      return (
+	        <div className="fixed inset-0 z-[100] bg-slate-50 text-slate-900 flex items-center justify-center px-6">
+	          <span className="text-gray-600">{copy.common.loadingPlan}</span>
+	        </div>
+	      );
+	    }
+	
+	    return (
+	      <div
+	        className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ${
+	          insightPopupActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
+	        }`}
+	        aria-modal="true"
+	        role="dialog"
+	      >
+	        <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none" />
+	        <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none" />
 
-    // If no plans loaded yet
-    if (dayPlans.length === 0) {
-      return (
-        <div className="min-h-screen bg-slate-50 text-slate-900 p-6 flex items-center justify-center">
-          <span className="text-gray-600">{copy.common.loadingPlan}</span>
-        </div>
-      );
-    }
+	        <div className="relative h-full w-full flex flex-col">
+	          <div className="relative bg-gradient-to-b from-brand-primary/10 to-transparent border-b border-gray-200 px-5 sm:px-6 lg:px-8 pt-6 pb-5">
+	            <div className="flex items-center gap-4">
+	              <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
+	                <Sparkles className="w-7 h-7 text-brand-primary" />
+	              </div>
+	              <div className="flex-1 min-w-0">
+	                <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+	                  Дорожная карта
+	                </h2>
+	                <div className="mt-1 text-sm font-semibold text-gray-500">
+	                  {activeModule ? `Сейчас: ${activeModule.moduleTitle}` : ' '}
+	                </div>
+	              </div>
+	            </div>
+	            <div className="absolute top-5 right-5">
+	              <button
+	                onClick={closeInsightPopup}
+	                className="bg-white/80 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm"
+	                aria-label="Закрыть"
+	              >
+	                <X className="w-4 h-4" />
+	              </button>
+	            </div>
+	          </div>
 
-    return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
-         <div
-           className={`absolute inset-0 z-0 bg-black/40 transition-[opacity,backdrop-filter] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-             insightPopupActive ? 'opacity-100 backdrop-blur-md' : 'opacity-0 backdrop-blur-none'
-           }`}
-           onClick={closeInsightPopup}
-         ></div>
-         <div
-           className={`relative z-10 w-full max-w-3xl lg:max-w-4xl h-[90vh] transform-gpu transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-             insightPopupActive ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-[0.96] translate-y-2'
-           }`}
-         >
-	             {/* Card */}
-             <div className="relative z-10 bg-white border border-gray-200 rounded-3xl sm:rounded-[2.5rem] overflow-hidden shadow-[0_30px_90px_-30px_rgba(15,23,42,0.45)] h-full flex flex-col">
-             {/* Header / Decor */}
-             <div className="relative bg-gradient-to-b from-brand-primary/10 to-transparent p-5 sm:p-6">
-                 <div className="flex items-center gap-4">
-                     <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
-                         <Sparkles className="w-7 h-7 text-brand-primary" />
-                     </div>
-                     <div className="flex-1 min-w-0">
-                       <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-                         Дорожная карта курса
-                       </h2>
-                       <div className="mt-1 text-[11px] font-semibold text-gray-500">
-                         {activeModule ? `Сейчас: ${activeModule.moduleTitle}` : ' '}
-                       </div>
-                     </div>
-                 </div>
-                 <div className="absolute top-4 right-4">
-                    <button
-                      onClick={closeInsightPopup}
-                      className="bg-white/80 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm"
-                    >
-                        <X className="w-4 h-4" />
-                    </button>
-                 </div>
-             </div>
-             
-             {/* Body */}
-             <div className="px-5 sm:px-6 lg:px-8 pb-6 sm:pb-7 pt-2 relative z-20 flex-1 overflow-hidden">
-                  <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden h-full">
-                    <div className="h-full overflow-y-auto">
-                      {modulesLoading && courseModules.length === 0 ? (
-                        <div className="p-5 space-y-3">
-                          {[1, 2, 3, 4, 5].map((skeleton) => (
-                            <div
-                              key={`module-skeleton-${skeleton}`}
-                              className="w-full rounded-2xl border border-gray-100 bg-gray-50/70 animate-pulse p-4"
-                            >
-                              <div className="h-3 w-28 bg-gray-200 rounded mb-2" />
-                              <div className="h-3 w-44 bg-gray-200 rounded mb-2" />
-                              <div className="h-2.5 w-36 bg-gray-200 rounded" />
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        modulesByStage.map((stage) => (
-                          <div key={`stage-${stage.stageOrder}`} className="border-t border-gray-100 first:border-t-0">
-                            {(() => {
-                              const stageIsActive =
-                                insightLessonNumber >= stage.lessonFrom && insightLessonNumber <= stage.lessonTo;
-                              return (
-                                <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-100 px-5 py-3">
-                                  <div>
-                                    <div
-                                      className={`text-[11px] font-bold uppercase tracking-[0.2em] ${
-                                        stageIsActive ? 'text-brand-primary' : 'text-gray-500'
-                                      }`}
-                                    >
-                                      {stage.stageTitle}
-                                    </div>
-                                    <div className="mt-1 text-[11px] font-semibold text-gray-600">
-                                      Уроки {stage.lessonFrom}–{stage.lessonTo}
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })()}
+	          <div className="flex-1 overflow-y-auto px-0 py-6">
+	            <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+	              {modulesLoading && courseModules.length === 0 ? (
+	                <div className="p-5 space-y-3">
+	                  {[1, 2, 3, 4, 5].map((skeleton) => (
+	                    <div
+	                      key={`module-skeleton-${skeleton}`}
+	                      className="w-full rounded-2xl border border-gray-100 bg-gray-50/70 animate-pulse p-4"
+	                    >
+	                      <div className="h-3 w-28 bg-gray-200 rounded mb-2" />
+	                      <div className="h-3 w-44 bg-gray-200 rounded mb-2" />
+	                      <div className="h-2.5 w-36 bg-gray-200 rounded" />
+	                    </div>
+	                  ))}
+	                </div>
+	              ) : (
+	                modulesByStage.map((stage) => (
+	                  <div key={`stage-${stage.stageOrder}`} className="border-t border-gray-100 first:border-t-0">
+	                    {(() => {
+	                      const stageIsActive =
+	                        insightLessonNumber >= stage.lessonFrom && insightLessonNumber <= stage.lessonTo;
+	                      return (
+	                        <div className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b border-gray-100 px-5 py-3">
+	                          <div>
+	                            <div
+	                              className={`text-[13px] font-bold uppercase tracking-[0.2em] ${
+	                                stageIsActive ? 'text-brand-primary' : 'text-gray-500'
+	                              }`}
+	                            >
+	                              {stage.stageTitle}
+	                            </div>
+	                            <div className="mt-1 text-[12px] font-semibold text-gray-600">
+	                              Уроки {stage.lessonFrom}–{stage.lessonTo}
+	                            </div>
+	                          </div>
+	                        </div>
+	                      );
+	                    })()}
 
-                            <div className="p-5 space-y-3 bg-gradient-to-b from-white to-slate-50/40">
-                              {stage.modules.map((module) => {
-                                const isActive =
-                                  insightLessonNumber >= module.lessonFrom && insightLessonNumber <= module.lessonTo;
-                                const isCompleted = insightLessonNumber > module.lessonTo;
-                                return (
-                                  <div
-                                    key={module.id}
-                                    className={`w-full rounded-2xl border relative overflow-hidden transition-all duration-200 p-4 pl-5 ${
-                                      isActive
-                                        ? 'border-brand-primary bg-gradient-to-br from-brand-primary/10 via-brand-secondary/10 to-white shadow-md shadow-brand-primary/10 ring-1 ring-brand-primary/30'
-                                        : isCompleted
-                                          ? 'border-emerald-100 bg-emerald-50/70 text-emerald-900'
-                                          : 'border-gray-200 bg-white hover:border-brand-primary/30'
-                                    }`}
-                                  >
-                                    <div
-                                      className={`absolute left-0 top-0 h-full w-1.5 ${
-                                        isActive
-                                          ? 'bg-gradient-to-b from-brand-primary to-brand-secondary animate-pulse'
-                                          : isCompleted
-                                            ? 'bg-emerald-400'
-                                            : 'bg-gray-200'
-                                      }`}
-                                    />
-                                    <div className="relative flex items-center justify-between gap-2">
-                                      <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                                        Модуль {module.moduleOrder}
-                                      </span>
-                                      <span className="text-[10px] font-semibold text-gray-500">
-                                        Уроки {module.lessonFrom}-{module.lessonTo}
-                                      </span>
-                                    </div>
-                                    <div className="relative mt-2 text-[15px] font-extrabold text-slate-900">
-                                      {module.moduleTitle}
-                                    </div>
-                                    <div className="relative mt-1 text-[11px] text-gray-700 leading-snug">
-                                      {module.goal}
-                                    </div>
-                                    <div className="relative mt-1.5 text-[11px] text-gray-500 leading-snug">
-                                      {module.summary}
-                                    </div>
-                                    <div className="relative mt-3 flex items-center gap-2 flex-wrap">
-                                      <span className="text-[11px] font-semibold text-gray-600">
-                                        {module.statusBefore} → {module.statusAfter}
-                                      </span>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-             </div>
-             </div>
-         </div>
-      </div>
-    )
-  }
+	                    <div className="p-5 space-y-3 bg-gradient-to-b from-white to-slate-50/40">
+	                      {stage.modules.map((module) => {
+	                        const isActive =
+	                          insightLessonNumber >= module.lessonFrom && insightLessonNumber <= module.lessonTo;
+	                        const isCompleted = insightLessonNumber > module.lessonTo;
+	                        return (
+	                          <div
+	                            key={module.id}
+	                            className={`w-full rounded-2xl border relative overflow-hidden transition-all duration-200 p-4 pl-5 ${
+	                              isActive
+	                                ? 'border-brand-primary bg-gradient-to-br from-brand-primary/10 via-brand-secondary/10 to-white shadow-md shadow-brand-primary/10 ring-1 ring-brand-primary/30'
+	                                : isCompleted
+	                                  ? 'border-emerald-100 bg-emerald-50/70 text-emerald-900'
+	                                  : 'border-gray-200 bg-white hover:border-brand-primary/30'
+	                            }`}
+	                          >
+	                            <div
+	                              className={`absolute left-0 top-0 h-full w-1.5 ${
+	                                isActive
+	                                  ? 'bg-gradient-to-b from-brand-primary to-brand-secondary animate-pulse'
+	                                  : isCompleted
+	                                    ? 'bg-emerald-400'
+	                                    : 'bg-gray-200'
+	                              }`}
+	                            />
+	                            <div className="relative flex items-center justify-between gap-2">
+	                              <span className="text-[12px] font-bold uppercase tracking-wider text-gray-500">
+	                                Модуль {module.moduleOrder}
+	                              </span>
+	                              <span className="text-[11px] font-semibold text-gray-500">
+	                                Уроки {module.lessonFrom}-{module.lessonTo}
+	                              </span>
+	                            </div>
+	                            <div className="relative mt-2 text-[18px] font-extrabold text-slate-900">
+	                              {module.moduleTitle}
+	                            </div>
+	                            <div className="relative mt-1 text-[13px] text-gray-700 leading-snug">
+	                              {module.goal}
+	                            </div>
+	                            <div className="relative mt-1.5 text-[13px] text-gray-500 leading-snug">
+	                              {module.summary}
+	                            </div>
+	                            <div className="relative mt-3 flex items-center gap-2 flex-wrap">
+	                              <span className="text-[13px] font-semibold text-gray-600">
+	                                {module.statusBefore} → {module.statusAfter}
+	                              </span>
+	                            </div>
+	                          </div>
+	                        );
+	                      })}
+	                    </div>
+	                  </div>
+	                ))
+	              )}
+	            </div>
+	          </div>
+	        </div>
+	      </div>
+	    )
+	  }
 
   const renderDashboard = () => {
     const chatTask = TASKS[0];
@@ -1014,11 +1007,11 @@ const ConnectionRequiredScreen = () => {
 	                      onClick={closeLangMenu}
 	                    />
 	                    <div
-	                      className={`absolute bg-white border border-gray-200 rounded-xl shadow-2xl p-3 w-64 space-y-3 transform-gpu transition-all duration-300 ease-in-out ${
-	                        langMenuVisible
-	                          ? 'opacity-100 scale-100 translate-y-0'
-	                          : 'opacity-0 scale-[0.96] -translate-y-2 pointer-events-none'
-	                      }`}
+		                      className={`absolute bg-white border border-gray-200 rounded-xl shadow-2xl p-3 w-80 max-w-[calc(100vw-32px)] space-y-3 transform-gpu transition-all duration-300 ease-in-out ${
+		                        langMenuVisible
+		                          ? 'opacity-100 scale-100 translate-y-0'
+		                          : 'opacity-0 scale-[0.96] -translate-y-2 pointer-events-none'
+		                      }`}
 	                      style={{ top: langMenuPos.top, left: langMenuPos.left }}
 	                    >
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
@@ -1122,15 +1115,15 @@ const ConnectionRequiredScreen = () => {
                 )}
 	          </div>
 	        </div>
-	        </div>
+		        </div>
 
-	        {/* 2. Course Progress */}
-	        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-4 flex flex-col gap-3 w-full">
-	            <div className="flex items-center justify-between gap-3 flex-wrap">
-	              <div className="flex items-center gap-2">
-	                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-	                  Прогресс курса {level}
-	                </span>
+		        {/* 2. Course Progress */}
+		        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm pt-4 px-4 pb-0 flex flex-col gap-2 w-full">
+		            <div className="flex items-center justify-between gap-3 flex-wrap">
+		              <div className="flex items-center gap-2">
+		                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+		                  Прогресс курса {level}
+		                </span>
 	                <span className="text-[10px] text-brand-primary font-medium">{totalCompletedCount} / {TOTAL_SPRINT_TASKS} {copy.progress.lessons}</span>
 	              </div>
 	              <button
@@ -1142,20 +1135,20 @@ const ConnectionRequiredScreen = () => {
                 <span>Темы</span>
                 <ChevronRight className={`w-3 h-3 transition-transform ${showCourseTopics ? 'rotate-90' : ''}`} />
               </button>
-            </div>
-            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-gradient-to-r from-brand-primary to-brand-secondary transition-all duration-700 ease-out"
-                style={{ width: `${sprintProgressPercent}%` }}
-              />
-            </div>
-            <div className="h-px bg-gray-100" />
-            <div className="flex overflow-x-auto gap-2.5 pt-0.5 pb-2 hide-scrollbar pl-1">
-		          {dayPlans.map((d, idx) => {
-		            const isSelected = selectedDayId === d.day;
-		            const isActual = actualDayId === d.day;
-		            const isPast = idx < selectedIndex;
-		            // Блокируем день, если предыдущий не завершён
+	            </div>
+	            <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden">
+	              <div 
+	                className="h-full bg-gradient-to-r from-brand-primary to-brand-secondary transition-all duration-700 ease-out"
+	                style={{ width: `${sprintProgressPercent}%` }}
+	              />
+	            </div>
+	            <div className="h-px bg-gray-100" />
+	            <div className="flex overflow-x-auto gap-1.5 pt-0.5 pb-2 hide-scrollbar pl-1">
+			          {dayPlans.map((d, idx) => {
+			            const isSelected = selectedDayId === d.day;
+			            const isActual = actualDayId === d.day;
+			            const isPast = idx < selectedIndex;
+			            // Блокируем день, если предыдущий не завершён
 		            const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
 	            const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
                 const lessonNumber = d.lesson ?? d.day;
@@ -1237,80 +1230,76 @@ const ConnectionRequiredScreen = () => {
 		                    </div>
 		                </button>
 	            )
-	          })}
-	          </div>
+		          })}
+		          </div>
 
-            <div
-              className={`overflow-hidden transition-all duration-300 ease-out ${
-                showCourseTopics ? 'max-h-[420px] opacity-100' : 'max-h-0 opacity-0'
-              }`}
-            >
-              <div className="pt-2">
-                <div className="h-px bg-gray-100" />
-                <div
-                  className="mt-3 max-h-[320px] overflow-y-auto overscroll-contain pr-1"
-                  style={{ WebkitOverflowScrolling: 'touch' }}
-                >
-                  <div className="space-y-2">
-                    {dayPlans.map((d, idx) => {
-                      const isSelected = selectedDayId === d.day;
-                      const dayDone = dayCompletedStatus[d.day] === true;
-                      const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
-                      const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
-                      const lessonNumber = d.lesson ?? d.day;
-                      const isLockedByProgress = idx > 0 && !prevCompleted;
-                      const isLockedByPaywall = !isPremium && lessonNumber > FREE_LESSON_COUNT;
-                      const isLocked = isLockedByProgress || isLockedByPaywall;
-                      return (
-                        <button
-                          type="button"
-                          key={`course-topic-inline-${d.day}-${d.lesson}-${d.lessonId || ''}`}
-                          onClick={() => {
-                            if (isLockedByProgress) return;
-                            if (isLockedByPaywall) {
-                              setPaywallLesson(lessonNumber);
-                              setView(ViewState.PAYWALL);
-                              return;
-                            }
-                            setSelectedDayId(d.day);
-                          }}
-                          disabled={isLockedByProgress}
-                          className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                            isSelected
-                              ? 'border-brand-primary bg-brand-primary/5'
-                              : isLockedByProgress
-                                ? 'border-gray-200/60 bg-gray-50 opacity-60 cursor-not-allowed'
-                                : isLockedByPaywall
-                                  ? 'border-gray-200/60 bg-gray-50 opacity-90 cursor-pointer hover:border-brand-primary/30'
-                                : 'border-gray-200/60 bg-white hover:border-brand-primary/30'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                                Lesson {d.lesson} · {d.level || level}
-                              </div>
-                              <div className="mt-1 text-sm font-extrabold text-gray-900">
-                                {d.theme || d.title || `Lesson #${d.lesson}`}
-                              </div>
-                            </div>
-                            {dayDone ? (
-                              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-                            ) : isLocked ? (
-                              <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                            ) : null}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-	        </div>
+	            {showCourseTopics ? (
+	              <div className="pt-2 pb-4">
+	                <div className="h-px bg-gray-100" />
+	                <div
+	                  className="mt-3 max-h-[320px] overflow-y-auto overscroll-contain pr-1"
+	                  style={{ WebkitOverflowScrolling: 'touch' }}
+	                >
+	                  <div className="space-y-2">
+	                    {dayPlans.map((d, idx) => {
+	                      const isSelected = selectedDayId === d.day;
+	                      const dayDone = dayCompletedStatus[d.day] === true;
+	                      const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
+	                      const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
+	                      const lessonNumber = d.lesson ?? d.day;
+	                      const isLockedByProgress = idx > 0 && !prevCompleted;
+	                      const isLockedByPaywall = !isPremium && lessonNumber > FREE_LESSON_COUNT;
+	                      const isLocked = isLockedByProgress || isLockedByPaywall;
+	                      return (
+	                        <button
+	                          type="button"
+	                          key={`course-topic-inline-${d.day}-${d.lesson}-${d.lessonId || ''}`}
+	                          onClick={() => {
+	                            if (isLockedByProgress) return;
+	                            if (isLockedByPaywall) {
+	                              setPaywallLesson(lessonNumber);
+	                              setView(ViewState.PAYWALL);
+	                              return;
+	                            }
+	                            setSelectedDayId(d.day);
+	                          }}
+	                          disabled={isLockedByProgress}
+	                          className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+	                            isSelected
+	                              ? 'border-brand-primary bg-brand-primary/5'
+	                              : isLockedByProgress
+	                                ? 'border-gray-200/60 bg-gray-50 opacity-60 cursor-not-allowed'
+	                                : isLockedByPaywall
+	                                  ? 'border-gray-200/60 bg-gray-50 opacity-90 cursor-pointer hover:border-brand-primary/30'
+	                                : 'border-gray-200/60 bg-white hover:border-brand-primary/30'
+	                          }`}
+	                        >
+	                          <div className="flex items-start justify-between gap-3">
+	                            <div>
+	                              <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+	                                Lesson {d.lesson} · {d.level || level}
+	                              </div>
+	                              <div className="mt-1 text-sm font-extrabold text-gray-900">
+	                                {d.theme || d.title || `Lesson #${d.lesson}`}
+	                              </div>
+	                            </div>
+	                            {dayDone ? (
+	                              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+	                            ) : isLocked ? (
+	                              <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
+	                            ) : null}
+	                          </div>
+	                        </button>
+	                      );
+	                    })}
+	                  </div>
+	                </div>
+	              </div>
+	            ) : null}
+		        </div>
 
-        {!showCourseTopics ? (
-          <>
+	        {!showCourseTopics ? (
+	          <>
             {/* 3. Insight */}
             <button
               type="button"
