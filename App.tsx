@@ -7,16 +7,22 @@ import { useDayPlans } from './hooks/useDayPlans';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useAvailableLevels } from './hooks/useAvailableLevels';
 import { useCourseModules } from './hooks/useCourseModules';
+import { useEntitlements } from './hooks/useEntitlements';
 import Step4Dialogue from './components/Step4Dialogue';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
+import { PaywallScreen } from './components/PaywallScreen';
 import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
+import { FREE_LESSON_COUNT } from './services/billingService';
 import { 
   X, 
+  AlertTriangle,
   CheckCircle2, 
   Lock, 
   Play, 
+  Crown,
+  Loader2,
   Sparkles,
   GraduationCap,
   Quote,
@@ -112,6 +118,8 @@ const ConnectionRequiredScreen = () => {
 
   // Day plans management
   const { dayPlans, planLoading } = useDayPlans(level);
+  const { isPremium, loading: entitlementsLoading, refresh: refreshEntitlements } = useEntitlements(userId);
+  const [paywallLesson, setPaywallLesson] = useState<number | null>(null);
   const [selectedDayId, setSelectedDayId] = useState<number>(() => {
     try {
       if (typeof window === 'undefined') return 1;
@@ -135,6 +143,9 @@ const ConnectionRequiredScreen = () => {
   const [insightPopupActive, setInsightPopupActive] = useState(false);
   const insightPopupTimerRef = useRef<number | null>(null);
   const [lessonCompleted, setLessonCompleted] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<null | 'reset' | 'signout'>(null);
+  const [confirmVisible, setConfirmVisible] = useState(false);
+  const confirmCloseTimerRef = useRef<number | null>(null);
   const [showCourseTopics, setShowCourseTopics] = useState(false);
   const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>(() => {
     try {
@@ -150,6 +161,7 @@ const ConnectionRequiredScreen = () => {
   });
   const statusesInitKeyRef = useRef<string | null>(null);
   const INSIGHT_POPUP_ANIM_MS = 360;
+  const CONFIRM_ANIM_MS = 220;
 
   const openInsightPopup = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -178,12 +190,43 @@ const ConnectionRequiredScreen = () => {
     }, INSIGHT_POPUP_ANIM_MS);
   }, []);
 
+  const openConfirm = useCallback((kind: 'reset' | 'signout') => {
+    if (typeof window === 'undefined') return;
+    if (confirmCloseTimerRef.current != null) {
+      window.clearTimeout(confirmCloseTimerRef.current);
+      confirmCloseTimerRef.current = null;
+    }
+    setConfirmAction(kind);
+    setConfirmVisible(true);
+  }, []);
+
+  const closeConfirm = useCallback(() => {
+    if (typeof window === 'undefined') {
+      setConfirmVisible(false);
+      setConfirmAction(null);
+      return;
+    }
+    setConfirmVisible(false);
+    if (confirmCloseTimerRef.current != null) {
+      window.clearTimeout(confirmCloseTimerRef.current);
+      confirmCloseTimerRef.current = null;
+    }
+    confirmCloseTimerRef.current = window.setTimeout(() => {
+      setConfirmAction(null);
+      confirmCloseTimerRef.current = null;
+    }, CONFIRM_ANIM_MS);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (typeof window === 'undefined') return;
       if (insightPopupTimerRef.current != null) {
         window.clearTimeout(insightPopupTimerRef.current);
         insightPopupTimerRef.current = null;
+      }
+      if (confirmCloseTimerRef.current != null) {
+        window.clearTimeout(confirmCloseTimerRef.current);
+        confirmCloseTimerRef.current = null;
       }
     };
   }, []);
@@ -197,8 +240,31 @@ const ConnectionRequiredScreen = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [closeInsightPopup, showInsightPopup]);
 
+  useEffect(() => {
+    if (!confirmAction) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeConfirm();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [closeConfirm, confirmAction]);
+
   const statusStorageKey = userId ? `englishv2:dayCompletedStatus:${userId}:${level}` : null;
   const selectedDayStorageKey = userId ? `englishv2:selectedDayId:${userId}:${level}` : null;
+
+  // If YooKassa returns the user to the app, refresh entitlements once.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('paid') !== '1') return;
+    url.searchParams.delete('paid');
+    try {
+      window.history.replaceState({}, '', url.toString());
+    } catch {
+      // ignore
+    }
+    void refreshEntitlements();
+  }, [refreshEntitlements]);
 
   // Persist dashboard state so a refresh doesn't feel like a cold start.
   useEffect(() => {
@@ -598,7 +664,17 @@ const ConnectionRequiredScreen = () => {
   ];
 
 	  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
-	    if (isLocked || !currentDayPlan) return;
+	    if (!currentDayPlan) return;
+
+      const lessonNumber = currentDayPlan.lesson ?? currentDayPlan.day;
+      const premiumLocked = !isPremium && lessonNumber > FREE_LESSON_COUNT;
+      if (premiumLocked) {
+        setPaywallLesson(lessonNumber);
+        setView(ViewState.PAYWALL);
+        return;
+      }
+
+	    if (isLocked) return;
 	    
 	    setActivityStep(type);
 	    setView(ViewState.EXERCISE);
@@ -952,26 +1028,51 @@ const ConnectionRequiredScreen = () => {
               {userEmail || 'user@example.com'}
             </div>
             <div className="h-px bg-gray-100" />
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-              Язык интерфейса
-            </div>
-            <div className="space-y-1">
-              {languages.map((lang) => (
-                <button
-                  key={lang.code}
-	                  onClick={() => {
-	                    setLanguage(lang.code);
-	                    closeLangMenu();
-	                  }}
-                  className={`w-full text-left px-3 py-2 rounded-lg hover:bg-gray-100 text-sm font-medium ${
-                    language === lang.code ? 'bg-brand-primary/10 text-brand-primary' : 'text-slate-900'
-                  }`}
-                >
-                  {lang.label}
-                </button>
-              ))}
-            </div>
-            <div className="h-px bg-gray-100" />
+	            <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
+	              Аккаунт
+	            </div>
+		            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+		              {entitlementsLoading ? (
+		                <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 items-center animate-pulse">
+		                  <div className="flex items-center gap-2 min-w-0">
+		                    <div className="h-4 w-4 rounded-full bg-gray-200 shrink-0" />
+		                    <div className="h-4 w-20 rounded bg-gray-200" />
+		                  </div>
+		                  <div className="h-5 w-24 rounded-full bg-gray-200 shrink-0" />
+		                  <div className="h-3 w-16 rounded bg-gray-200 col-start-1 justify-self-start" />
+		                </div>
+		              ) : (
+		                <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 items-center">
+		                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-gray-200 bg-white min-w-0 w-fit">
+		                      {isPremium ? (
+		                        <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+		                      ) : (
+		                        <GraduationCap className="w-4 h-4 text-brand-primary shrink-0" />
+		                      )}
+		                      <div className="text-sm font-bold text-slate-900 truncate">{isPremium ? 'Premium' : 'Free'}</div>
+		                    </div>
+		                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-gray-600 shrink-0">
+		                      {isPremium ? 'Все уроки' : `Первые ${FREE_LESSON_COUNT} уроков`}
+		                    </div>
+		                </div>
+		              )}
+		            </div>
+		            {entitlementsLoading ? (
+		              <div className="mt-2 h-3 w-24 rounded bg-gray-200 animate-pulse" />
+		            ) : (
+		              <button
+		                type="button"
+		                onClick={() => {
+		                  setPaywallLesson(null);
+		                  setView(ViewState.PAYWALL);
+		                  closeLangMenu();
+		                }}
+		                className="mt-2 text-xs font-bold text-brand-primary hover:text-brand-primary/80 transition text-left"
+		              >
+		                Управлять подпиской
+		              </button>
+		            )}
+	            <div className="h-px bg-gray-100" />
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
               Уровень
             </div>
@@ -998,8 +1099,8 @@ const ConnectionRequiredScreen = () => {
             <div className="space-y-2">
 	              <button
 	                onClick={() => {
-	                  handleResetProgress();
 	                  closeLangMenu();
+	                  openConfirm('reset');
 	                }}
 	                className="w-full text-left px-3 py-2 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 text-sm font-semibold"
 	              >
@@ -1007,8 +1108,8 @@ const ConnectionRequiredScreen = () => {
               </button>
 	              <button
 	                onClick={() => {
-	                  onSignOut();
 	                  closeLangMenu();
+	                  openConfirm('signout');
 	                }}
 	                className="w-full text-left px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-semibold"
 	              >
@@ -1023,15 +1124,17 @@ const ConnectionRequiredScreen = () => {
 	        </div>
 	        </div>
 
-        {/* 2. Course Progress */}
-        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-4 flex flex-col gap-3 w-full">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{copy.progress.title}</span>
-                <span className="text-[10px] text-brand-primary font-medium">{totalCompletedCount} / {TOTAL_SPRINT_TASKS} {copy.progress.lessons}</span>
-              </div>
-              <button
-                type="button"
+	        {/* 2. Course Progress */}
+	        <div className="bg-white border border-gray-200 rounded-3xl shadow-sm p-4 flex flex-col gap-3 w-full">
+	            <div className="flex items-center justify-between gap-3 flex-wrap">
+	              <div className="flex items-center gap-2">
+	                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
+	                  Прогресс курса {level}
+	                </span>
+	                <span className="text-[10px] text-brand-primary font-medium">{totalCompletedCount} / {TOTAL_SPRINT_TASKS} {copy.progress.lessons}</span>
+	              </div>
+	              <button
+	                type="button"
                 onClick={() => setShowCourseTopics((prev) => !prev)}
                 className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-brand-primary transition-colors"
                 aria-label={showCourseTopics ? 'Скрыть темы курса' : 'Показать темы курса'}
@@ -1055,7 +1158,10 @@ const ConnectionRequiredScreen = () => {
 		            // Блокируем день, если предыдущий не завершён
 		            const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
 	            const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
-	            const isLocked = idx > 0 && !prevCompleted;
+                const lessonNumber = d.lesson ?? d.day;
+	            const isLockedByProgress = idx > 0 && !prevCompleted;
+                const isLockedByPaywall = !isPremium && lessonNumber > FREE_LESSON_COUNT;
+	            const isLocked = isLockedByProgress || isLockedByPaywall;
 	            const isDayCompleted = dayCompletedStatus[d.day] === true;
             
 	            return (
@@ -1063,27 +1169,34 @@ const ConnectionRequiredScreen = () => {
 	                    key={d.day}
 	                    onClick={(e) => {
 	                      e.stopPropagation();
-	                      if (isLocked) return;
+	                      if (isLockedByProgress) return;
+	                      if (isLockedByPaywall) {
+                          setPaywallLesson(lessonNumber);
+                          setView(ViewState.PAYWALL);
+                          return;
+                        }
 	                      setSelectedDayId(d.day);
 	                    }}
-		                    disabled={isLocked}
-		                    className={`
-		                      min-w-[50px] flex items-center justify-center px-2 py-2 rounded-3xl border-2 transition-all duration-200 relative overflow-hidden
-			                      ${isDayCompleted && !isSelected
-			                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
-			                        : isActual && !isSelected
-			                          ? 'bg-gradient-to-br from-brand-primary/10 via-brand-primary/5 to-brand-secondary/10 border-brand-primary/50 text-slate-900 shadow-sm hover:shadow-md hover:scale-[1.02]'
-			                        : isSelected 
+			                    disabled={isLockedByProgress}
+			                    className={`
+			                      min-w-[46px] flex items-center justify-center px-2 py-1.5 rounded-3xl border-2 transition-all duration-200 relative overflow-hidden
+				                      ${isDayCompleted && !isSelected
+				                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
+				                        : isActual && !isSelected
+				                          ? 'bg-gradient-to-br from-brand-primary/10 via-brand-primary/5 to-brand-secondary/10 border-brand-primary/50 text-slate-900 shadow-sm hover:shadow-md hover:scale-[1.02]'
+				                        : isSelected 
 			                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
 			                        : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
 			                      }
 		                      ${
-		                        isLocked
+		                        isLockedByProgress
 		                          ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
-		                          : 'cursor-pointer'
+		                          : isLockedByPaywall
+		                            ? 'opacity-80 cursor-pointer border-gray-200 hover:border-brand-primary/40 bg-gray-50 hover:bg-white'
+		                            : 'cursor-pointer'
 		                      }
-		                    `}
-		                >
+			                    `}
+			                >
                     {/* Анимированный фон для завершенного дня */}
                     {isDayCompleted && !isSelected && (
                       <>
@@ -1093,29 +1206,29 @@ const ConnectionRequiredScreen = () => {
                         </div>
                       </>
                     )}
-		                    <div className={`
-			                      w-8 h-8 rounded-xl flex items-center justify-center transition-all relative z-10
-			                      ${isDayCompleted && !isSelected
-			                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
-			                        : isActual && !isSelected
-			                          ? 'bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md ring-2 ring-brand-primary/25'
-			                        : isSelected 
+			                    <div className={`
+				                      w-7 h-7 rounded-xl flex items-center justify-center transition-all relative z-10
+				                      ${isDayCompleted && !isSelected
+				                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+				                        : isActual && !isSelected
+				                          ? 'bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md ring-2 ring-brand-primary/25'
+				                        : isSelected 
 			                        ? 'bg-white text-brand-primary shadow-md' 
 			                        : isLocked
 			                          ? 'bg-gray-50 text-gray-700'
 			                          : 'bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/25'
 			                      }
-			                    `}>
-		                      {isDayCompleted ? (
-		                        <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-white drop-shadow-sm'}`} />
-		                      ) : isPast ? (
-		                        <CheckCircle2 className={`w-5 h-5 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
-		                      ) : isLocked ? (
-		                        <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
-		                      ) : (
-		                        <span
-		                          className={`text-xs font-bold ${
-		                            isSelected ? 'text-brand-primary' : isActual ? 'text-white' : 'text-gray-700'
+				                    `}>
+			                      {isDayCompleted ? (
+			                        <CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-white drop-shadow-sm'}`} />
+			                      ) : isPast ? (
+			                        <CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
+			                      ) : isLocked ? (
+			                        <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
+			                      ) : (
+			                        <span
+			                          className={`text-xs font-bold ${
+			                            isSelected ? 'text-brand-primary' : isActual ? 'text-white' : 'text-gray-700'
 		                          }`}
 		                        >
 		                          {d.lesson ?? d.day}
@@ -1144,21 +1257,31 @@ const ConnectionRequiredScreen = () => {
                       const dayDone = dayCompletedStatus[d.day] === true;
                       const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
                       const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
-                      const isLocked = idx > 0 && !prevCompleted;
+                      const lessonNumber = d.lesson ?? d.day;
+                      const isLockedByProgress = idx > 0 && !prevCompleted;
+                      const isLockedByPaywall = !isPremium && lessonNumber > FREE_LESSON_COUNT;
+                      const isLocked = isLockedByProgress || isLockedByPaywall;
                       return (
                         <button
                           type="button"
                           key={`course-topic-inline-${d.day}-${d.lesson}-${d.lessonId || ''}`}
                           onClick={() => {
-                            if (isLocked) return;
+                            if (isLockedByProgress) return;
+                            if (isLockedByPaywall) {
+                              setPaywallLesson(lessonNumber);
+                              setView(ViewState.PAYWALL);
+                              return;
+                            }
                             setSelectedDayId(d.day);
                           }}
-                          disabled={isLocked}
+                          disabled={isLockedByProgress}
                           className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
                             isSelected
                               ? 'border-brand-primary bg-brand-primary/5'
-                              : isLocked
+                              : isLockedByProgress
                                 ? 'border-gray-200/60 bg-gray-50 opacity-60 cursor-not-allowed'
+                                : isLockedByPaywall
+                                  ? 'border-gray-200/60 bg-gray-50 opacity-90 cursor-pointer hover:border-brand-primary/30'
                                 : 'border-gray-200/60 bg-white hover:border-brand-primary/30'
                           }`}
                         >
@@ -1221,12 +1344,12 @@ const ConnectionRequiredScreen = () => {
                 w-full rounded-3xl p-5
                 transition-all duration-300 text-left relative overflow-hidden
                 ${chatLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
-                ${lessonCompleted
-                  ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_24px_80px_rgba(251,191,36,0.4)] hover:shadow-[0_30px_100px_rgba(251,191,36,0.5)] hover:-translate-y-1'
-                  : 'bg-white border border-gray-200 shadow-[0_24px_80px_rgba(99,102,241,0.28)] hover:shadow-[0_30px_100px_rgba(99,102,241,0.38)] hover:-translate-y-1'
-                }
-              `}
-            >
+	                ${lessonCompleted
+	                  ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_24px_80px_rgba(251,191,36,0.4)] hover:shadow-[0_30px_100px_rgba(251,191,36,0.5)] hover:-translate-y-1'
+	                  : 'bg-white border-2 border-brand-primary/35 shadow-[0_24px_80px_rgba(99,102,241,0.28)] hover:border-brand-primary/55 hover:shadow-[0_30px_100px_rgba(99,102,241,0.38)] hover:-translate-y-1'
+	                }
+	              `}
+	            >
               {/* Анимированный фон для завершенного урока */}
               {lessonCompleted && (
                 <>
@@ -1358,11 +1481,95 @@ const ConnectionRequiredScreen = () => {
     );
   };
 
+  const renderConfirmModal = () => {
+    if (!confirmAction) return null;
+    const isReset = confirmAction === 'reset';
+    const title = isReset ? 'Начать уровень сначала?' : 'Выйти из аккаунта?';
+    const message = isReset
+      ? 'Прогресс по уровню будет сброшен. Это действие нельзя отменить.'
+      : 'Вы можете войти снова в любой момент.';
+    const confirmLabel = isReset ? 'Сбросить' : 'Выйти';
+
+    return createPortal(
+      <div
+        className={`fixed inset-0 z-[120] flex items-center justify-center px-6 transition-opacity duration-200 ${
+          confirmVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        aria-modal="true"
+        role="dialog"
+      >
+        <button type="button" className="absolute inset-0 bg-black/60" onClick={closeConfirm} aria-label="Закрыть" />
+        <div
+          className={`relative w-full max-w-sm rounded-3xl bg-white border border-gray-200 shadow-2xl p-5 transition-transform duration-200 ${
+            confirmVisible ? 'scale-100 translate-y-0' : 'scale-[0.98] translate-y-1'
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`mt-0.5 h-10 w-10 rounded-2xl flex items-center justify-center ${
+                isReset ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
+              }`}
+            >
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-base font-black text-slate-900">{title}</div>
+              <div className="mt-1 text-sm text-gray-600 font-medium">{message}</div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={closeConfirm}
+              className="h-11 rounded-2xl bg-white border border-gray-200 text-slate-900 font-bold hover:border-brand-primary/40 transition"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                closeConfirm();
+                if (isReset) {
+                  await handleResetProgress();
+                } else {
+                  await onSignOut();
+                }
+              }}
+              className={`h-11 rounded-2xl text-white font-bold shadow-lg transition hover:opacity-90 ${
+                isReset
+                  ? 'bg-gradient-to-r from-amber-500 to-rose-500 shadow-amber-500/20'
+                  : 'bg-gradient-to-r from-rose-600 to-rose-500 shadow-rose-600/20'
+              }`}
+            >
+              {confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
   return (
     <>
       {view === ViewState.DASHBOARD && renderDashboard()}
       {view === ViewState.EXERCISE && renderExercise()}
+      {view === ViewState.PAYWALL && (
+        <PaywallScreen
+          lessonNumber={paywallLesson ?? undefined}
+          isPremium={isPremium}
+          isLoading={entitlementsLoading}
+          userEmail={userEmail}
+          onClose={() => {
+            setPaywallLesson(null);
+            setView(ViewState.DASHBOARD);
+          }}
+          onEntitlementsRefresh={() => refreshEntitlements()}
+        />
+      )}
       {renderInsightPopup()}
+      {renderConfirmModal()}
 
       {/* Loading Overlay */}
        {isCheckingStatus && (

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Sparkles, ArrowRight, Globe2, Check } from 'lucide-react';
+import { Sparkles, ArrowRight } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
 import { ChatDemo } from './ChatDemo';
 
@@ -8,11 +8,9 @@ type IntroScreenProps = {
 };
 
 export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
-  const [showLang, setShowLang] = useState(false);
   const [step, setStep] = useState<0 | 1>(0);
   const [isMobile, setIsMobile] = useState(false);
-  const { language, setLanguage, copy, languages } = useLanguage();
-  const langLabel = languages.find((l) => l.code === language)?.label || 'Русский';
+  const { copy } = useLanguage();
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 767px)');
@@ -140,37 +138,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         </div>
 
         <div className={`flex items-center ${(!isMobile || step === 0) ? 'justify-between' : 'justify-end'}`}>
-          {(!isMobile || step === 0) && (
-            <div className="relative">
-              <button
-                onClick={() => setShowLang((v) => !v)}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-200 shadow-sm hover:border-brand-primary/40 transition text-sm font-semibold"
-              >
-                <Globe2 className="w-4 h-4 text-brand-primary" />
-                <span>{langLabel}</span>
-              </button>
-              {showLang && (
-                <div className="absolute left-0 bottom-full mb-2 w-40 bg-white border border-gray-200 rounded-xl shadow-lg p-2 space-y-1">
-                  {languages.map((item) => (
-                    <button
-                      key={item.code}
-                      onClick={() => {
-                        setLanguage(item.code);
-                        setShowLang(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm hover:bg-gray-50 ${
-                        language === item.code ? 'text-brand-primary font-semibold' : 'text-slate-800'
-                      }`}
-                    >
-                      <span>{item.label}</span>
-                      {language === item.code && <Check className="w-4 h-4" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           <button
             onClick={handlePrimary}
             className="inline-flex items-center gap-2.5 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-md shadow-brand-primary/25 hover:opacity-90 active:scale-[0.99] transition w-fit"

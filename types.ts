@@ -5,7 +5,8 @@ export enum AppView {
 
 export enum ViewState {
   DASHBOARD = 'DASHBOARD',
-  EXERCISE = 'EXERCISE'
+  EXERCISE = 'EXERCISE',
+  PAYWALL = 'PAYWALL',
 }
 
 export enum ActivityType {

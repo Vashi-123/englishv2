@@ -4,24 +4,26 @@ import { Locale, translations } from '../i18n/translations';
 export const useLanguage = () => {
   const [language, setLanguage] = useState<Locale>(() => {
     const saved = localStorage.getItem('ui_language');
-    return (saved === 'ru' || saved === 'en') ? saved : 'ru';
+    // UI language is currently fixed to Russian.
+    return saved === 'ru' ? 'ru' : 'ru';
   });
 
   useEffect(() => {
-    localStorage.setItem('ui_language', language);
+    localStorage.setItem('ui_language', 'ru');
   }, [language]);
 
-  const copy = translations[language];
-  const languages: { code: Locale; label: string }[] = [
-    { code: 'ru', label: 'Русский' },
-    { code: 'en', label: 'English' },
-  ];
+  const copy = translations.ru;
+  const languages: { code: Locale; label: string }[] = [{ code: 'ru', label: 'Русский' }];
+
+  const setRussianOnly = (next: Locale) => {
+    void next;
+    setLanguage('ru');
+  };
 
   return {
     language,
-    setLanguage,
+    setLanguage: setRussianOnly,
     copy,
     languages,
   };
 };
-

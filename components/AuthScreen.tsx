@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { Apple, Chrome, Lock, LogIn, Mail, UserPlus, Globe2, Check } from 'lucide-react';
+import { Apple, Chrome, Lock, LogIn, Mail, UserPlus } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
 
 type AuthScreenProps = {
@@ -16,8 +16,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const { language, setLanguage, copy, languages } = useLanguage();
-  const langLabel = languages.find((l) => l.code === language)?.label || 'Русский';
+  const { copy } = useLanguage();
   const showOAuth = mode === 'login' || (mode === 'signup' && !otpRequested);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
