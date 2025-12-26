@@ -117,7 +117,7 @@ const ConnectionRequiredScreen = () => {
   // Menu uses a fullscreen overlay, so we don't need a global "click outside" listener.
 
   // Day plans management
-  const { dayPlans, planLoading } = useDayPlans(level);
+  const { dayPlans, planLoading, error: planError, reload: reloadPlans } = useDayPlans(level);
   const { isPremium, loading: entitlementsLoading, refresh: refreshEntitlements } = useEntitlements(userId);
   const [paywallLesson, setPaywallLesson] = useState<number | null>(null);
   const [selectedDayId, setSelectedDayId] = useState<number>(() => {
@@ -492,44 +492,41 @@ const ConnectionRequiredScreen = () => {
 
   // Realtime прогресс больше не используем: статус урока определяется по chat_messages (<lesson_complete>).
 
-  const renderPlanState = () => {
-    // Only block the UI when we truly have no plan to render yet.
-    // planLoading can happen during background refresh (realtime, reconnect) — we keep the last plan visible.
-    if (dayPlans.length === 0) {
-      return (
-        <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
-          <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
-          <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
+	  const renderPlanState = () => {
+	    // Only block the UI when we truly have no plan to render yet.
+	    // planLoading can happen during background refresh (realtime, reconnect) — we keep the last plan visible.
+	    if (dayPlans.length === 0) {
+	      return (
+	        <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
+	          <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
+	          <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-          <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-6 flex-1 pt-8 animate-pulse">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-white border border-gray-200 shadow-sm" />
-                <div className="space-y-2">
-                  <div className="h-3 w-28 rounded bg-gray-200" />
-                  <div className="h-6 w-48 rounded bg-gray-200" />
-                </div>
-              </div>
-              <div className="h-10 w-24 rounded-xl bg-gray-200" />
-            </div>
-
-            <div className="rounded-3xl bg-white border border-gray-100 shadow-sm p-6 space-y-3">
-              <div className="h-4 w-40 rounded bg-gray-200" />
-              <div className="h-3 w-full rounded bg-gray-100" />
-              <div className="h-3 w-3/4 rounded bg-gray-100" />
-            </div>
-
-            <div className="rounded-3xl bg-white border border-gray-100 shadow-sm p-6 space-y-3">
-              <div className="h-4 w-32 rounded bg-gray-200" />
-              <div className="h-3 w-full rounded bg-gray-100" />
-              <div className="h-10 w-full rounded-2xl bg-gray-200" />
-            </div>
-          </div>
-        </div>
-      );
-    }
-    return null;
-  };
+	          <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col flex-1 pt-10 pb-10 items-center justify-center text-center">
+	            <div className="relative mb-6">
+	              <div className="w-16 h-16 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin" />
+	            </div>
+	            <div className="text-lg font-extrabold text-slate-900">Загружаем уроки…</div>
+	            <div className="mt-2 text-sm text-gray-600 font-medium">
+	              {planError ? 'Не удалось загрузить план. Иногда после входа на телефоне нужно пару секунд.' : 'Почти готово'}
+	            </div>
+	            {planError ? (
+	              <button
+	                type="button"
+	                onClick={() => reloadPlans()}
+	                className="mt-5 h-11 px-5 rounded-2xl bg-white border border-gray-200 text-slate-900 font-bold hover:border-brand-primary/40 transition"
+	              >
+	                Повторить
+	              </button>
+	            ) : null}
+	            {planLoading ? (
+	              <div className="mt-2 text-xs text-gray-400 font-semibold">Подключаемся…</div>
+	            ) : null}
+	          </div>
+	        </div>
+	      );
+	    }
+	    return null;
+	  };
 
   // Show loading/empty state after hooks are set up
   const planState = renderPlanState();
@@ -1599,12 +1596,16 @@ const App = () => {
     };
   }, [isOnline]);
 
-  useEffect(() => {
-    const storedLogged = localStorage.getItem('has_logged_in') === '1';
-    setHasLoggedIn(storedLogged);
-    if (storedLogged) {
-      setShowIntro(false);
-    }
+	  useEffect(() => {
+	    try {
+	      const storedLogged = localStorage.getItem('has_logged_in') === '1';
+	      setHasLoggedIn(storedLogged);
+	      if (storedLogged) {
+	        setShowIntro(false);
+	      }
+	    } catch {
+	      setHasLoggedIn(false);
+	    }
 
     const initSession = async () => {
       const { data, error } = await supabase.auth.getSession();
@@ -1612,26 +1613,34 @@ const App = () => {
         console.error('[Auth] getSession error:', error);
       }
       const currentSession = data.session ?? null;
-      setSession(currentSession);
-      if (currentSession) {
-        setHasLoggedIn(true);
-        localStorage.setItem('has_logged_in', '1');
-        setShowIntro(false);
-      }
-      setAuthLoading(false);
-    };
+	      setSession(currentSession);
+	      if (currentSession) {
+	        setHasLoggedIn(true);
+	        try {
+	          localStorage.setItem('has_logged_in', '1');
+	        } catch {
+	          // ignore
+	        }
+	        setShowIntro(false);
+	      }
+	      setAuthLoading(false);
+	    };
 
     initSession();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
-       if (newSession) {
-         setHasLoggedIn(true);
-         localStorage.setItem('has_logged_in', '1');
-         setShowIntro(false);
-       }
-      setAuthLoading(false);
-    });
+	    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+	      setSession(newSession);
+	       if (newSession) {
+	         setHasLoggedIn(true);
+	         try {
+	           localStorage.setItem('has_logged_in', '1');
+	         } catch {
+	           // ignore
+	         }
+	         setShowIntro(false);
+	       }
+	      setAuthLoading(false);
+	    });
 
     return () => {
       listener?.subscription?.unsubscribe();

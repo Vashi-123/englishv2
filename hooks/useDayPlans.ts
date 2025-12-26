@@ -185,5 +185,6 @@ export const useDayPlans = (level: string = 'A1') => {
     planLoading,
     error,
     setDayPlans,
+    reload: loadPlans,
   };
 };
