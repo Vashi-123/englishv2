@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient";
 
-export const FREE_LESSON_COUNT = 7;
+// Fallback for UI gating if app_settings is not reachable.
+export const FREE_LESSON_COUNT = 3;
 
 export const BILLING_PRODUCT_KEY = "premium_a1";
 

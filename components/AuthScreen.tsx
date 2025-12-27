@@ -8,7 +8,7 @@ type AuthScreenProps = {
 };
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
@@ -26,6 +26,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     setLoading(true);
 
     try {
+      if (mode === 'reset') {
+        if (!email) {
+          setError('Заполни email');
+          return;
+        }
+        await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+        setMessage('Мы отправили письмо для сброса пароля. Откройте ссылку из письма и вернитесь в приложение.');
+        return;
+      }
       if (mode === 'login') {
         if (!email || !password) {
           setError('Заполни email и пароль');
@@ -114,7 +123,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{copy.auth.welcome}</p>
                 <h2 className="text-2xl font-black text-slate-900 mt-1">
-                  {mode === 'login' ? copy.auth.loginTitle : copy.auth.signupTitle}
+                  {mode === 'login'
+                    ? copy.auth.loginTitle
+                    : mode === 'signup'
+                      ? copy.auth.signupTitle
+                      : 'Сброс пароля'}
                 </h2>
               </div>
             </div>
@@ -192,6 +205,25 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             </label>
           )}
 
+          {mode === 'login' && (
+            <div className="flex items-center justify-end -mt-1">
+              <button
+                type="button"
+                className="text-sm font-semibold text-gray-500 hover:text-brand-primary transition-colors"
+                onClick={() => {
+                  setMode('reset');
+                  setPassword('');
+                  setOtp('');
+                  setOtpRequested(false);
+                  setError(null);
+                  setMessage(null);
+                }}
+              >
+                Забыл пароль?
+              </button>
+            </div>
+          )}
+
           {mode === 'signup' && otpRequested && (
             <label className="block space-y-2">
               <div className="text-sm font-semibold text-slate-800">Код из письма</div>
@@ -213,15 +245,20 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">{error}</div>}
           {message && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">{message}</div>}
 
-	          <button
-	            type="submit"
-	            disabled={loading}
-	            className="w-full h-12 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-60"
-	          >
+		          <button
+		            type="submit"
+		            disabled={loading}
+		            className="w-full h-12 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-60"
+		          >
             {loading ? (
               <>
                 <span className="h-4 w-4 border-2 border-white/50 border-t-transparent rounded-full animate-spin" />
                 {copy.auth.loading}
+              </>
+            ) : mode === 'reset' ? (
+              <>
+                <Mail className="w-4 h-4" />
+                Отправить ссылку
               </>
             ) : mode === 'login' ? (
               <>
@@ -236,24 +273,43 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             )}
 	          </button>
 
-	          <div className="text-sm text-gray-600 text-center">
-	            {mode === 'login' ? copy.auth.noAccount : copy.auth.haveAccount}{' '}
-	            <button
-	              type="button"
-	              className="text-brand-primary font-semibold hover:underline"
-	              onClick={() => {
-	                setMode((prev) => (prev === 'login' ? 'signup' : 'login'));
-	                setOtpRequested(false);
-	                setOtp('');
-	                setPassword('');
-	                setError(null);
-	                setMessage(null);
-	              }}
-	            >
-	              {mode === 'login' ? copy.auth.create : copy.auth.signIn}
-	            </button>
-	          </div>
-		        </form>
+		          <div className="text-sm text-gray-600 text-center">
+		            {mode === 'reset' ? (
+		              <>
+		                Вспомнил пароль?{' '}
+		                <button
+		                  type="button"
+		                  className="text-brand-primary font-semibold hover:underline"
+		                  onClick={() => {
+		                    setMode('login');
+		                    setError(null);
+		                    setMessage(null);
+		                  }}
+		                >
+		                  Войти
+		                </button>
+		              </>
+		            ) : (
+		              <>
+		                {mode === 'login' ? copy.auth.noAccount : copy.auth.haveAccount}{' '}
+		                <button
+		                  type="button"
+		                  className="text-brand-primary font-semibold hover:underline"
+		                  onClick={() => {
+		                    setMode((prev) => (prev === 'login' ? 'signup' : 'login'));
+		                    setOtpRequested(false);
+		                    setOtp('');
+		                    setPassword('');
+		                    setError(null);
+		                    setMessage(null);
+		                  }}
+		                >
+		                  {mode === 'login' ? copy.auth.create : copy.auth.signIn}
+		                </button>
+		              </>
+		            )}
+		          </div>
+			        </form>
             </div>
 
             <p className="text-[11px] leading-snug text-gray-500 line-clamp-3">

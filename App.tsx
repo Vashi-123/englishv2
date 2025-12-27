@@ -12,9 +12,12 @@ import Step4Dialogue from './components/Step4Dialogue';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
 import { PaywallScreen } from './components/PaywallScreen';
+import { ResetPasswordScreen } from './components/ResetPasswordScreen';
 import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
 import { FREE_LESSON_COUNT } from './services/billingService';
+import { useFreePlan } from './hooks/useFreePlan';
+import { formatFirstLessonsRu } from './services/ruPlural';
 import { 
   X, 
   AlertTriangle,
@@ -117,8 +120,9 @@ const ConnectionRequiredScreen = () => {
   // Menu uses a fullscreen overlay, so we don't need a global "click outside" listener.
 
   // Day plans management
-  const { dayPlans, planLoading, error: planError, reload: reloadPlans } = useDayPlans(level);
-  const { isPremium, loading: entitlementsLoading, refresh: refreshEntitlements } = useEntitlements(userId);
+	  const { dayPlans, planLoading, error: planError, reload: reloadPlans } = useDayPlans(level);
+	  const { freeLessonCount } = useFreePlan();
+	  const { isPremium, loading: entitlementsLoading, refresh: refreshEntitlements } = useEntitlements(userId);
   const [paywallLesson, setPaywallLesson] = useState<number | null>(null);
   const [selectedDayId, setSelectedDayId] = useState<number>(() => {
     try {
@@ -146,6 +150,9 @@ const ConnectionRequiredScreen = () => {
   const [confirmAction, setConfirmAction] = useState<null | 'reset' | 'signout'>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const confirmCloseTimerRef = useRef<number | null>(null);
+  const [premiumGateLesson, setPremiumGateLesson] = useState<number | null>(null);
+  const [premiumGateVisible, setPremiumGateVisible] = useState(false);
+  const premiumGateCloseTimerRef = useRef<number | null>(null);
   const [showCourseTopics, setShowCourseTopics] = useState(false);
   const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>(() => {
     try {
@@ -187,7 +194,34 @@ const ConnectionRequiredScreen = () => {
     insightPopupTimerRef.current = window.setTimeout(() => {
       setShowInsightPopup(false);
       insightPopupTimerRef.current = null;
-    }, INSIGHT_POPUP_ANIM_MS);
+  }, INSIGHT_POPUP_ANIM_MS);
+  }, []);
+
+  const openPremiumGate = useCallback((lessonNumber: number) => {
+    if (typeof window === 'undefined') return;
+    if (premiumGateCloseTimerRef.current != null) {
+      window.clearTimeout(premiumGateCloseTimerRef.current);
+      premiumGateCloseTimerRef.current = null;
+    }
+    setPremiumGateLesson(lessonNumber);
+    setPremiumGateVisible(true);
+  }, []);
+
+  const closePremiumGate = useCallback(() => {
+    if (typeof window === 'undefined') {
+      setPremiumGateLesson(null);
+      setPremiumGateVisible(false);
+      return;
+    }
+    setPremiumGateVisible(false);
+    if (premiumGateCloseTimerRef.current != null) {
+      window.clearTimeout(premiumGateCloseTimerRef.current);
+      premiumGateCloseTimerRef.current = null;
+    }
+    premiumGateCloseTimerRef.current = window.setTimeout(() => {
+      setPremiumGateLesson(null);
+      premiumGateCloseTimerRef.current = null;
+    }, 220);
   }, []);
 
   const openConfirm = useCallback((kind: 'reset' | 'signout') => {
@@ -660,16 +694,19 @@ const ConnectionRequiredScreen = () => {
     },
   ];
 
-	  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
-	    if (!currentDayPlan) return;
+			  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
+			    if (!currentDayPlan) return;
 
-      const lessonNumber = currentDayPlan.lesson ?? currentDayPlan.day;
-      const premiumLocked = !isPremium && lessonNumber > FREE_LESSON_COUNT;
-      if (premiumLocked) {
-        setPaywallLesson(lessonNumber);
-        setView(ViewState.PAYWALL);
-        return;
-      }
+		      const lessonNumber = currentDayPlan.lesson ?? currentDayPlan.day;
+		      const premiumLocked =
+		        !entitlementsLoading &&
+		        !isPremium &&
+		        lessonNumber > (Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT);
+		      if (premiumLocked) {
+		        setPaywallLesson(lessonNumber);
+		        setView(ViewState.PAYWALL);
+		        return;
+		      }
 
 	    if (isLocked) return;
 	    
@@ -953,11 +990,17 @@ const ConnectionRequiredScreen = () => {
 	    )
 	  }
 
-  const renderDashboard = () => {
-    const chatTask = TASKS[0];
-    const chatCompleted = completedTasks.includes(ActivityType.DIALOGUE);
-    // Не блокируем кнопку, если урок завершен - пользователь должен иметь возможность повторить
-    const chatLocked = isCurrentDayCompleted && chatCompleted && !lessonCompleted;
+		  const renderDashboard = () => {
+		    const chatTask = TASKS[0];
+		    const chatCompleted = completedTasks.includes(ActivityType.DIALOGUE);
+		    // Не блокируем кнопку, если урок завершен - пользователь должен иметь возможность повторить
+		    const chatLocked = isCurrentDayCompleted && chatCompleted && !lessonCompleted;
+		    const resolvedFreeLessonCount = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
+		    const paywallEnabled = !entitlementsLoading;
+		    const freeBoundaryIdx =
+		      !paywallEnabled || isPremium || resolvedFreeLessonCount <= 0
+		        ? -1
+		        : dayPlans.findIndex((d) => (d.lesson ?? d.day) === resolvedFreeLessonCount);
 
 	    return (
 	    <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
@@ -1011,57 +1054,58 @@ const ConnectionRequiredScreen = () => {
 		                      }`}
 	                      style={{ top: langMenuPos.top, left: langMenuPos.left }}
 	                    >
-            <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-              Профиль
-            </div>
-            <div className="text-sm font-semibold text-slate-900 break-all">
-              {userEmail || 'user@example.com'}
-            </div>
-            <div className="h-px bg-gray-100" />
-	            <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
-	              Аккаунт
-	            </div>
-		            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-		              {entitlementsLoading ? (
-		                <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 items-center animate-pulse">
-		                  <div className="flex items-center gap-2 min-w-0">
-		                    <div className="h-4 w-4 rounded-full bg-gray-200 shrink-0" />
+		            <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
+		              Аккаунт
+		            </div>
+			            <div className="rounded-2xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+			              <div className="text-xs font-bold text-slate-900 break-all">
+			                {userEmail || 'user@example.com'}
+			              </div>
+			              <div className="h-px bg-gray-100 my-2" />
+			              {entitlementsLoading ? (
+			                <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 items-center animate-pulse">
+			                  <div className="flex items-center gap-2 min-w-0">
+			                    <div className="h-4 w-4 rounded-full bg-gray-200 shrink-0" />
 		                    <div className="h-4 w-20 rounded bg-gray-200" />
 		                  </div>
 		                  <div className="h-5 w-24 rounded-full bg-gray-200 shrink-0" />
 		                  <div className="h-3 w-16 rounded bg-gray-200 col-start-1 justify-self-start" />
 		                </div>
-		              ) : (
-		                <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 items-center">
-		                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-gray-200 bg-white min-w-0 w-fit">
-		                      {isPremium ? (
-		                        <Crown className="w-4 h-4 text-amber-500 shrink-0" />
-		                      ) : (
+			              ) : (
+			                <div className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-2 items-center">
+			                    <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full border border-gray-200 bg-white min-w-0 w-fit">
+			                      {isPremium ? (
+			                        <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+			                      ) : (
 		                        <GraduationCap className="w-4 h-4 text-brand-primary shrink-0" />
 		                      )}
 		                      <div className="text-sm font-bold text-slate-900 truncate">{isPremium ? 'Premium' : 'Free'}</div>
 		                    </div>
-		                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-gray-600 shrink-0">
-		                      {isPremium ? 'Все уроки' : `Первые ${FREE_LESSON_COUNT} уроков`}
-		                    </div>
-		                </div>
-		              )}
+			                    <div className="text-[10px] font-extrabold uppercase tracking-wider text-gray-600 shrink-0">
+			                      {isPremium
+			                        ? 'Все уроки'
+			                        : formatFirstLessonsRu(
+			                            Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT
+			                          )}
+			                    </div>
+			                </div>
+			              )}
 		            </div>
-		            {entitlementsLoading ? (
-		              <div className="mt-2 h-3 w-24 rounded bg-gray-200 animate-pulse" />
-		            ) : (
-		              <button
-		                type="button"
-		                onClick={() => {
-		                  setPaywallLesson(null);
-		                  setView(ViewState.PAYWALL);
-		                  closeLangMenu();
-		                }}
-		                className="mt-2 text-xs font-bold text-brand-primary hover:text-brand-primary/80 transition text-left"
-		              >
-		                Управлять подпиской
-		              </button>
-		            )}
+			            {entitlementsLoading ? (
+			              <div className="mt-2 h-3 w-24 rounded bg-gray-200 animate-pulse" />
+			            ) : (
+			              <button
+			                type="button"
+			                onClick={() => {
+			                  setPaywallLesson(null);
+			                  setView(ViewState.PAYWALL);
+			                  closeLangMenu();
+			                }}
+			                className="mt-2 w-full h-10 rounded-xl bg-white border border-gray-200 text-slate-900 text-sm font-bold hover:border-brand-primary/40 transition flex items-center justify-center"
+			              >
+			                Управлять подпиской
+			              </button>
+			            )}
 	            <div className="h-px bg-gray-100" />
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
               Уровень
@@ -1140,7 +1184,24 @@ const ConnectionRequiredScreen = () => {
 	              />
 	            </div>
 	            <div className="h-px bg-gray-100" />
-	            <div className="flex overflow-x-auto gap-1.5 pt-0.5 pb-2 hide-scrollbar pl-1">
+	            <div className="overflow-x-auto hide-scrollbar pl-1">
+	              <div className="min-w-max">
+	                {paywallEnabled && !isPremium && freeBoundaryIdx >= 0 ? (
+	                  <div className="flex gap-1.5 pt-1 pb-1">
+	                    {dayPlans.map((d, idx) => (
+	                      <div key={`plan-label-${d.day}`} className="min-w-[46px] flex justify-center">
+	                        {idx === freeBoundaryIdx + 1 ? (
+	                          <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-extrabold text-amber-700">
+	                            <Crown className="w-3 h-3" />
+	                            Premium
+	                          </div>
+	                        ) : null}
+	                      </div>
+	                    ))}
+	                  </div>
+	                ) : null}
+
+	                <div className="flex gap-1.5 pt-0.5 pb-2">
 			          {dayPlans.map((d, idx) => {
 			            const isSelected = selectedDayId === d.day;
 			            const isActual = actualDayId === d.day;
@@ -1149,44 +1210,44 @@ const ConnectionRequiredScreen = () => {
 		            const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
 	            const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
                 const lessonNumber = d.lesson ?? d.day;
-	            const isLockedByProgress = idx > 0 && !prevCompleted;
-                const isLockedByPaywall = !isPremium && lessonNumber > FREE_LESSON_COUNT;
-	            const isLocked = isLockedByProgress || isLockedByPaywall;
-	            const isDayCompleted = dayCompletedStatus[d.day] === true;
-            
-	            return (
-	                <button 
-	                    key={d.day}
-	                    onClick={(e) => {
-	                      e.stopPropagation();
-	                      if (isLockedByProgress) return;
-	                      if (isLockedByPaywall) {
-                          setPaywallLesson(lessonNumber);
-                          setView(ViewState.PAYWALL);
-                          return;
-                        }
-	                      setSelectedDayId(d.day);
-	                    }}
-			                    disabled={isLockedByProgress}
-			                    className={`
-			                      min-w-[46px] flex items-center justify-center px-2 py-1.5 rounded-3xl border-2 transition-all duration-200 relative overflow-hidden
-				                      ${isDayCompleted && !isSelected
-				                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
-				                        : isActual && !isSelected
-				                          ? 'bg-gradient-to-br from-brand-primary/10 via-brand-primary/5 to-brand-secondary/10 border-brand-primary/50 text-slate-900 shadow-sm hover:shadow-md hover:scale-[1.02]'
-				                        : isSelected 
-			                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
-			                        : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
-			                      }
-		                      ${
-		                        isLockedByProgress
-		                          ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
-		                          : isLockedByPaywall
-		                            ? 'opacity-80 cursor-pointer border-gray-200 hover:border-brand-primary/40 bg-gray-50 hover:bg-white'
-		                            : 'cursor-pointer'
-		                      }
-			                    `}
-			                >
+		            const isLockedByProgress = idx > 0 && !prevCompleted;
+		                const isLockedByPaywall =
+		                  paywallEnabled && !isPremium && lessonNumber > resolvedFreeLessonCount;
+		            const isLocked = isLockedByProgress || isLockedByPaywall;
+		            const isDayCompleted = dayCompletedStatus[d.day] === true;
+	            
+		            return (
+		              <React.Fragment key={d.day}>
+			                <button 
+			                    onClick={(e) => {
+			                      e.stopPropagation();
+			                      if (isLockedByPaywall) {
+			                          openPremiumGate(lessonNumber);
+			                          return;
+			                        }
+			                      if (isLockedByProgress) return;
+			                      setSelectedDayId(d.day);
+			                    }}
+				                    disabled={isLockedByProgress && !isLockedByPaywall}
+				                    className={`
+				                      min-w-[46px] flex items-center justify-center px-2 py-1.5 rounded-3xl border-2 transition-all duration-200 relative overflow-hidden
+					                      ${isDayCompleted && !isSelected
+					                        ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
+					                        : isActual && !isSelected
+					                          ? 'bg-gradient-to-br from-brand-primary/10 via-brand-primary/5 to-brand-secondary/10 border-brand-primary/50 text-slate-900 shadow-sm hover:shadow-md hover:scale-[1.02]'
+					                        : isSelected 
+				                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
+				                        : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
+				                      }
+				                      ${
+				                        isLockedByProgress
+				                          ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
+				                          : isLockedByPaywall
+				                            ? 'opacity-95 cursor-pointer border-amber-200 bg-amber-50/70 hover:bg-amber-50 hover:border-amber-300'
+				                            : 'cursor-pointer'
+				                      }
+					                    `}
+				                >
                     {/* Анимированный фон для завершенного дня */}
                     {isDayCompleted && !isSelected && (
                       <>
@@ -1196,39 +1257,51 @@ const ConnectionRequiredScreen = () => {
                         </div>
                       </>
                     )}
-			                    <div className={`
-				                      w-7 h-7 rounded-xl flex items-center justify-center transition-all relative z-10
-				                      ${isDayCompleted && !isSelected
-				                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
-				                        : isActual && !isSelected
-				                          ? 'bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md ring-2 ring-brand-primary/25'
-				                        : isSelected 
-			                        ? 'bg-white text-brand-primary shadow-md' 
-			                        : isLocked
-			                          ? 'bg-gray-50 text-gray-700'
-			                          : 'bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/25'
-			                      }
-				                    `}>
-			                      {isDayCompleted ? (
-			                        <CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-white drop-shadow-sm'}`} />
-			                      ) : isPast ? (
-			                        <CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
-			                      ) : isLocked ? (
-			                        <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
-			                      ) : (
-			                        <span
-			                          className={`text-xs font-bold ${
-			                            isSelected ? 'text-brand-primary' : isActual ? 'text-white' : 'text-gray-700'
-		                          }`}
-		                        >
-		                          {d.lesson ?? d.day}
-		                        </span>
-		                      )}
-		                    </div>
-		                </button>
-	            )
-		          })}
-		          </div>
+				                    <div className={`
+					                      w-7 h-7 rounded-xl flex items-center justify-center transition-all relative z-10
+					                      ${isDayCompleted && !isSelected
+					                        ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+					                        : isActual && !isSelected
+					                          ? 'bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md ring-2 ring-brand-primary/25'
+					                        : isSelected 
+				                        ? 'bg-white text-brand-primary shadow-md' 
+				                        : isLockedByPaywall
+				                          ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/80'
+				                          : isLocked
+				                            ? 'bg-gray-50 text-gray-700'
+				                          : 'bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/25'
+				                      }
+					                    `}>
+				                      {isDayCompleted ? (
+				                        <CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-white drop-shadow-sm'}`} />
+				                      ) : isPast ? (
+				                        <CheckCircle2 className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-emerald-500'}`} />
+				                      ) : isLockedByPaywall ? (
+				                        <Crown className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-amber-600'}`} />
+				                      ) : isLocked ? (
+				                        <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
+				                      ) : (
+				                        <span
+				                          className={`text-xs font-bold ${
+				                            isSelected ? 'text-brand-primary' : isActual ? 'text-white' : 'text-gray-700'
+			                          }`}
+			                        >
+			                          {d.lesson ?? d.day}
+			                        </span>
+			                      )}
+			                    </div>
+			                </button>
+		                {paywallEnabled && !isPremium && freeBoundaryIdx >= 0 && idx === freeBoundaryIdx ? (
+		                  <div className="flex items-center px-1">
+		                    <div className="h-10 w-px bg-gradient-to-b from-transparent via-amber-200 to-transparent" />
+		                  </div>
+		                ) : null}
+		              </React.Fragment>
+		            );
+			          })}
+		                </div>
+	              </div>
+	            </div>
 
 	            {showCourseTopics ? (
 	              <div className="pt-2 pb-4">
@@ -1242,36 +1315,38 @@ const ConnectionRequiredScreen = () => {
 	                      const isSelected = selectedDayId === d.day;
 	                      const dayDone = dayCompletedStatus[d.day] === true;
 	                      const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
-	                      const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
-	                      const lessonNumber = d.lesson ?? d.day;
-	                      const isLockedByProgress = idx > 0 && !prevCompleted;
-	                      const isLockedByPaywall = !isPremium && lessonNumber > FREE_LESSON_COUNT;
-	                      const isLocked = isLockedByProgress || isLockedByPaywall;
-	                      return (
-	                        <button
-	                          type="button"
-	                          key={`course-topic-inline-${d.day}-${d.lesson}-${d.lessonId || ''}`}
-	                          onClick={() => {
-	                            if (isLockedByProgress) return;
-	                            if (isLockedByPaywall) {
-	                              setPaywallLesson(lessonNumber);
-	                              setView(ViewState.PAYWALL);
-	                              return;
-	                            }
-	                            setSelectedDayId(d.day);
-	                          }}
-	                          disabled={isLockedByProgress}
-	                          className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-	                            isSelected
-	                              ? 'border-brand-primary bg-brand-primary/5'
-	                              : isLockedByProgress
-	                                ? 'border-gray-200/60 bg-gray-50 opacity-60 cursor-not-allowed'
-	                                : isLockedByPaywall
-	                                  ? 'border-gray-200/60 bg-gray-50 opacity-90 cursor-pointer hover:border-brand-primary/30'
-	                                : 'border-gray-200/60 bg-white hover:border-brand-primary/30'
-	                          }`}
-	                        >
-	                          <div className="flex items-start justify-between gap-3">
+		                      const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
+		                      const lessonNumber = d.lesson ?? d.day;
+		                      const isLockedByProgress = idx > 0 && !prevCompleted;
+		                      const isLockedByPaywall =
+		                        !entitlementsLoading &&
+		                        !isPremium &&
+		                        lessonNumber > (Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT);
+		                      const isLocked = isLockedByProgress || isLockedByPaywall;
+		                      return (
+		                        <button
+		                          type="button"
+		                          key={`course-topic-inline-${d.day}-${d.lesson}-${d.lessonId || ''}`}
+		                          onClick={() => {
+		                            if (isLockedByPaywall) {
+		                              openPremiumGate(lessonNumber);
+		                              return;
+		                            }
+		                            if (isLockedByProgress) return;
+		                            setSelectedDayId(d.day);
+		                          }}
+		                          disabled={isLockedByProgress && !isLockedByPaywall}
+		                          className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
+		                            isSelected
+		                              ? 'border-brand-primary bg-brand-primary/5'
+		                              : isLockedByProgress
+		                                ? 'border-gray-200/60 bg-gray-50 opacity-60 cursor-not-allowed'
+		                                : isLockedByPaywall
+		                                  ? 'border-amber-200 bg-amber-50/70 cursor-pointer hover:border-amber-300'
+		                                : 'border-gray-200/60 bg-white hover:border-brand-primary/30'
+		                          }`}
+		                        >
+		                          <div className="flex items-start justify-between gap-3">
 	                            <div>
 	                              <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
 	                                Lesson {d.lesson} · {d.level || level}
@@ -1279,16 +1354,24 @@ const ConnectionRequiredScreen = () => {
 	                              <div className="mt-1 text-sm font-extrabold text-gray-900">
 	                                {d.theme || d.title || `Lesson #${d.lesson}`}
 	                              </div>
-	                            </div>
-	                            {dayDone ? (
-	                              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-	                            ) : isLocked ? (
-	                              <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
-	                            ) : null}
-	                          </div>
-	                        </button>
-	                      );
-	                    })}
+		                            </div>
+		                            {dayDone ? (
+		                              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+		                            ) : isLockedByPaywall ? (
+		                              <Crown className="w-5 h-5 text-amber-600 flex-shrink-0" />
+		                            ) : isLocked ? (
+		                              <Lock className="w-5 h-5 text-gray-400 flex-shrink-0" />
+		                            ) : null}
+		                          </div>
+		                          {isLockedByPaywall ? (
+		                            <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-extrabold text-amber-700">
+		                              <Crown className="w-3 h-3" />
+		                              Premium
+		                            </div>
+		                          ) : null}
+		                        </button>
+		                      );
+		                    })}
 	                  </div>
 	                </div>
 	              </div>
@@ -1537,25 +1620,92 @@ const ConnectionRequiredScreen = () => {
     );
   };
 
+  const renderPremiumGateModal = () => {
+    if (!premiumGateLesson) return null;
+
+    return createPortal(
+      <div
+        className={`fixed inset-0 z-[120] flex items-center justify-center px-6 transition-opacity duration-200 ${
+          premiumGateVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        aria-modal="true"
+        role="dialog"
+      >
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/60"
+          onClick={closePremiumGate}
+          aria-label="Закрыть"
+        />
+        <div
+          className={`relative w-full max-w-sm rounded-3xl bg-white border border-gray-200 shadow-2xl p-5 transition-transform duration-200 ${
+            premiumGateVisible ? 'scale-100 translate-y-0' : 'scale-[0.98] translate-y-1'
+          }`}
+        >
+          <div className="absolute top-4 right-4">
+            <button
+              type="button"
+              onClick={closePremiumGate}
+              className="bg-white/90 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm"
+              aria-label="Закрыть"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-start gap-3 pr-10">
+            <div className="mt-0.5 h-10 w-10 rounded-2xl flex items-center justify-center bg-amber-50 text-amber-700">
+              <Crown className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-base font-black text-slate-900">Доступно только в Premium</div>
+              <div className="mt-1 text-sm text-gray-600 font-medium">
+                Урок {premiumGateLesson} доступен только для аккаунтов типа Premium.
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                closePremiumGate();
+                // Open account management without "Урок X закрыт" context.
+                setPaywallLesson(null);
+                setView(ViewState.PAYWALL);
+              }}
+              className="h-11 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 transition hover:opacity-90"
+            >
+              Управлять аккаунтом
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
   return (
     <>
       {view === ViewState.DASHBOARD && renderDashboard()}
       {view === ViewState.EXERCISE && renderExercise()}
       {view === ViewState.PAYWALL && (
-        <PaywallScreen
-          lessonNumber={paywallLesson ?? undefined}
-          isPremium={isPremium}
-          isLoading={entitlementsLoading}
-          userEmail={userEmail}
-          onClose={() => {
-            setPaywallLesson(null);
-            setView(ViewState.DASHBOARD);
-          }}
-          onEntitlementsRefresh={() => refreshEntitlements()}
-        />
-      )}
+	        <PaywallScreen
+	          lessonNumber={paywallLesson ?? undefined}
+	          isPremium={isPremium}
+	          freeLessonCount={Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT}
+	          isLoading={entitlementsLoading}
+	          userEmail={userEmail}
+	          onClose={() => {
+	            setPaywallLesson(null);
+	            setView(ViewState.DASHBOARD);
+	          }}
+	          onEntitlementsRefresh={() => refreshEntitlements()}
+	        />
+	      )}
       {renderInsightPopup()}
       {renderConfirmModal()}
+      {renderPremiumGateModal()}
 
       {/* Loading Overlay */}
        {isCheckingStatus && (
@@ -1584,6 +1734,7 @@ const App = () => {
   const [authLoading, setAuthLoading] = useState(true);
   const [showIntro, setShowIntro] = useState(true);
   const [hasLoggedIn, setHasLoggedIn] = useState(false);
+  const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1596,7 +1747,7 @@ const App = () => {
     };
   }, [isOnline]);
 
-	  useEffect(() => {
+  useEffect(() => {
 	    try {
 	      const storedLogged = localStorage.getItem('has_logged_in') === '1';
 	      setHasLoggedIn(storedLogged);
@@ -1613,34 +1764,35 @@ const App = () => {
         console.error('[Auth] getSession error:', error);
       }
       const currentSession = data.session ?? null;
-	      setSession(currentSession);
-	      if (currentSession) {
-	        setHasLoggedIn(true);
-	        try {
-	          localStorage.setItem('has_logged_in', '1');
-	        } catch {
-	          // ignore
-	        }
-	        setShowIntro(false);
-	      }
-	      setAuthLoading(false);
-	    };
+      setSession(currentSession);
+      if (currentSession) {
+        setHasLoggedIn(true);
+        try {
+          localStorage.setItem('has_logged_in', '1');
+        } catch {
+          // ignore
+        }
+        setShowIntro(false);
+      }
+      setAuthLoading(false);
+    };
 
     initSession();
 
-	    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
-	      setSession(newSession);
-	       if (newSession) {
-	         setHasLoggedIn(true);
-	         try {
-	           localStorage.setItem('has_logged_in', '1');
-	         } catch {
-	           // ignore
-	         }
-	         setShowIntro(false);
-	       }
-	      setAuthLoading(false);
-	    });
+    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'PASSWORD_RECOVERY') setNeedsPasswordReset(true);
+      setSession(newSession);
+       if (newSession) {
+         setHasLoggedIn(true);
+         try {
+           localStorage.setItem('has_logged_in', '1');
+         } catch {
+           // ignore
+         }
+         setShowIntro(false);
+       }
+      setAuthLoading(false);
+    });
 
     return () => {
       listener?.subscription?.unsubscribe();
@@ -1659,6 +1811,18 @@ const App = () => {
           <p className="text-sm text-gray-600 font-semibold">Загружаем профиль...</p>
         </div>
       </div>
+    );
+  }
+
+  if (needsPasswordReset) {
+    return (
+      <ResetPasswordScreen
+        onDone={async () => {
+          setNeedsPasswordReset(false);
+          const { data } = await supabase.auth.getSession();
+          setSession(data.session ?? null);
+        }}
+      />
     );
   }
 

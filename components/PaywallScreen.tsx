@@ -3,15 +3,16 @@ import { Crown, GraduationCap, Loader2, X } from "lucide-react";
 import {
   createYooKassaPayment,
   fetchBillingProduct,
-  FREE_LESSON_COUNT,
   formatPrice,
   BILLING_PRODUCT_KEY,
   quoteBilling,
 } from "../services/billingService";
+import { formatFirstLessonsRu } from "../services/ruPlural";
 
 type PaywallScreenProps = {
   lessonNumber?: number;
   isPremium: boolean;
+  freeLessonCount: number;
   isLoading?: boolean;
   userEmail?: string;
   onClose: () => void;
@@ -27,6 +28,7 @@ const buildReturnUrl = (): string => {
 export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   lessonNumber,
   isPremium,
+  freeLessonCount,
   isLoading,
   userEmail,
   onClose,
@@ -186,18 +188,18 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 		                <div className="mt-2 h-3 w-52 rounded bg-gray-200 animate-pulse" />
 		              ) : (
 		                <div className="mt-1 text-xs font-bold text-gray-600">
-		                  Доступ: {isPremium ? "Premium (100 уроков)" : `Free (первые ${FREE_LESSON_COUNT} уроков)`}
-		                </div>
-		              )}
-		            </div>
-		          </div>
+			                  Доступ: {isPremium ? "Premium (100 уроков)" : `Free (${formatFirstLessonsRu(freeLessonCount)})`}
+			                </div>
+			              )}
+			            </div>
+			          </div>
 
-		          {lessonNumber && lessonNumber > FREE_LESSON_COUNT && !isPremium ? (
-		            <div className="mt-3 flex justify-end">
-		              <div className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-extrabold">
-		                Урок {lessonNumber} закрыт
-		              </div>
-		            </div>
+			          {lessonNumber && lessonNumber > freeLessonCount && !isPremium ? (
+			            <div className="mt-3 flex justify-end">
+			              <div className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-extrabold">
+			                Урок {lessonNumber} закрыт
+			              </div>
+			            </div>
 		          ) : null}
 
 	          <div className="mt-6 pt-5 border-t border-gray-100">
