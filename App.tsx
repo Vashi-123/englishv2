@@ -65,6 +65,41 @@ const ConnectionRequiredScreen = () => {
 	  const [level, setLevel] = useState<string>('A1');
 	  const { levels: availableLevels, loading: levelsLoading } = useAvailableLevels();
   const { modules: courseModules, loading: modulesLoading } = useCourseModules(level, language || 'ru');
+  const modulesByStage = useMemo(() => {
+    const groups = new Map<
+      number,
+      {
+        stageOrder: number;
+        stageTitle: string;
+        lessonFrom: number;
+        lessonTo: number;
+        modules: typeof courseModules;
+      }
+    >();
+
+    courseModules.forEach((m) => {
+      const current = groups.get(m.stageOrder) || {
+        stageOrder: m.stageOrder,
+        stageTitle: m.stageTitle,
+        lessonFrom: m.lessonFrom,
+        lessonTo: m.lessonTo,
+        modules: [] as typeof courseModules,
+      };
+
+      current.stageTitle = m.stageTitle;
+      current.lessonFrom = Math.min(current.lessonFrom, m.lessonFrom);
+      current.lessonTo = Math.max(current.lessonTo, m.lessonTo);
+      current.modules = [...current.modules, m];
+      groups.set(m.stageOrder, current);
+    });
+
+    return Array.from(groups.values())
+      .sort((a, b) => a.stageOrder - b.stageOrder)
+      .map((group) => ({
+        ...group,
+        modules: group.modules.sort((a, b) => a.moduleOrder - b.moduleOrder),
+      }));
+  }, [courseModules]);
 
 	  const openLangMenu = () => {
 	    setShowLangMenu(true);
@@ -646,42 +681,6 @@ const ConnectionRequiredScreen = () => {
   const activeModule = courseModules.find(
     (m) => insightLessonNumber >= m.lessonFrom && insightLessonNumber <= m.lessonTo
   );
-  const modulesByStage = useMemo(() => {
-    const groups = new Map<
-      number,
-      {
-        stageOrder: number;
-        stageTitle: string;
-        lessonFrom: number;
-        lessonTo: number;
-        modules: typeof courseModules;
-      }
-    >();
-
-    courseModules.forEach((m) => {
-      const current = groups.get(m.stageOrder) || {
-        stageOrder: m.stageOrder,
-        stageTitle: m.stageTitle,
-        lessonFrom: m.lessonFrom,
-        lessonTo: m.lessonTo,
-        modules: [] as typeof courseModules,
-      };
-
-      current.stageTitle = m.stageTitle;
-      current.lessonFrom = Math.min(current.lessonFrom, m.lessonFrom);
-      current.lessonTo = Math.max(current.lessonTo, m.lessonTo);
-      current.modules = [...current.modules, m];
-      groups.set(m.stageOrder, current);
-    });
-
-    return Array.from(groups.values())
-      .sort((a, b) => a.stageOrder - b.stageOrder)
-      .map((group) => ({
-        ...group,
-        modules: group.modules.sort((a, b) => a.moduleOrder - b.moduleOrder),
-      }));
-  }, [courseModules]);
-
   // Single lesson card definition
   const TASKS = [
     { 
@@ -1633,7 +1632,7 @@ const ConnectionRequiredScreen = () => {
       >
         <button
           type="button"
-          className="absolute inset-0 bg-black/60"
+          className="absolute inset-0 bg-slate-50/80 backdrop-blur-md"
           onClick={closePremiumGate}
           aria-label="Закрыть"
         />
@@ -1732,9 +1731,33 @@ const App = () => {
   const isOnline = useOnlineStatus();
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [authLoadingSlow, setAuthLoadingSlow] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [hasLoggedIn, setHasLoggedIn] = useState(false);
   const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
+  const authUrlHandledRef = useRef(false);
+
+  const refreshSession = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) console.error('[Auth] getSession error:', error);
+      const currentSession = data.session ?? null;
+      setSession(currentSession);
+      if (currentSession) {
+        setHasLoggedIn(true);
+        try {
+          localStorage.setItem('has_logged_in', '1');
+        } catch {
+          // ignore
+        }
+        setShowIntro(false);
+      }
+    } catch (err) {
+      console.error('[Auth] getSession fatal error:', err);
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1748,41 +1771,57 @@ const App = () => {
   }, [isOnline]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!authLoading) {
+      setAuthLoadingSlow(false);
+      return;
+    }
+    const t = window.setTimeout(() => setAuthLoadingSlow(true), 8000);
+    return () => window.clearTimeout(t);
+  }, [authLoading]);
+
+  useEffect(() => {
 	    try {
 	      const storedLogged = localStorage.getItem('has_logged_in') === '1';
 	      setHasLoggedIn(storedLogged);
-	      if (storedLogged) {
-	        setShowIntro(false);
+		      if (storedLogged) {
+		        setShowIntro(false);
+		      }
+		    } catch {
+		      setHasLoggedIn(false);
+		    }
+
+	    const bootstrap = async () => {
+	      if (typeof window === 'undefined') return;
+	      try {
+	        const url = new URL(window.location.href);
+	        const code = url.searchParams.get('code');
+	        if (code && !authUrlHandledRef.current) {
+	          authUrlHandledRef.current = true;
+	          const { error } = await supabase.auth.exchangeCodeForSession(code);
+	          if (error) console.error('[Auth] exchangeCodeForSession error:', error);
+
+	          url.searchParams.delete('code');
+	          url.searchParams.delete('state');
+	          try {
+	            window.history.replaceState({}, '', url.toString());
+	          } catch {
+	            // ignore
+	          }
+	        }
+	      } catch (err) {
+	        console.error('[Auth] bootstrap from URL fatal error:', err);
+	      } finally {
+	        await refreshSession();
 	      }
-	    } catch {
-	      setHasLoggedIn(false);
-	    }
+	    };
 
-    const initSession = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (error) {
-        console.error('[Auth] getSession error:', error);
-      }
-      const currentSession = data.session ?? null;
-      setSession(currentSession);
-      if (currentSession) {
-        setHasLoggedIn(true);
-        try {
-          localStorage.setItem('has_logged_in', '1');
-        } catch {
-          // ignore
-        }
-        setShowIntro(false);
-      }
-      setAuthLoading(false);
-    };
+	    void bootstrap();
 
-    initSession();
-
-    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
-      if (event === 'PASSWORD_RECOVERY') setNeedsPasswordReset(true);
-      setSession(newSession);
-       if (newSession) {
+	    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+	      if (event === 'PASSWORD_RECOVERY') setNeedsPasswordReset(true);
+	      setSession(newSession);
+	       if (newSession) {
          setHasLoggedIn(true);
          try {
            localStorage.setItem('has_logged_in', '1');
@@ -1797,7 +1836,35 @@ const App = () => {
     return () => {
       listener?.subscription?.unsubscribe();
     };
-  }, []);
+  }, [refreshSession]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const onPageShow = (e: PageTransitionEvent) => {
+      // On iOS/Safari, returning via back-forward cache can keep stale state (white screen).
+      // Refresh auth session on restore.
+      if (e.persisted) {
+        setAuthLoading(true);
+        void refreshSession();
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        // Refresh session on resume; avoids stale session state after app backgrounding.
+        setAuthLoading(true);
+        void refreshSession();
+      }
+    };
+
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshSession]);
 
   if (!isOnline) {
     return <ConnectionRequiredScreen />;
@@ -1809,6 +1876,20 @@ const App = () => {
         <div className="text-center space-y-3">
           <div className="h-12 w-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin mx-auto" />
           <p className="text-sm text-gray-600 font-semibold">Загружаем профиль...</p>
+          {authLoadingSlow && (
+            <div className="pt-2 space-y-2">
+              <p className="text-xs text-gray-500">
+                Если загрузка зависла, попробуйте обновить страницу.
+              </p>
+              <button
+                type="button"
+                className="text-xs font-semibold text-brand-primary hover:underline"
+                onClick={() => window.location.reload()}
+              >
+                Обновить страницу
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -1841,11 +1922,8 @@ const App = () => {
     return (
       <AuthScreen
         onAuthSuccess={async () => {
-          const { data } = await supabase.auth.getSession();
-          setSession(data.session ?? null);
-          setHasLoggedIn(true);
-          localStorage.setItem('has_logged_in', '1');
-          setShowIntro(false);
+          setAuthLoading(true);
+          await refreshSession();
         }}
       />
     );
