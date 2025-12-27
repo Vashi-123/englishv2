@@ -7,7 +7,7 @@ type UserEntitlementsRow = {
   premium_until: string | null;
 };
 
-const isPremiumEffective = (row: Pick<UserEntitlementsRow, "is_premium" | "premium_until"> | null): boolean => {
+export const isPremiumEffective = (row: Pick<UserEntitlementsRow, "is_premium" | "premium_until"> | null): boolean => {
   if (!row) return false;
   if (row.is_premium) return true;
   if (!row.premium_until) return false;
@@ -26,7 +26,7 @@ export const useEntitlements = (userId?: string) => {
     if (!userId) {
       setRow(null);
       setError(null);
-      return;
+      return null;
     }
 
     setLoading(true);
@@ -37,12 +37,15 @@ export const useEntitlements = (userId?: string) => {
         .eq("user_id", userId)
         .maybeSingle();
       if (fetchError) throw fetchError;
-      setRow((data as UserEntitlementsRow) || null);
+      const nextRow = (data as UserEntitlementsRow) || null;
+      setRow(nextRow);
       setError(null);
+      return nextRow;
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       setError(err);
       setRow(null);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -86,4 +89,3 @@ export const useEntitlements = (userId?: string) => {
 
   return { isPremium, entitlements: row, loading, error, refresh };
 };
-

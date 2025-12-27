@@ -49,6 +49,8 @@ export type Step4DialogueProps = {
   onNextLesson?: () => void;
   onBack?: () => void;
   onReady?: () => void;
+  nextLessonNumber?: number;
+  nextLessonIsPremium?: boolean;
   copy: {
     active: string;
     placeholder: string;
@@ -78,6 +80,8 @@ export function Step4DialogueScreen({
   onNextLesson,
   onBack,
   onReady,
+  nextLessonNumber,
+  nextLessonIsPremium,
   copy,
 }: Step4DialogueProps) {
   const { language } = useLanguage();
@@ -1541,7 +1545,7 @@ export function Step4DialogueScreen({
             isLoading={isLoading}
           />
 
-		          <DialogueMessages
+			          <DialogueMessages
             scrollContainerRef={scrollContainerRef}
             messagesEndRef={messagesEndRef}
             messageRefs={messageRefs}
@@ -1594,16 +1598,18 @@ export function Step4DialogueScreen({
 			            lessonCompletedPersisted={lessonCompletedPersisted}
 			            onNextLesson={onNextLesson}
 			            onAskTutor={startTutorMode}
-			            tutorPanelOpen={tutorPanelOpen}
-			            tutorBannerText={tutorGreeting}
-			            tutorThreadMessages={tutorThreadMessages}
-			            tutorIsAwaitingReply={tutorMode && isAwaitingModelReply}
-	                  ankiGateActive={ankiGateActive}
-	                  ankiIntroText={ankiIntroText}
-	                  ankiQuizItems={ankiQuizItems}
-	                  onAnkiAnswer={(p) => handleAnkiAnswer({ id: p.id, isCorrect: p.isCorrect })}
-	                  onAnkiComplete={handleAnkiComplete}
-				          />
+				            tutorPanelOpen={tutorPanelOpen}
+				            tutorBannerText={tutorGreeting}
+				            tutorThreadMessages={tutorThreadMessages}
+				            tutorIsAwaitingReply={tutorMode && isAwaitingModelReply}
+                    nextLessonNumber={nextLessonNumber}
+                    nextLessonIsPremium={nextLessonIsPremium}
+		                  ankiGateActive={ankiGateActive}
+		                  ankiIntroText={ankiIntroText}
+		                  ankiQuizItems={ankiQuizItems}
+		                  onAnkiAnswer={(p) => handleAnkiAnswer({ id: p.id, isCorrect: p.isCorrect })}
+		                  onAnkiComplete={handleAnkiComplete}
+					          />
 
           <DialogueInputBar
             inputMode={effectiveInputMode}

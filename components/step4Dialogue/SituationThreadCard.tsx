@@ -145,13 +145,13 @@ export function SituationThreadCard({
           </div>
 
 	          <div
-	            className={`mt-4 rounded-2xl border p-4 space-y-3 ${
+	            className={`mt-4 rounded-2xl border p-3 space-y-3 ${
 	              completedCorrect ? 'border-green-200 bg-green-50/60' : 'border-gray-100 bg-gray-50/60'
 	            }`}
 	          >
 		            {ai && !items.some((it) => it.kind === 'ai') && (
 		              <div className="space-y-2 mb-6">
-                    <div className="flex justify-start items-start gap-3">
+                    <div className="flex justify-start items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
                         <Bot className="w-4 h-4" />
                       </div>
@@ -197,7 +197,7 @@ export function SituationThreadCard({
               if (shouldHideAi) {
                 return (
                   <div key={`ai-${idx}-pending`} className="space-y-2 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="flex justify-start items-start gap-3">
+                    <div className="flex justify-start items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
                         <Bot className="w-4 h-4" />
                       </div>
@@ -227,7 +227,7 @@ export function SituationThreadCard({
                     currentAudioItem?.kind === 'situation_ai' && currentAudioItem?.text === String(item.text || '');
                 return (
                   <div key={`ai-${idx}`} className="space-y-2 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="flex justify-start items-start gap-3">
+                    <div className="flex justify-start items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
                         <Bot className="w-4 h-4" />
                         </div>
@@ -322,7 +322,7 @@ export function SituationThreadCard({
               if (!showDots) return null;
 
               return (
-                <div className="flex justify-start items-start gap-3">
+                <div className="flex justify-start items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
                     <Bot className="w-4 h-4" />
                   </div>

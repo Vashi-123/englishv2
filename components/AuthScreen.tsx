@@ -18,6 +18,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [message, setMessage] = useState<string | null>(null);
   const { copy } = useLanguage();
   const showOAuth = mode === 'login' || (mode === 'signup' && !otpRequested);
+  const minPasswordOk = password.trim().length >= 6;
+  const canSubmit =
+    !loading &&
+    (mode === 'reset' ||
+      (mode === 'login' && Boolean(email) && minPasswordOk) ||
+      (mode === 'signup' && Boolean(email) && (otpRequested ? Boolean(otp) : minPasswordOk)));
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,7 +181,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-transparent outline-none text-sm"
+                className="w-full bg-transparent outline-none text-base sm:text-sm"
                 placeholder={copy.auth.emailPlaceholder}
                 autoComplete="email"
                 required
@@ -195,7 +201,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-transparent outline-none text-sm"
+                  className="w-full bg-transparent outline-none text-base sm:text-sm"
                   placeholder={mode === 'signup' ? 'Минимум 6 символов' : copy.auth.passwordPlaceholder}
                   minLength={6}
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
@@ -234,7 +240,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                   inputMode="numeric"
                   value={otp}
                   onChange={(e) => setOtp(e.target.value)}
-                  className="w-full bg-transparent outline-none text-sm"
+                  className="w-full bg-transparent outline-none text-base sm:text-sm"
                   placeholder="Введите код"
                   autoComplete="one-time-code"
                 />
@@ -245,11 +251,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">{error}</div>}
           {message && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">{message}</div>}
 
-		          <button
-		            type="submit"
-		            disabled={loading}
-		            className="w-full h-12 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-60"
-		          >
+			          <button
+			            type="submit"
+			            disabled={!canSubmit}
+			            className="w-full h-12 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+			          >
             {loading ? (
               <>
                 <span className="h-4 w-4 border-2 border-white/50 border-t-transparent rounded-full animate-spin" />

@@ -64,6 +64,7 @@ type Props = {
 
   extractStructuredSections: (text: string) => Array<{ title: string; body: string }>;
   stripModuleTag: (text: string) => string;
+  grammarExerciseCompleted?: boolean;
 };
 
 export function MessageContent({
@@ -102,6 +103,7 @@ export function MessageContent({
   handleStudentAnswer,
   extractStructuredSections,
   stripModuleTag,
+  grammarExerciseCompleted,
 }: Props) {
   const persistFindMistakePatch = (patch: Record<string, any>) => {
     try {
@@ -362,7 +364,16 @@ export function MessageContent({
 
   if (parsed && (parsed.type === 'audio_exercise' || parsed.type === 'text_exercise')) {
     const cleanContent = stripModuleTag(parsed.content || '');
-    return <ExerciseCard kind={parsed.type === 'audio_exercise' ? 'audio' : 'text'} content={cleanContent} renderMarkdown={renderMarkdown} />;
+    const isGrammarExercise = msg.currentStepSnapshot?.type === 'grammar';
+    return (
+      <ExerciseCard
+        kind={parsed.type === 'audio_exercise' ? 'audio' : 'text'}
+        content={cleanContent}
+        renderMarkdown={renderMarkdown}
+        completed={Boolean(isGrammarExercise && grammarExerciseCompleted)}
+        showCompletionBadge={!isGrammarExercise}
+      />
+    );
   }
 
   if (parsed && parsed.type === 'section') {

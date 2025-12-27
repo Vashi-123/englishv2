@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CardHeading } from './CardHeading';
 import { CompletionBadge } from './CompletionBadge';
 
@@ -69,6 +69,18 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
   const [wasCorrect, setWasCorrect] = useState<boolean | null>(null);
   const advanceTimerRef = useRef<number | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (advanceTimerRef.current != null) window.clearTimeout(advanceTimerRef.current);
+    };
+  }, []);
+
+  const blurActiveElement = () => {
+    if (typeof document === 'undefined') return;
+    const el = document.activeElement as HTMLElement | null;
+    el?.blur?.();
+  };
+
   const current = quiz[index] || null;
   const progressLabel = `${Math.min(index + 1, quiz.length)}/${quiz.length || total}`;
   const promptLabel = direction === 'ru->en' ? 'Перевод' : 'Слово';
@@ -82,6 +94,7 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
   };
 
   const goNext = () => {
+    blurActiveElement();
     setSelected(null);
     setWasCorrect(null);
     setIndex((prev) => {
@@ -154,11 +167,12 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
                 key={`${current.word}:${v}`}
                 type="button"
                 disabled={wasCorrect !== null}
-                onClick={() => {
+                onClick={(e) => {
                   if (wasCorrect !== null) return;
                   setSelected(v);
                   const ok = v === correctText;
                   setWasCorrect(ok);
+                  (e.currentTarget as HTMLButtonElement).blur();
                   void (async () => {
                     try {
                       await Promise.resolve(
@@ -169,7 +183,8 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
                     }
                   })();
                 }}
-                className={`px-4 py-3 rounded-2xl border text-sm font-bold shadow-sm transition disabled:opacity-100 ${cls}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+                className={`px-4 py-3 rounded-2xl border text-sm font-bold shadow-sm transition disabled:opacity-100 select-none ${cls}`}
               >
                 {v || '—'}
               </button>

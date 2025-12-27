@@ -7,7 +7,7 @@ import { useDayPlans } from './hooks/useDayPlans';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useAvailableLevels } from './hooks/useAvailableLevels';
 import { useCourseModules } from './hooks/useCourseModules';
-import { useEntitlements } from './hooks/useEntitlements';
+import { isPremiumEffective, useEntitlements } from './hooks/useEntitlements';
 import Step4Dialogue from './components/Step4Dialogue';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
@@ -693,8 +693,8 @@ const ConnectionRequiredScreen = () => {
     },
   ];
 
-			  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
-			    if (!currentDayPlan) return;
+				  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
+				    if (!currentDayPlan) return;
 
 		      const lessonNumber = currentDayPlan.lesson ?? currentDayPlan.day;
 		      const premiumLocked =
@@ -815,30 +815,44 @@ const ConnectionRequiredScreen = () => {
     if (activityStep === ActivityType.DIALOGUE) void checkLessonCompletion(false);
   };
 
-  const handleNextLesson = () => {
-    if (!currentDayPlan) return;
-    const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
-    const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
-    if (!nextPlan?.day || !nextPlan?.lesson) {
-      setView(ViewState.DASHBOARD);
-      return;
-    }
+		  const handleNextLesson = async () => {
+		    if (!currentDayPlan) return;
+		    const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
+		    const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
+		    if (!nextPlan?.day || !nextPlan?.lesson) {
+		      setView(ViewState.DASHBOARD);
+		      return;
+		    }
 
-    // Mark current completed (same as handleNextStep) but stay in Step4 for the next lesson.
-    const completedDay = currentDayPlan.day;
-    setDayCompletedStatus((prev) => ({ ...prev, [completedDay]: true }));
-    setLessonCompleted(true);
-    void upsertLessonProgress({ day: currentDayPlan.day, lesson: currentDayPlan.lesson, level, completed: true });
+	    // Mark current completed (same as handleNextStep) but stay in Step4 for the next lesson.
+	    const completedDay = currentDayPlan.day;
+	    setDayCompletedStatus((prev) => ({ ...prev, [completedDay]: true }));
+	    setLessonCompleted(true);
+		    void upsertLessonProgress({ day: currentDayPlan.day, lesson: currentDayPlan.lesson, level, completed: true });
 
-    setSelectedDayId(nextPlan.day);
-    setActivityStep(ActivityType.DIALOGUE);
-    setView(ViewState.EXERCISE);
+		    const lessonNumber = nextPlan.lesson ?? nextPlan.day;
+		    const freeLimit = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
+		    const wouldBeLocked = !isPremium && lessonNumber > freeLimit;
+		    if (wouldBeLocked) {
+		      const latestEntitlements = await refreshEntitlements();
+		      const premiumNow = isPremiumEffective(latestEntitlements) || isPremium;
+		      const premiumLocked = !premiumNow && lessonNumber > freeLimit;
+		      if (premiumLocked) {
+		        openPremiumGate(lessonNumber);
+		        return;
+		      }
+		    }
 
-    const nextNextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 2] : undefined;
-    if (nextNextPlan?.day && nextNextPlan?.lesson) {
-      void prefetchLessonScript(nextNextPlan.day, nextNextPlan.lesson, level);
-    }
-  };
+		    setSelectedDayId(nextPlan.day);
+
+		    setActivityStep(ActivityType.DIALOGUE);
+		    setView(ViewState.EXERCISE);
+
+	    const nextNextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 2] : undefined;
+	    if (nextNextPlan?.day && nextNextPlan?.lesson) {
+	      void prefetchLessonScript(nextNextPlan.day, nextNextPlan.lesson, level);
+	    }
+	  };
 
 	  const renderInsightPopup = () => {
 	    if (!showInsightPopup) return null;
@@ -864,7 +878,8 @@ const ConnectionRequiredScreen = () => {
 	        <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none" />
 
 	        <div className="relative h-full w-full flex flex-col">
-	          <div className="relative bg-gradient-to-b from-brand-primary/10 to-transparent border-b border-gray-200 px-5 sm:px-6 lg:px-8 pt-6 pb-5">
+	          <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
+	          <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pt-6 pb-5">
 	            <div className="flex items-center gap-4">
 	              <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
 	                <Sparkles className="w-7 h-7 text-brand-primary" />
@@ -936,13 +951,13 @@ const ConnectionRequiredScreen = () => {
 	                        return (
 	                          <div
 	                            key={module.id}
-	                            className={`w-full rounded-2xl border relative overflow-hidden transition-all duration-200 p-4 pl-5 ${
-	                              isActive
-	                                ? 'border-brand-primary bg-gradient-to-br from-brand-primary/10 via-brand-secondary/10 to-white shadow-md shadow-brand-primary/10 ring-1 ring-brand-primary/30'
-	                                : isCompleted
-	                                  ? 'border-emerald-100 bg-emerald-50/70 text-emerald-900'
-	                                  : 'border-gray-200 bg-white hover:border-brand-primary/30'
-	                            }`}
+		                            className={`w-full rounded-2xl border relative overflow-hidden transition-all duration-200 p-4 pl-5 ${
+		                              isActive
+		                                ? 'border-brand-primary bg-white shadow-md shadow-brand-primary/10 ring-1 ring-brand-primary/30'
+		                                : isCompleted
+		                                  ? 'border-emerald-100 bg-emerald-50/70 text-emerald-900'
+		                                  : 'border-gray-200 bg-white hover:border-brand-primary/30'
+		                            }`}
 	                          >
 	                            <div
 	                              className={`absolute left-0 top-0 h-full w-1.5 ${
@@ -961,28 +976,35 @@ const ConnectionRequiredScreen = () => {
 	                                Уроки {module.lessonFrom}-{module.lessonTo}
 	                              </span>
 	                            </div>
-	                            <div className="relative mt-2 text-[18px] font-extrabold text-slate-900">
-	                              {module.moduleTitle}
-	                            </div>
-	                            <div className="relative mt-1 text-[13px] text-gray-700 leading-snug">
-	                              {module.goal}
-	                            </div>
-	                            <div className="relative mt-1.5 text-[13px] text-gray-500 leading-snug">
-	                              {module.summary}
-	                            </div>
-	                            <div className="relative mt-3 flex items-center gap-2 flex-wrap">
-	                              <span className="text-[13px] font-semibold text-gray-600">
-	                                {module.statusBefore} → {module.statusAfter}
-	                              </span>
-	                            </div>
-	                          </div>
-	                        );
-	                      })}
+		                            <div className="relative mt-2 text-[18px] font-extrabold text-slate-900">
+		                              {module.moduleTitle}
+		                            </div>
+		                            <div className="relative mt-3">
+			                              <div className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-slate-900">
+			                                Цель
+			                              </div>
+				                              <div className="mt-1 text-[15px] font-medium text-slate-900 leading-snug">
+				                                {module.goal}
+				                              </div>
+		                            </div>
+		                            <div className="relative mt-3 pt-3 border-t border-gray-100">
+			                              <div className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-slate-900">
+			                                Итог
+			                              </div>
+				                              <div className="mt-1 text-[15px] font-medium text-slate-900 leading-snug">
+				                                {module.summary}
+				                              </div>
+		                            </div>
+			                            {null}
+		                          </div>
+		                        );
+		                      })}
 	                    </div>
 	                  </div>
 	                ))
 	              )}
 	            </div>
+	          </div>
 	          </div>
 	        </div>
 	      </div>
@@ -1437,9 +1459,9 @@ const ConnectionRequiredScreen = () => {
 	                    <span className="inline-flex w-fit px-3 py-1 rounded-full border border-gray-300 text-[11px] font-bold uppercase tracking-widest text-gray-600">
 	                      Тема урока
 	                    </span>
-	                    <p className="text-base text-gray-900 font-semibold leading-snug">
-                      {currentDayPlan?.theme}
-                    </p>
+		                    <p className={`text-base font-semibold leading-snug ${lessonCompleted ? 'text-amber-800' : 'text-gray-900'}`}>
+	                      {currentDayPlan?.theme}
+	                    </p>
                   </div>
                   <div
                     className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl flex-shrink-0 whitespace-nowrap transition-all overflow-hidden ${
@@ -1524,27 +1546,39 @@ const ConnectionRequiredScreen = () => {
     void checkLessonCompletion(false);
   };
 
-  const renderExercise = () => {
-    return (
-      <div
-        key={currentDayPlan ? `${currentDayPlan.day}:${currentDayPlan.lesson}:${level}` : 'no-lesson'}
-        className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up"
+	  const renderExercise = () => {
+	    const nextLessonMeta = (() => {
+	      if (!currentDayPlan) return { nextLessonNumber: undefined as number | undefined, nextLessonIsPremium: false };
+	      const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
+	      const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
+	      if (!nextPlan?.day && !nextPlan?.lesson) return { nextLessonNumber: undefined as number | undefined, nextLessonIsPremium: false };
+	      const nextLessonNumber = (nextPlan?.lesson ?? nextPlan?.day) as number;
+	      const freeLimit = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
+	      return { nextLessonNumber, nextLessonIsPremium: nextLessonNumber > freeLimit };
+	    })();
+
+	    return (
+	      <div
+	        key={currentDayPlan ? `${currentDayPlan.day}:${currentDayPlan.lesson}:${level}` : 'no-lesson'}
+	        className="fixed inset-0 bg-white z-50 flex flex-col animate-fade-in-up"
       >
         <div className="flex-1 overflow-y-auto bg-white flex justify-center">
           <div className="h-full w-full max-w-3xl lg:max-w-4xl">
-            {currentDayPlan && (
-              <Step4Dialogue
-                day={currentDayPlan.day}
-                lesson={currentDayPlan.lesson}
-                level={level}
-                onFinish={handleNextStep}
-                onNextLesson={handleNextLesson}
-                onBack={handleBackFromExercise}
-                copy={copy.dialogue}
-              />
-            )}
-          </div>
-        </div>
+	            {currentDayPlan && (
+	              <Step4Dialogue
+	                day={currentDayPlan.day}
+	                lesson={currentDayPlan.lesson}
+	                level={level}
+	                onFinish={handleNextStep}
+	                onNextLesson={handleNextLesson}
+	                nextLessonNumber={nextLessonMeta.nextLessonNumber}
+	                nextLessonIsPremium={nextLessonMeta.nextLessonIsPremium}
+	                onBack={handleBackFromExercise}
+	                copy={copy.dialogue}
+	              />
+	            )}
+	          </div>
+	        </div>
       </div>
     );
   };
@@ -1619,8 +1653,8 @@ const ConnectionRequiredScreen = () => {
     );
   };
 
-  const renderPremiumGateModal = () => {
-    if (!premiumGateLesson) return null;
+	  const renderPremiumGateModal = () => {
+	    if (!premiumGateLesson) return null;
 
     return createPortal(
       <div
@@ -1664,25 +1698,24 @@ const ConnectionRequiredScreen = () => {
             </div>
           </div>
 
-          <div className="mt-5 grid grid-cols-1 gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                closePremiumGate();
-                // Open account management without "Урок X закрыт" context.
-                setPaywallLesson(null);
-                setView(ViewState.PAYWALL);
-              }}
-              className="h-11 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 transition hover:opacity-90"
-            >
-              Управлять аккаунтом
-            </button>
-          </div>
-        </div>
-      </div>,
-      document.body
-    );
-  };
+	          <div className="mt-5 grid grid-cols-1 gap-3">
+	            <button
+	              type="button"
+	              onClick={() => {
+	                closePremiumGate();
+	                setPaywallLesson(premiumGateLesson);
+	                setView(ViewState.PAYWALL);
+	              }}
+	              className="h-11 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 transition hover:opacity-90"
+	            >
+	              Управлять тарифом
+	            </button>
+	          </div>
+	        </div>
+	      </div>,
+	      document.body
+	    );
+	  };
 
   return (
     <>

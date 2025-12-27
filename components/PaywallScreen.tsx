@@ -130,6 +130,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   };
 
   const handlePay = async () => {
+    if (paying) return;
     setError(null);
     setPaying(true);
     try {
@@ -163,6 +164,8 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       setPaying(false);
     }
   };
+
+  const payButtonLabel = isPremium ? "Premium активен" : "Оплатить";
 
 	  return (
 	    <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900">
@@ -269,19 +272,21 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
             )}
           </div>
 
-          <div className="mt-6 grid gap-3">
-            <button
-              type="button"
-              onClick={handlePay}
-              disabled={paying || isLoading || isPremium}
-              className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              {(paying || isLoading) ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              <span>{isPremium ? "Premium активен" : "Оплатить"}</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+	          <div className="mt-6 grid gap-3">
+	            <button
+	              type="button"
+	              onClick={handlePay}
+	              disabled={paying || isLoading || isPremium}
+	              className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
+	            >
+	              <span className="inline-flex items-center justify-center gap-2">
+	                {(paying || isLoading) ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : null}
+	                <span className="whitespace-nowrap">{payButtonLabel}</span>
+	              </span>
+	            </button>
+	          </div>
+	        </div>
+	      </div>
+	    </div>
   );
 };
