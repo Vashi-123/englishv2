@@ -65,6 +65,7 @@ export function useLessonRestart({
     setVocabIndex: Dispatch<SetStateAction<number>>;
     setShowVocab: Dispatch<SetStateAction<boolean>>;
     setPendingVocabPlay: Dispatch<SetStateAction<boolean>>;
+    setVocabPronunciationByIndex: Dispatch<SetStateAction<Record<number, { wordOk: boolean; exampleOk: boolean }>>>;
   };
 
   findMistake: {
@@ -134,6 +135,7 @@ export function useLessonRestart({
       vocab.setVocabIndex(0);
       vocab.setShowVocab(false);
       vocab.setPendingVocabPlay(false);
+      vocab.setVocabPronunciationByIndex({});
 
       findMistake.setFindMistakeUI({});
       constructor.setConstructorUI({});

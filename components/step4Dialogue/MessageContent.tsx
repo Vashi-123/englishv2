@@ -26,6 +26,9 @@ type Props = {
   vocabWords: VocabWord[];
   vocabIndex: number;
   setVocabIndex: (idx: number) => void;
+  vocabPronunciationByIndex: Record<number, { wordOk: boolean; exampleOk: boolean }>;
+  setVocabPronunciationByIndex: React.Dispatch<React.SetStateAction<Record<number, { wordOk: boolean; exampleOk: boolean }>>>;
+  speechRecognitionSupported: boolean;
   vocabRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
   currentAudioItem: AudioQueueItem | null;
   isAwaitingModelReply: boolean;
@@ -83,6 +86,9 @@ export function MessageContent({
   vocabWords,
   vocabIndex,
   setVocabIndex,
+  vocabPronunciationByIndex,
+  setVocabPronunciationByIndex,
+  speechRecognitionSupported,
   vocabRefs,
   currentAudioItem,
   isAwaitingModelReply,
@@ -219,51 +225,52 @@ export function MessageContent({
       );
     }
 
-    if (parsed.type === 'words_list') {
-      const words = vocabWords.length ? vocabWords : parsed.words || [];
-      const currentIdx = Math.min(vocabIndex, Math.max(words.length - 1, 0));
+		    if (parsed.type === 'words_list') {
+		      const words = vocabWords.length ? vocabWords : parsed.words || [];
+		      const currentIdx = Math.min(vocabIndex, Math.max(words.length - 1, 0));
 
-	      return (
-	        <VocabularyCard
-	          show={showVocab}
-	          words={words}
-	          vocabIndex={vocabIndex}
-	          currentAudioItem={currentAudioItem}
-          onRegisterWordEl={(index, el) => {
-            if (el) vocabRefs.current.set(index, el);
-            else vocabRefs.current.delete(index);
-	          }}
-	          onPlayWord={(wordItem) => {
-	            const normalizedWord = String(wordItem.word || '').replace(/\s+/g, ' ').trim();
-	            const normalizedExample = String(wordItem.context || '').replace(/\s+/g, ' ').trim();
-	            const queue = [
-	              { text: normalizedWord, lang: 'en', kind: 'word' },
-	              ...(normalizedExample && normalizedExample !== normalizedWord
-	                ? [{ text: normalizedExample, lang: 'en', kind: 'example' }]
-	                : []),
-	            ].filter((x) => String(x.text || '').trim().length > 0);
-	            processAudioQueue(queue);
-	          }}
-	          onNextWord={() => {
-	            if (currentIdx + 1 >= words.length) return;
-	            const nextIdx = currentIdx + 1;
-	            setVocabIndex(nextIdx);
-	            const nextWord = words[nextIdx];
-	            if (nextWord) {
-	              const normalizedWord = String(nextWord.word || '').replace(/\s+/g, ' ').trim();
-	              const normalizedExample = String(nextWord.context || '').replace(/\s+/g, ' ').trim();
-	              const queue = [
-	                { text: normalizedWord, lang: 'en', kind: 'word' },
-	                ...(normalizedExample && normalizedExample !== normalizedWord
-	                  ? [{ text: normalizedExample, lang: 'en', kind: 'example' }]
-	                  : []),
-	              ].filter((x) => String(x.text || '').trim().length > 0);
-	              processAudioQueue(queue);
-	            }
-	          }}
-	        />
-	      );
-	    }
+		      return (
+		        <VocabularyCard
+		          show={showVocab}
+		          words={words}
+		          vocabIndex={vocabIndex}
+	            speechRecognitionSupported={speechRecognitionSupported}
+	            pronunciationByIndex={vocabPronunciationByIndex}
+		          currentAudioItem={currentAudioItem}
+	          onRegisterWordEl={(index, el) => {
+	            if (el) vocabRefs.current.set(index, el);
+	            else vocabRefs.current.delete(index);
+		          }}
+		          onPlayWord={(wordItem) => {
+		            const normalizedWord = String(wordItem.word || '').replace(/\s+/g, ' ').trim();
+		            const queue = [{ text: normalizedWord, lang: 'en', kind: 'word' }].filter(
+		              (x) => String(x.text || '').trim().length > 0
+		            );
+		            processAudioQueue(queue);
+		          }}
+		          onPlayExample={(wordItem) => {
+		            const normalizedWord = String(wordItem.word || '').replace(/\s+/g, ' ').trim();
+		            const normalizedExample = String((wordItem as any).context || '').replace(/\s+/g, ' ').trim();
+		            if (!normalizedExample) return;
+		            if (normalizedExample === normalizedWord) return;
+		            processAudioQueue([{ text: normalizedExample, lang: 'en', kind: 'example' }]);
+		          }}
+		          onNextWord={() => {
+		            if (currentIdx + 1 >= words.length) return;
+		            const nextIdx = currentIdx + 1;
+		            setVocabIndex(nextIdx);
+		            const nextWord = words[nextIdx];
+		            if (nextWord) {
+		              const normalizedWord = String(nextWord.word || '').replace(/\s+/g, ' ').trim();
+		              const queue = [{ text: normalizedWord, lang: 'en', kind: 'word' }].filter(
+		                (x) => String(x.text || '').trim().length > 0
+		              );
+		              processAudioQueue(queue);
+		            }
+		          }}
+		        />
+		      );
+		    }
   }
 
   const stepType = msg.currentStepSnapshot?.type;

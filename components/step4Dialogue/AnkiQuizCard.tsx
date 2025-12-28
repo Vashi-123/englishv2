@@ -154,11 +154,10 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
               if (!showResult) {
                 return picked
                   ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
-                  : 'border-gray-200 bg-white text-gray-900 hover:border-brand-primary/30 hover:bg-brand-primary/5';
+                  : 'border-gray-200 bg-white text-gray-900';
               }
               if (picked && correct) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
               if (picked && !correct) return 'border-red-200 bg-red-50 text-red-900';
-              if (!picked && correct) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
               return 'border-gray-200 bg-white text-gray-500';
             })();
 
@@ -184,7 +183,7 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
                   })();
                 }}
                 style={{ WebkitTapHighlightColor: 'transparent' }}
-                className={`px-4 py-3 rounded-2xl border text-sm font-bold shadow-sm transition disabled:opacity-100 select-none ${cls}`}
+                className={`px-4 py-3 rounded-2xl border text-sm font-bold shadow-sm transition-transform transition-colors disabled:opacity-100 select-none active:scale-[0.98] ${cls}`}
               >
                 {v || '—'}
               </button>

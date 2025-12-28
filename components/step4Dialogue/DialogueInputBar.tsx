@@ -14,6 +14,8 @@ type Props = {
   isTranscribing: boolean;
   onToggleRecording: () => void;
   cta?: { label: string; onClick: () => void; disabled?: boolean } | null;
+  hiddenTopContent?: React.ReactNode;
+  autoFocus?: boolean;
 };
 
 export function DialogueInputBar({
@@ -27,8 +29,11 @@ export function DialogueInputBar({
   isTranscribing,
   onToggleRecording,
   cta,
+  hiddenTopContent,
+  autoFocus = true,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (inputMode !== 'text') return;
@@ -39,8 +44,29 @@ export function DialogueInputBar({
     el.style.height = `${Math.max(52, next)}px`;
   }, [input, inputMode]);
 
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const writeHeight = () => {
+      const height = Math.max(0, Math.round(el.getBoundingClientRect().height));
+      try {
+        document.documentElement.style.setProperty('--dialogue-inputbar-height', `${height}px`);
+      } catch {
+        // ignore
+      }
+    };
+
+    writeHeight();
+
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => writeHeight());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-[100] bg-white p-4 border-t border-gray-100">
+    <div ref={containerRef} className="absolute bottom-0 left-0 right-0 z-[100] bg-white p-4 border-t border-gray-100">
       <div className="max-w-3xl lg:max-w-4xl mx-auto px-4">
         {inputMode === 'audio' ? (
           <div className="flex justify-center">
@@ -86,7 +112,7 @@ export function DialogueInputBar({
               rows={1}
               className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto"
               disabled={isLoading}
-              autoFocus
+              autoFocus={autoFocus}
             />
             <button
               type="submit"
@@ -98,6 +124,7 @@ export function DialogueInputBar({
           </form>
         ) : (
           <div className="py-2">
+            {hiddenTopContent ? <div className="mb-3">{hiddenTopContent}</div> : null}
             {cta ? (
               <button
                 type="button"

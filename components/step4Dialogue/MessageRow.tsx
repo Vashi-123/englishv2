@@ -77,7 +77,7 @@ export const MessageRow: React.FC<Props> = ({
       ))}
 
       {shouldInsertMatchingHere && (
-        <div className="w-full flex justify-center">
+        <div className="w-full flex justify-center mb-6">
           <div className="w-full max-w-2xl">
             <MatchingGameCard {...matching} />
           </div>
@@ -94,7 +94,7 @@ export const MessageRow: React.FC<Props> = ({
         <div
           className={`flex ${
             isFullCard ? 'w-full max-w-2xl' : 'max-w-[85%]'
-          } ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-end gap-3 min-w-0`}
+          } ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-start gap-3 min-w-0`}
         >
           {msg.role === 'model' && !isSituationCard && !isFullCard && (
             <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">

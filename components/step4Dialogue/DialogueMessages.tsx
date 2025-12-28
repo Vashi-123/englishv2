@@ -42,13 +42,16 @@ export function DialogueMessages({
   grammarGate,
   persistGrammarGateOpened,
 
-  showVocab,
-  vocabWords,
-  vocabIndex,
-  setVocabIndex,
-  vocabRefs,
-  currentAudioItem,
-  processAudioQueue,
+	  showVocab,
+	  vocabWords,
+	  vocabIndex,
+	  setVocabIndex,
+	  vocabPronunciationByIndex,
+	  setVocabPronunciationByIndex,
+	  speechRecognitionSupported,
+	  vocabRefs,
+	  currentAudioItem,
+	  processAudioQueue,
 
   lessonScript,
   currentStep,
@@ -86,11 +89,6 @@ export function DialogueMessages({
 			  isAwaitingModelReply,
 			  lessonCompletedPersisted,
 			  onNextLesson,
-			  onAskTutor,
-			  tutorPanelOpen,
-			  tutorBannerText,
-			  tutorThreadMessages,
-			  tutorIsAwaitingReply,
 
         nextLessonNumber,
         nextLessonIsPremium,
@@ -119,13 +117,16 @@ export function DialogueMessages({
   grammarGate: GrammarGateState;
   persistGrammarGateOpened: (keys: string[]) => void;
 
-  showVocab: boolean;
-  vocabWords: any[];
-  vocabIndex: number;
-  setVocabIndex: Dispatch<SetStateAction<number>>;
-  vocabRefs: MutableRefObject<Map<number, HTMLDivElement>>;
-  currentAudioItem: any;
-  processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>) => void;
+	  showVocab: boolean;
+	  vocabWords: any[];
+	  vocabIndex: number;
+	  setVocabIndex: Dispatch<SetStateAction<number>>;
+	  vocabPronunciationByIndex: Record<number, { wordOk: boolean; exampleOk: boolean }>;
+	  setVocabPronunciationByIndex: Dispatch<SetStateAction<Record<number, { wordOk: boolean; exampleOk: boolean }>>>;
+	  speechRecognitionSupported: boolean;
+	  vocabRefs: MutableRefObject<Map<number, HTMLDivElement>>;
+	  currentAudioItem: any;
+	  processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>) => void;
 
   lessonScript: any | null;
   currentStep: any | null;
@@ -173,11 +174,6 @@ export function DialogueMessages({
 			  isAwaitingModelReply: boolean;
 			  lessonCompletedPersisted: boolean;
 			  onNextLesson?: () => void;
-			  onAskTutor?: () => void;
-				  tutorPanelOpen?: boolean;
-				  tutorBannerText?: string;
-				  tutorThreadMessages?: Array<{ role: 'user' | 'model'; text: string }>;
-				  tutorIsAwaitingReply?: boolean;
 
         nextLessonNumber?: number;
         nextLessonIsPremium?: boolean;
@@ -484,13 +480,16 @@ export function DialogueMessages({
                   isSituationCard={isSituationCard}
                   situationGroupMessages={situationGroupMessages || null}
                   situationCompletedCorrect={situationCompletedCorrect}
-                  showVocab={showVocab}
-                  vocabWords={vocabWords}
-                  vocabIndex={vocabIndex}
-                  setVocabIndex={setVocabIndex}
-                  currentAudioItem={currentAudioItem}
-                  vocabRefs={vocabRefs}
-                  processAudioQueue={processAudioQueue}
+	                  showVocab={showVocab}
+	                  vocabWords={vocabWords}
+	                  vocabIndex={vocabIndex}
+	                  setVocabIndex={setVocabIndex}
+	                  vocabPronunciationByIndex={vocabPronunciationByIndex}
+	                  setVocabPronunciationByIndex={setVocabPronunciationByIndex}
+	                  speechRecognitionSupported={speechRecognitionSupported}
+	                  currentAudioItem={currentAudioItem}
+	                  vocabRefs={vocabRefs}
+	                  processAudioQueue={processAudioQueue}
                   lessonScript={lessonScript}
                   currentStep={currentStep}
                   isAwaitingModelReply={Boolean(isAwaitingModelReply)}
@@ -538,7 +537,6 @@ export function DialogueMessages({
         )}
 
         {isAwaitingModelReply &&
-          !tutorPanelOpen &&
           !suppressGlobalTypingIndicator &&
           messages.length > 0 &&
           messages[messages.length - 1]?.role === 'user' && (
@@ -556,7 +554,7 @@ export function DialogueMessages({
         {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
           <>
             <AchievementCard />
-            {(onNextLesson || onAskTutor) && (
+            {onNextLesson && (
               <div className="flex flex-col items-center -mt-2 mb-8 gap-3 animate-fade-in w-full">
 	                {onNextLesson && (
 	                  <button
@@ -575,54 +573,16 @@ export function DialogueMessages({
 	                    </span>
 	                  </button>
 	                )}
-                {tutorPanelOpen && tutorBannerText ? (
-                  <div className="w-full max-w-sm px-4 py-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 shadow-sm">
-                    <div className="text-sm font-semibold">{tutorBannerText}</div>
-                    <div className="mt-3 space-y-2">
-                      {(tutorThreadMessages || []).map((m, i) => (
-                        <div key={`${m.role}-${i}`} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div
-                            className={
-                              m.role === 'user'
-                                ? 'max-w-[85%] rounded-2xl bg-gray-900 text-white px-4 py-2 text-sm shadow-sm'
-                                : 'max-w-[85%] rounded-2xl bg-white text-gray-900 px-4 py-2 text-sm shadow-sm border border-emerald-100'
-                            }
-                          >
-                            {m.text}
-                          </div>
-                        </div>
-                      ))}
-                      {tutorIsAwaitingReply && (
-                        <div className="flex justify-start">
-                          <div className="bg-white px-4 py-2 rounded-full flex space-x-1 border border-emerald-100 shadow-sm">
-                            <div className="w-2 h-2 bg-emerald-300 rounded-full animate-bounce"></div>
-                            <div className="w-2 h-2 bg-emerald-300 rounded-full animate-bounce delay-100"></div>
-                            <div className="w-2 h-2 bg-emerald-300 rounded-full animate-bounce delay-200"></div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : null}
-                {onAskTutor && !tutorPanelOpen && (
-                  <button
-                    type="button"
-                    onClick={onAskTutor}
-                    className="w-full max-w-sm inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 shadow-[0_14px_34px_rgba(16,185,129,0.28)] ring-2 ring-emerald-200/70 hover:shadow-[0_18px_40px_rgba(20,184,166,0.22)] hover:scale-[1.02] active:scale-[0.99] transition"
-                  >
-                    Спросить репетитора
-                  </button>
-                )}
               </div>
             )}
           </>
         )}
 
-        {ankiGateActive && !lessonCompletedPersisted && !tutorPanelOpen && (
+        {ankiGateActive && !lessonCompletedPersisted && (
           <>
             <div className="px-6">
               <div className="flex justify-start">
-                <div className="flex flex-row items-end gap-3 min-w-0 max-w-[85%]">
+                <div className="flex flex-row items-start gap-3 min-w-0 max-w-[85%]">
                   <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">
                     <Bot className="w-4 h-4" />
                   </div>
