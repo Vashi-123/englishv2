@@ -439,18 +439,13 @@ export function Step4DialogueScreen({
     [day, lesson, resolvedLanguage, resolvedLevel, tutorHistory, tutorQuestionsUsed]
   );
 
-  const handleSend = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (!input.trim()) return;
-      const userMsg = input.trim();
-      setInput('');
-      setInputMode('hidden');
-
-      await handleStudentAnswer(userMsg);
-    },
-    [handleStudentAnswer, input]
-  );
+  const handleSend = useCallback(async () => {
+    if (!input.trim()) return;
+    const userMsg = input.trim();
+    setInput('');
+    setInputMode('hidden');
+    await handleStudentAnswer(userMsg);
+  }, [handleStudentAnswer, input]);
 
   const onSpeechTranscript = useCallback(
     async (transcript: string) => {
@@ -557,17 +552,18 @@ export function Step4DialogueScreen({
 	    return w.SpeechRecognition || w.webkitSpeechRecognition || null;
 	  }, []);
 
-	  const [vocabListening, setVocabListening] = useState<{ index: number; kind: 'word' | 'example' } | null>(null);
-	  const [vocabHeard, setVocabHeard] = useState<string>('');
-	  const [vocabCorrect, setVocabCorrect] = useState<boolean | null>(null);
-	  const [vocabError, setVocabError] = useState<string | null>(null);
-	  const vocabRecognitionRef = useRef<any | null>(null);
-	  const vocabTimeoutRef = useRef<number | null>(null);
-	  const vocabSilenceTimerRef = useRef<number | null>(null);
-	  const vocabExpectedRef = useRef<{ index: number; kind: 'word' | 'example'; expectedText: string } | null>(null);
-	  const vocabLastTranscriptRef = useRef<string>('');
+  const [vocabListening, setVocabListening] = useState<{ index: number; kind: 'word' | 'example' } | null>(null);
+  const [vocabHeard, setVocabHeard] = useState<string>('');
+  const [vocabCorrect, setVocabCorrect] = useState<boolean | null>(null);
+  const [vocabError, setVocabError] = useState<string | null>(null);
+  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
+  const vocabRecognitionRef = useRef<any | null>(null);
+  const vocabTimeoutRef = useRef<number | null>(null);
+  const vocabSilenceTimerRef = useRef<number | null>(null);
+  const vocabExpectedRef = useRef<{ index: number; kind: 'word' | 'example'; expectedText: string } | null>(null);
+  const vocabLastTranscriptRef = useRef<string>('');
 
-	  const stopVocabListening = useCallback(() => {
+  const stopVocabListening = useCallback(() => {
 	    if (vocabTimeoutRef.current) {
 	      window.clearTimeout(vocabTimeoutRef.current);
 	      vocabTimeoutRef.current = null;
@@ -587,14 +583,51 @@ export function Step4DialogueScreen({
 	      }
 	      vocabRecognitionRef.current = null;
 	    }
-	    setVocabListening(null);
-	    vocabExpectedRef.current = null;
-	  }, []);
+    setVocabListening(null);
+    vocabExpectedRef.current = null;
+  }, []);
 
-	  useEffect(() => () => stopVocabListening(), [stopVocabListening]);
+  useEffect(() => () => stopVocabListening(), [stopVocabListening]);
 
-	  const markVocabPronounced = useCallback(
-	    (index: number, kind: 'word' | 'example') => {
+  useEffect(() => {
+    if (typeof navigator === 'undefined') return;
+    const perms = (navigator as any).permissions;
+    if (!perms?.query) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const status = await perms.query({ name: 'microphone' });
+        if (cancelled) return;
+        setMicPermission(status?.state === 'granted' ? 'granted' : status?.state === 'denied' ? 'denied' : 'unknown');
+        status.onchange = () => {
+          if (cancelled) return;
+          setMicPermission(status?.state === 'granted' ? 'granted' : status?.state === 'denied' ? 'denied' : 'unknown');
+        };
+      } catch {
+        // ignore
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const ensureMicPermission = useCallback(async () => {
+    try {
+      if (typeof navigator === 'undefined') return false;
+      if (!navigator.mediaDevices?.getUserMedia) return false;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((t) => t.stop());
+      setMicPermission('granted');
+      return true;
+    } catch {
+      setMicPermission('denied');
+      return false;
+    }
+  }, []);
+
+  const markVocabPronounced = useCallback(
+    (index: number, kind: 'word' | 'example') => {
 	      const w = vocabWords[index];
 	      const hasExample = Boolean(String((w as any)?.context || '').trim());
 	      setVocabPronunciationByIndex((prev) => {
@@ -607,11 +640,11 @@ export function Step4DialogueScreen({
 	    [vocabWords]
 	  );
 
-	  const startVocabListening = useCallback(
-	    ({ index, kind, expectedText }: { index: number; kind: 'word' | 'example'; expectedText: string }) => {
-	      if (!speechRecognitionSupported) return;
-	      if (!SpeechRecognitionCtor) return;
-	      stopVocabListening();
+  const startVocabListening = useCallback(
+    ({ index, kind, expectedText }: { index: number; kind: 'word' | 'example'; expectedText: string }) => {
+      if (!speechRecognitionSupported) return;
+      if (!SpeechRecognitionCtor) return;
+      stopVocabListening();
 
 	      setVocabError(null);
 	      setVocabHeard('');
@@ -1723,13 +1756,20 @@ export function Step4DialogueScreen({
 	    vocabLastTranscriptRef.current = '';
 	  }, [showVocab, vocabIndex, vocabPronounceTask?.kind]);
 
-		  const vocabMicUi =
-		    speechRecognitionSupported && showVocab && vocabWords.length > 0 && vocabPronounceTask ? (
-		      <div className="flex flex-col items-center gap-2">
-		        <button
-		          type="button"
-		          disabled={isLoading || Boolean(isPlayingQueue)}
-	          onClick={() => {
+	  const vocabMicUi =
+	    speechRecognitionSupported && showVocab && vocabWords.length > 0 && vocabPronounceTask ? (
+	      <div className="flex flex-col items-center gap-2">
+	        <button
+	          type="button"
+	          disabled={isLoading || Boolean(isPlayingQueue)}
+	          onClick={async () => {
+	            if (micPermission !== 'granted') {
+	              const ok = await ensureMicPermission();
+	              if (!ok) {
+	                setVocabError('mic_permission_denied');
+	                return;
+	              }
+	            }
 	            const isListeningThis =
 	              Boolean(vocabListening) &&
 	              vocabListening.index === vocabIndex &&
@@ -1750,18 +1790,18 @@ export function Step4DialogueScreen({
 	            startVocabListening({
 	              index: vocabIndex,
 	              kind: vocabPronounceTask.kind,
-		              expectedText: vocabPronounceTask.expectedText,
-		            });
-		          }}
-		          className={`relative p-5 rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${
-		            vocabListening
-		              ? 'bg-red-500 text-white shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse'
-		              : 'bg-brand-primary text-white hover:opacity-90'
-		          }`}
-		          aria-label={vocabListening ? 'Stop' : 'Start'}
-		        >
-		          <Mic className={`w-6 h-6 ${vocabListening ? 'animate-pulse' : ''}`} />
-		        </button>
+	              expectedText: vocabPronounceTask.expectedText,
+	            });
+	          }}
+	          className={`relative p-5 rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${
+	            vocabListening
+	              ? 'bg-red-500 text-white shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse'
+	              : 'bg-brand-primary text-white hover:opacity-90'
+	          }`}
+	          aria-label={vocabListening ? 'Stop' : 'Start'}
+	        >
+	          <Mic className={`w-6 h-6 ${vocabListening ? 'animate-pulse' : ''}`} />
+	        </button>
 		        {vocabHeard ? (
 		          <div className="text-xs text-gray-600">
 		            <span className="font-semibold text-gray-700">Я услышал:</span> {vocabHeard}

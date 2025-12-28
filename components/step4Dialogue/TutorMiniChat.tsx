@@ -119,37 +119,38 @@ export function TutorMiniChat({
             <div ref={endRef} />
           </div>
 
-          <form
-            className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const text = input.trim();
-              if (!text) return;
-              onSend(text);
-            }}
-          >
-            <input
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={isAwaitingReply}
-              placeholder={placeholder}
-              className="flex-1 h-11 rounded-xl bg-gray-100 px-4 text-[16px] font-medium text-gray-900 outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:opacity-60"
-              onKeyDown={(e) => {
-                if (e.key === 'Escape') onClose();
-              }}
-            />
-            <button
-              type="submit"
-              disabled={isAwaitingReply || !input.trim()}
-              className="h-11 w-11 inline-flex items-center justify-center rounded-xl bg-brand-primary text-white shadow-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Send to tutor"
-            >
-              <Send className="h-5 w-5" />
-            </button>
-          </form>
-        </div>
-      ) : null}
-    </>
-  );
+	          <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white">
+	            <input
+	              ref={inputRef}
+	              value={input}
+	              onChange={(e) => setInput(e.target.value)}
+	              disabled={isAwaitingReply}
+	              placeholder={placeholder}
+	              className="flex-1 h-11 rounded-xl bg-gray-100 px-4 text-[16px] font-medium text-gray-900 outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:opacity-60"
+	              onKeyDown={(e) => {
+	                if (e.key === 'Enter') {
+	                  e.preventDefault();
+	                  return;
+	                }
+	                if (e.key === 'Escape') onClose();
+	              }}
+	            />
+	            <button
+	              type="button"
+	              disabled={isAwaitingReply || !input.trim()}
+	              onClick={() => {
+	                const text = input.trim();
+	                if (!text) return;
+	                onSend(text);
+	              }}
+	              className="h-11 w-11 inline-flex items-center justify-center rounded-xl bg-brand-primary text-white shadow-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+	              aria-label="Send to tutor"
+	            >
+	              <Send className="h-5 w-5" />
+	            </button>
+	          </div>
+	        </div>
+	      ) : null}
+	    </>
+	  );
 }

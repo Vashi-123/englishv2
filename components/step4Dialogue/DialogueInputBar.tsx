@@ -7,7 +7,7 @@ type Props = {
   inputMode: InputMode;
   input: string;
   onInputChange: (value: string) => void;
-  onSend: (e: React.FormEvent) => void;
+  onSend: () => void;
   placeholder: string;
   isLoading: boolean;
   isRecording: boolean;
@@ -97,17 +97,11 @@ export function DialogueInputBar({
             )}
           </div>
         ) : inputMode === 'text' ? (
-          <form onSubmit={onSend} className="relative flex items-center gap-3">
+          <div className="relative flex items-center gap-3">
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => onInputChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  onSend(e as unknown as React.FormEvent);
-                }
-              }}
               placeholder={placeholder}
               rows={1}
               className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto"
@@ -115,13 +109,14 @@ export function DialogueInputBar({
               autoFocus={autoFocus}
             />
             <button
-              type="submit"
+              type="button"
               disabled={isLoading || !input.trim()}
+              onClick={onSend}
               className="p-4 bg-brand-primary text-white rounded-full hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100"
             >
               <Send className="w-5 h-5" />
             </button>
-          </form>
+          </div>
         ) : (
           <div className="py-2">
             {hiddenTopContent ? <div className="mb-3">{hiddenTopContent}</div> : null}
