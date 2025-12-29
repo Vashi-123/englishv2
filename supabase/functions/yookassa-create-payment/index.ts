@@ -225,6 +225,11 @@ Deno.serve(async (req: Request) => {
       amountValue: priced.amountValue,
       currency,
       promo: priced.appliedPromo || null,
+      hasEmail: Boolean(userEmail),
+      email: userEmail || null,
+      sendReceipt: YOOKASSA_SEND_RECEIPT,
+      taxSystemCode: YOOKASSA_TAX_SYSTEM_CODE,
+      vatCode: YOOKASSA_VAT_CODE,
     });
 
     const receipt = buildReceipt({
@@ -263,6 +268,16 @@ Deno.serve(async (req: Request) => {
         ...(receipt ? { receipt } : {}),
         metadata: { user_id: userId, entitlement: "premium", payment_row_id: inserted.id, promo_code: priced.appliedPromo || null, product_key: productKey },
       }),
+    });
+    console.log("[yookassa-create-payment] yookassa payload", {
+      requestId,
+      amountValue: priced.amountValue,
+      currency,
+      hasEmail: Boolean(userEmail),
+      email: userEmail || null,
+      includeReceipt: Boolean(receipt),
+      confirmationType: "redirect",
+      returnUrl,
     });
 
     const ykText = await ykResp.text();

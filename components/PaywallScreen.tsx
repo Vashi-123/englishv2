@@ -197,17 +197,9 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 			            </div>
 			          </div>
 
-			          {lessonNumber && lessonNumber > freeLessonCount && !isPremium ? (
-			            <div className="mt-3 flex justify-end">
-			              <div className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-800 text-xs font-extrabold">
-			                Урок {lessonNumber} закрыт
-			              </div>
-			            </div>
-		          ) : null}
-
-	          <div className="mt-6 pt-5 border-t border-gray-100">
-	            <h1 className="text-xl sm:text-3xl font-black tracking-tight">Откройте полный курс A1</h1>
-	            <p className="mt-2 text-sm leading-relaxed">
+          <div className="mt-6 pt-5 border-t border-gray-100">
+            <h1 className="text-xl sm:text-3xl font-black tracking-tight">Откройте полный курс A1</h1>
+            <p className="mt-2 text-sm leading-relaxed">
 		              <span className="block font-semibold text-slate-700">Проходите уроки в своём темпе</span>
 		              <span className="block mt-3 font-semibold text-slate-700">
 		                Подключайте преподавателя точечно — как куратора прогресса и закрепления.
