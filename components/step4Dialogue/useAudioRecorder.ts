@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 
 type Params = {
   getContextText: () => string;
@@ -157,7 +158,12 @@ export function useAudioRecorder({ getContextText, onTranscript, onError, onInfo
       const message = record && typeof record.message === 'string' ? record.message : '';
 
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        onErrorRef.current?.('Доступ к микрофону запрещен. Разрешите доступ в настройках браузера.');
+        const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+        onErrorRef.current?.(
+          isNativeIos
+            ? 'Доступ к микрофону запрещен. Разрешите доступ: Настройки → EnglishV2 → Микрофон.'
+            : 'Доступ к микрофону запрещен. Разрешите доступ в настройках браузера.'
+        );
       } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
         onErrorRef.current?.('Микрофон не обнаружен. Проверьте подключение микрофона.');
       } else {

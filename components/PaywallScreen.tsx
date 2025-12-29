@@ -168,7 +168,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const payButtonLabel = isPremium ? "Premium активен" : "Оплатить";
 
 	  return (
-	    <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900">
+	    <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900 pt-[var(--app-safe-top)]">
 	      <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
 	      <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 

@@ -10,6 +10,10 @@ const DEFAULT_LANG = 'en-US';
 const DEFAULT_VOICE = (import.meta as any)?.env?.VITE_TTS_VOICE || 'cedar';
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
 const CACHE_NAME = 'englishv2-tts-v1';
+const loggedReadyHashes = new Set<string>();
+const loggedFetchFailHashes = new Set<string>();
+let loggedCacheUnavailable = false;
+let loggedIdbUnavailable = false;
 
 // Cache: hash -> url (string) | null (known-missing)
 const urlCache = new Map<string, string | null>();
@@ -38,17 +42,129 @@ async function hasAuthSession(): Promise<boolean> {
 }
 
 function cacheRequestForHash(hash: string) {
+  // Cache Storage on some platforms requires a fully qualified HTTP/HTTPS URL.
+  if (typeof window !== 'undefined') {
+    try {
+      const url = new URL(`/__tts/${hash}.mp3`, window.location.href);
+      return new Request(url.toString(), { method: 'GET' });
+    } catch {
+      // fall through
+    }
+  }
   return new Request(`/__tts/${hash}.mp3`, { method: 'GET' });
+}
+
+function canUseHttpCacheStorage(): boolean {
+  try {
+    if (typeof window === 'undefined') return false;
+    if (!('caches' in window)) return false;
+    const protocol = String(window.location?.protocol || '');
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 async function getCache(): Promise<Cache | null> {
   try {
+    if (!canUseHttpCacheStorage()) return null;
     if (typeof window === 'undefined') return null;
     if (!('caches' in window)) return null;
     return await caches.open(CACHE_NAME);
   } catch {
+    if (!loggedCacheUnavailable) {
+      loggedCacheUnavailable = true;
+      // eslint-disable-next-line no-console
+      console.log('[TTS] Cache API unavailable; prefetch will be skipped.');
+    }
     return null;
   }
+}
+
+const TTS_IDB_DB = 'englishv2-tts-db';
+const TTS_IDB_STORE = 'assets';
+let idbOpenPromise: Promise<IDBDatabase> | null = null;
+
+async function openTtsIdb(): Promise<IDBDatabase | null> {
+  try {
+    if (typeof window === 'undefined') return null;
+    if (!('indexedDB' in window)) return null;
+    if (idbOpenPromise) return await idbOpenPromise;
+
+    idbOpenPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(TTS_IDB_DB, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(TTS_IDB_STORE)) {
+          db.createObjectStore(TTS_IDB_STORE, { keyPath: 'hash' });
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('indexedDB open failed'));
+    });
+
+    return await idbOpenPromise;
+  } catch {
+    if (!loggedIdbUnavailable) {
+      loggedIdbUnavailable = true;
+      // eslint-disable-next-line no-console
+      console.log('[TTS] IndexedDB unavailable; caching disabled.');
+    }
+    return null;
+  }
+}
+
+async function idbGetMp3(hash: string): Promise<Blob | null> {
+  const db = await openTtsIdb();
+  if (!db) return null;
+  return await new Promise((resolve) => {
+    try {
+      const tx = db.transaction(TTS_IDB_STORE, 'readonly');
+      const store = tx.objectStore(TTS_IDB_STORE);
+      const req = store.get(hash);
+      req.onsuccess = () => {
+        const row: any = req.result;
+        const blob = row?.blob instanceof Blob ? (row.blob as Blob) : null;
+        resolve(blob);
+      };
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function idbPutMp3(hash: string, blob: Blob): Promise<boolean> {
+  const db = await openTtsIdb();
+  if (!db) return false;
+  return await new Promise((resolve) => {
+    try {
+      const tx = db.transaction(TTS_IDB_STORE, 'readwrite');
+      const store = tx.objectStore(TTS_IDB_STORE);
+      const row = { hash, blob, size: blob.size, type: blob.type || 'audio/mpeg', updatedAt: Date.now() };
+      const req = store.put(row);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+async function idbDeleteMp3(hash: string): Promise<void> {
+  const db = await openTtsIdb();
+  if (!db) return;
+  await new Promise<void>((resolve) => {
+    try {
+      const tx = db.transaction(TTS_IDB_STORE, 'readwrite');
+      const store = tx.objectStore(TTS_IDB_STORE);
+      const req = store.delete(hash);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
 }
 
 function parseScriptJson(script: string): any | null {
@@ -190,6 +306,30 @@ async function getTtsAudioUrl(params: { text: string; lang?: string; voice?: str
   }
 
   if (!data) {
+    // If the configured voice doesn't match the generated assets, the hash lookup will miss.
+    // Fall back to "any voice for this exact text" (still respects RLS).
+    const fallback = await supabase
+      .from('tts_assets')
+      .select('public_url, storage_bucket, storage_path')
+      .eq('lang', lang)
+      .eq('text', text)
+      .limit(1)
+      .maybeSingle<TtsAssetRow>();
+
+    if (!fallback.error && fallback.data) {
+      const row = fallback.data;
+      const signed = await supabase.storage.from(row.storage_bucket).createSignedUrl(row.storage_path, SIGNED_URL_TTL_SECONDS);
+      const signedUrl = signed.data?.signedUrl || null;
+      const resolved = signedUrl || row.public_url || supabase.storage.from(row.storage_bucket).getPublicUrl(row.storage_path)?.data?.publicUrl || null;
+      urlCache.set(hash, resolved);
+      try {
+        sessionStorage.setItem(sessionKey(hash), resolved ?? '__missing__');
+      } catch {
+        // ignore
+      }
+      return resolved;
+    }
+
     // Only cache "missing" if we are authenticated; otherwise we might be seeing RLS-filtered emptiness.
     const authed = await hasAuthSession();
     if (authed) urlCache.set(hash, null);
@@ -246,14 +386,37 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
   if (!/[A-Za-z]/.test(text)) return null;
 
   const hash = await sha256Hex(`${lang}|${voice}|${text}`);
-  const cache = await getCache();
-  const cacheReq = cacheRequestForHash(hash);
 
-  // If already cached, use it.
-  if (cache) {
-    const hit = await cache.match(cacheReq);
-    if (hit) {
-      const blob = ensureMp3BlobType(await hit.blob());
+  const cache = await getCache();
+  const cacheReq = cache ? cacheRequestForHash(hash) : null;
+
+  // If already cached, use it (web/http(s)).
+  if (cache && cacheReq) {
+    try {
+      const hit = await cache.match(cacheReq);
+      if (hit) {
+        const blob = ensureMp3BlobType(await hit.blob());
+        if (!loggedReadyHashes.has(hash)) {
+          loggedReadyHashes.add(hash);
+          // This is useful on iOS to confirm assets are available offline.
+          // eslint-disable-next-line no-console
+          console.log('[TTS] Ready (cached mp3):', { hash, voice, text: text.slice(0, 80) });
+        }
+        return URL.createObjectURL(blob);
+      }
+    } catch {
+      // ignore
+    }
+  } else {
+    // iOS (capacitor://) and other non-http(s): use IndexedDB.
+    const hitBlob = await idbGetMp3(hash);
+    if (hitBlob && hitBlob.size > 0) {
+      const blob = ensureMp3BlobType(hitBlob);
+      if (!loggedReadyHashes.has(hash)) {
+        loggedReadyHashes.add(hash);
+        // eslint-disable-next-line no-console
+        console.log('[TTS] Ready (idb mp3):', { hash, voice, text: text.slice(0, 80) });
+      }
       return URL.createObjectURL(blob);
     }
   }
@@ -264,16 +427,77 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
   // Download and cache mp3 bytes for stable reuse.
   try {
     const res = await fetch(remoteUrl);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      if (!loggedFetchFailHashes.has(hash)) {
+        loggedFetchFailHashes.add(hash);
+        // eslint-disable-next-line no-console
+        console.warn('[TTS] Fetch failed:', {
+          hash,
+          status: res.status,
+          statusText: res.statusText,
+          host: (() => {
+            try {
+              return new URL(remoteUrl).host;
+            } catch {
+              return null;
+            }
+          })(),
+          voice,
+          text: text.slice(0, 80),
+        });
+      }
+      return null;
+    }
     const blob = ensureMp3BlobType(await res.blob());
     if (!blob || blob.size === 0) return null;
 
-    if (cache) {
-      await cache.put(cacheReq, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } }));
+    if (cache && cacheReq) {
+      try {
+        await cache.put(cacheReq, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } }));
+      } catch (e) {
+        if (!loggedFetchFailHashes.has(`${hash}:cachePut`)) {
+          loggedFetchFailHashes.add(`${hash}:cachePut`);
+          // eslint-disable-next-line no-console
+          console.warn('[TTS] Cache put failed:', {
+            hash,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
+      }
+    } else {
+      const ok = await idbPutMp3(hash, blob);
+      if (!ok && !loggedFetchFailHashes.has(`${hash}:idbPut`)) {
+        loggedFetchFailHashes.add(`${hash}:idbPut`);
+        // eslint-disable-next-line no-console
+        console.warn('[TTS] IndexedDB put failed:', { hash });
+      }
+    }
+
+    if (!loggedReadyHashes.has(hash)) {
+      loggedReadyHashes.add(hash);
+      // eslint-disable-next-line no-console
+      console.log('[TTS] Downloaded and ready:', { hash, voice, text: text.slice(0, 80) });
     }
 
     return URL.createObjectURL(blob);
-  } catch {
+  } catch (e) {
+    if (!loggedFetchFailHashes.has(hash)) {
+      loggedFetchFailHashes.add(hash);
+      // eslint-disable-next-line no-console
+      console.warn('[TTS] Fetch threw:', {
+        hash,
+        error: e instanceof Error ? e.message : String(e),
+        host: (() => {
+          try {
+            return new URL(remoteUrl).host;
+          } catch {
+            return null;
+          }
+        })(),
+        voice,
+        text: text.slice(0, 80),
+      });
+    }
     return null;
   }
 }
@@ -330,7 +554,21 @@ export async function prefetchTtsForLessonScript(params: {
     if (phrases.length === 0) return;
 
     const cache = await getCache();
-    if (!cache) return;
+    const useIdb = !cache;
+    if (useIdb && !(await openTtsIdb())) {
+      // eslint-disable-next-line no-console
+      console.log('[TTS] Prefetch skipped: no Cache Storage and no IndexedDB.', { lessonCacheKey: params.lessonCacheKey });
+      return;
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('[TTS] Prefetch start:', {
+      lessonCacheKey: params.lessonCacheKey,
+      phrases: phrases.length,
+      voice,
+      lang,
+      storage: useIdb ? 'idb' : 'cache',
+    });
 
     const hashes: string[] = [];
     for (const text of phrases) {
@@ -348,6 +586,14 @@ export async function prefetchTtsForLessonScript(params: {
     // Concurrency-limited prefetch.
     const concurrency = 3;
     let index = 0;
+    const stats = { hit: 0, downloaded: 0, missing: 0, failed: 0 };
+    const failureSamples: Array<{ hash: string; reason: string; extra?: any }> = [];
+    const recordFailure = (hash: string, reason: string, extra?: any) => {
+      stats.failed += 1;
+      if (failureSamples.length < 3) {
+        failureSamples.push({ hash, reason, extra });
+      }
+    };
     const workers = Array.from({ length: Math.min(concurrency, phrases.length) }, async () => {
       while (index < phrases.length) {
         const myIndex = index;
@@ -355,26 +601,73 @@ export async function prefetchTtsForLessonScript(params: {
 
         const text = phrases[myIndex];
         const hash = hashes[myIndex];
-        const req = cacheRequestForHash(hash);
-        const hit = await cache.match(req);
-        if (hit) continue;
+        if (!useIdb && cache) {
+          const req = cacheRequestForHash(hash);
+          try {
+            const hit = await cache.match(req);
+            if (hit) {
+              stats.hit += 1;
+              continue;
+            }
+          } catch {
+            // ignore
+          }
+        } else {
+          const hitBlob = await idbGetMp3(hash);
+          if (hitBlob && hitBlob.size > 0) {
+            stats.hit += 1;
+            continue;
+          }
+        }
 
         const remoteUrl = await getTtsAudioUrl({ text, lang, voice });
-        if (!remoteUrl) continue;
+        if (!remoteUrl) {
+          stats.missing += 1;
+          continue;
+        }
 
         try {
           const res = await fetch(remoteUrl);
-          if (!res.ok) continue;
+          if (!res.ok) {
+            recordFailure(hash, 'http', { status: res.status, statusText: res.statusText });
+            continue;
+          }
           const blob = await res.blob();
-          if (!blob || blob.size === 0) continue;
-          await cache.put(req, new Response(blob, { headers: { 'Content-Type': 'audio/mpeg' } }));
-        } catch {
-          // ignore
+          if (!blob || blob.size === 0) {
+            recordFailure(hash, 'empty-blob');
+            continue;
+          }
+          const normalizedBlob = ensureMp3BlobType(blob);
+          if (!useIdb && cache) {
+            const req = cacheRequestForHash(hash);
+            try {
+              await cache.put(req, new Response(normalizedBlob, { headers: { 'Content-Type': 'audio/mpeg' } }));
+            } catch (e) {
+              recordFailure(hash, 'cache-put', { error: e instanceof Error ? e.message : String(e) });
+              continue;
+            }
+          } else {
+            const ok = await idbPutMp3(hash, normalizedBlob);
+            if (!ok) {
+              recordFailure(hash, 'idb-put');
+              continue;
+            }
+          }
+          stats.downloaded += 1;
+        } catch (e) {
+          recordFailure(hash, 'fetch-throw', { error: e instanceof Error ? e.message : String(e) });
         }
       }
     });
 
     await Promise.all(workers);
+    // eslint-disable-next-line no-console
+    console.log('[TTS] Prefetch done:', {
+      lessonCacheKey: params.lessonCacheKey,
+      ...stats,
+      total: phrases.length,
+      sampleFailures: failureSamples.length ? failureSamples : undefined,
+    });
   } catch {
     // ignore
   }
@@ -384,7 +677,6 @@ export async function clearTtsCacheForLessonCacheKey(lessonCacheKey: string): Pr
   try {
     if (typeof window === 'undefined') return;
     const cache = await getCache();
-    if (!cache) return;
 
     const raw = sessionStorage.getItem(`englishv2:lessonTtsHashes:${lessonCacheKey}`);
     if (!raw) return;
@@ -395,7 +687,11 @@ export async function clearTtsCacheForLessonCacheKey(lessonCacheKey: string): Pr
       hashes.map(async (hash: any) => {
         if (!hash) return;
         try {
-          await cache.delete(cacheRequestForHash(String(hash)));
+          if (cache) {
+            await cache.delete(cacheRequestForHash(String(hash)));
+          } else {
+            await idbDeleteMp3(String(hash));
+          }
         } catch {
           // ignore
         }
@@ -415,8 +711,25 @@ export async function clearTtsCacheForLessonCacheKey(lessonCacheKey: string): Pr
 export async function clearAllTtsCache(): Promise<void> {
   try {
     if (typeof window === 'undefined') return;
-    if (!('caches' in window)) return;
-    await caches.delete(CACHE_NAME);
+    if (canUseHttpCacheStorage()) {
+      await caches.delete(CACHE_NAME);
+    }
+  } catch {
+    // ignore
+  }
+  try {
+    const db = await openTtsIdb();
+    if (db) db.close();
+    await new Promise<void>((resolve) => {
+      try {
+        const req = indexedDB.deleteDatabase(TTS_IDB_DB);
+        req.onsuccess = () => resolve();
+        req.onerror = () => resolve();
+        req.onblocked = () => resolve();
+      } catch {
+        resolve();
+      }
+    });
   } catch {
     // ignore
   }

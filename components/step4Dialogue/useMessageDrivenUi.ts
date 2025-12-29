@@ -49,6 +49,11 @@ export function useMessageDrivenUi({
   setGoalGatePending: Dispatch<SetStateAction<boolean>>;
 }) {
   const goalVocabTimerRef = useRef<number | null>(null);
+  const vocabFirstPlayQueuedRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    vocabFirstPlayQueuedRef.current = new Set();
+  }, [vocabProgressStorageKey]);
 
   // Watch for messages with audioQueue and decide which input to show
   useEffect(() => {
@@ -147,7 +152,10 @@ export function useMessageDrivenUi({
       const maxIdx = Math.max((parsed.words?.length || 0) - 1, 0);
       setVocabIndex(typeof desired === 'number' ? Math.min(Math.max(desired, 0), maxIdx) : 0);
       appliedVocabRestoreKeyRef.current = vocabProgressStorageKey;
-      setPendingVocabPlay(true);
+      if (!vocabFirstPlayQueuedRef.current.has(vocabProgressStorageKey)) {
+        vocabFirstPlayQueuedRef.current.add(vocabProgressStorageKey);
+        setPendingVocabPlay(true);
+      }
       if (goalGatePending && !goalGateAcknowledged) {
         setShowVocab(false);
         setInputMode('hidden');

@@ -41,7 +41,7 @@ export const ResetPasswordScreen: React.FC<Props> = ({ onDone }) => {
   };
 
   return (
-    <div className="min-h-[100dvh] h-[100dvh] overflow-hidden bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center px-4 sm:px-6">
+    <div className="min-h-[100dvh] h-[100dvh] overflow-hidden bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center px-4 sm:px-6 pt-[var(--app-safe-top)]">
       <div className="w-full max-w-lg flex-1 min-h-0 py-[clamp(16px,3vh,40px)]">
         <div className="w-full bg-white border border-gray-100 shadow-xl rounded-3xl flex flex-col min-h-0 max-h-[calc(100dvh-32px)]">
           <div className="p-[clamp(16px,3vh,32px)] flex flex-col gap-[clamp(12px,2vh,24px)] min-h-0">
@@ -116,4 +116,3 @@ export const ResetPasswordScreen: React.FC<Props> = ({ onDone }) => {
     </div>
   );
 };
-

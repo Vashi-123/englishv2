@@ -1,6 +1,9 @@
 import React, { useLayoutEffect, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Session } from '@supabase/supabase-js';
+import { App as CapacitorApp } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { ActivityType, ViewState } from './types';
 import { useLanguage } from './hooks/useLanguage';
 import { useDayPlans } from './hooks/useDayPlans';
@@ -34,7 +37,7 @@ import {
 
 const ConnectionRequiredScreen = () => {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-6">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex items-center justify-center px-6 pt-[var(--app-safe-top)]">
       <div className="w-full max-w-sm text-center">
         <div className="relative mx-auto mb-6 h-16 w-16">
           <div className="absolute inset-0 rounded-full border-4 border-gray-200 border-t-brand-primary animate-spin" />
@@ -566,7 +569,7 @@ const ConnectionRequiredScreen = () => {
 	    // planLoading can happen during background refresh (realtime, reconnect) — we keep the last plan visible.
 	    if (dayPlans.length === 0) {
 	      return (
-	        <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
+	        <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden pt-[var(--app-safe-top)]">
 	          <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
 	          <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 
@@ -604,7 +607,7 @@ const ConnectionRequiredScreen = () => {
 	  // Early return if no plan available
 	  if (!currentDayPlan) {
 	    return (
-	      <div className="min-h-screen bg-slate-50 text-slate-900 px-6 flex items-center justify-center">
+	      <div className="min-h-screen bg-slate-50 text-slate-900 px-6 flex items-center justify-center pt-[var(--app-safe-top)]">
 	        <div className="text-center space-y-3">
 	          <div className="h-12 w-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin mx-auto" />
 	          <div className="text-sm text-gray-600 font-semibold">Загружаем главный экран…</div>
@@ -860,7 +863,7 @@ const ConnectionRequiredScreen = () => {
 	    // If no plans loaded yet
 	    if (dayPlans.length === 0) {
 	      return (
-	        <div className="fixed inset-0 z-[100] bg-slate-50 text-slate-900 flex items-center justify-center px-6">
+	        <div className="fixed inset-0 z-[100] bg-slate-50 text-slate-900 flex items-center justify-center px-6 pt-[var(--app-safe-top)]">
 	          <span className="text-gray-600">{copy.common.loadingPlan}</span>
 	        </div>
 	      );
@@ -879,7 +882,7 @@ const ConnectionRequiredScreen = () => {
 
 	        <div className="relative h-full w-full flex flex-col">
 	          <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
-	          <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pt-6 pb-5">
+	          <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
 	            <div className="flex items-center gap-4">
 	              <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
 	                <Sparkles className="w-7 h-7 text-brand-primary" />
@@ -892,11 +895,10 @@ const ConnectionRequiredScreen = () => {
 	                  {activeModule ? `Сейчас: ${activeModule.moduleTitle}` : ' '}
 	                </div>
 	              </div>
-	            </div>
-	            <div className="absolute top-5 right-5">
 	              <button
+	                type="button"
 	                onClick={closeInsightPopup}
-	                className="bg-white/80 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm"
+	                className="bg-white/80 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm self-start"
 	                aria-label="Закрыть"
 	              >
 	                <X className="w-4 h-4" />
@@ -1024,13 +1026,13 @@ const ConnectionRequiredScreen = () => {
 		        : dayPlans.findIndex((d) => (d.lesson ?? d.day) === resolvedFreeLessonCount);
 
 	    return (
-	    <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden">
+	    <div className="min-h-screen bg-slate-50 text-slate-900 px-4 sm:px-6 lg:px-8 py-0 font-sans flex flex-col relative overflow-hidden pt-[var(--app-safe-top)]">
       
       {/* Background accents */}
       <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
       <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-	      <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-5 flex-1 pt-8">
+	      <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col gap-5 flex-1 pt-0">
 	      {/* 1. Header */}
 	        <div className="flex flex-col gap-1.5 z-10 flex-none">
 	        <div className="flex items-start justify-between gap-3">
@@ -1768,7 +1770,8 @@ const App = () => {
   const [showIntro, setShowIntro] = useState(true);
   const [hasLoggedIn, setHasLoggedIn] = useState(false);
   const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
-  const authUrlHandledRef = useRef(false);
+  const lastHandledAuthCodeRef = useRef<string | null>(null);
+  const OAUTH_IN_PROGRESS_KEY = 'englishv2:oauthInProgress';
 
   const refreshSession = useCallback(async () => {
     try {
@@ -1813,10 +1816,10 @@ const App = () => {
     return () => window.clearTimeout(t);
   }, [authLoading]);
 
-  useEffect(() => {
-	    try {
-	      const storedLogged = localStorage.getItem('has_logged_in') === '1';
-	      setHasLoggedIn(storedLogged);
+	  useEffect(() => {
+		    try {
+		      const storedLogged = localStorage.getItem('has_logged_in') === '1';
+		      setHasLoggedIn(storedLogged);
 		      if (storedLogged) {
 		        setShowIntro(false);
 		      }
@@ -1824,15 +1827,74 @@ const App = () => {
 		      setHasLoggedIn(false);
 		    }
 
-	    const bootstrap = async () => {
-	      if (typeof window === 'undefined') return;
-	      try {
-	        const url = new URL(window.location.href);
-	        const code = url.searchParams.get('code');
-	        if (code && !authUrlHandledRef.current) {
-	          authUrlHandledRef.current = true;
-	          const { error } = await supabase.auth.exchangeCodeForSession(code);
-	          if (error) console.error('[Auth] exchangeCodeForSession error:', error);
+        const isNative = Capacitor.isNativePlatform();
+
+        const handleAuthRedirectUrl = async (incomingUrl: string) => {
+          const safeClearFlag = () => {
+            try {
+              localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+            } catch {
+              // ignore
+            }
+          };
+
+          try {
+            const parsed = new URL(incomingUrl);
+            const hashRaw = parsed.hash ? parsed.hash.replace(/^#/, '') : '';
+            const hashQuery = hashRaw.includes('?') ? hashRaw.split('?').pop() || '' : hashRaw;
+            const hashParams = hashQuery ? new URLSearchParams(hashQuery) : null;
+
+            const code = parsed.searchParams.get('code') ?? hashParams?.get('code') ?? null;
+            const accessToken = parsed.searchParams.get('access_token') ?? hashParams?.get('access_token') ?? null;
+            const refreshToken = parsed.searchParams.get('refresh_token') ?? hashParams?.get('refresh_token') ?? null;
+            const hasAuthParams =
+              Boolean(code) ||
+              Boolean(accessToken) ||
+              Boolean(refreshToken) ||
+              Boolean(parsed.searchParams.get('error') ?? hashParams?.get('error')) ||
+              Boolean(parsed.searchParams.get('error_description') ?? hashParams?.get('error_description'));
+
+            const shouldCloseBrowser = parsed.protocol === 'englishv2:' || hasAuthParams;
+
+            if (accessToken && refreshToken) {
+              const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              if (error) console.error('[Auth] setSession error:', error);
+              await refreshSession();
+              safeClearFlag();
+            } else if (code && code !== lastHandledAuthCodeRef.current) {
+              lastHandledAuthCodeRef.current = code;
+              const { error } = await supabase.auth.exchangeCodeForSession(code);
+              if (error) console.error('[Auth] exchangeCodeForSession error:', error);
+              await refreshSession();
+              safeClearFlag();
+            }
+
+            if (shouldCloseBrowser) {
+              try {
+                await Browser.close();
+              } catch {
+                // ignore
+              } finally {
+                safeClearFlag();
+              }
+            }
+          } catch (err) {
+            console.error('[Auth] handleAuthRedirectUrl error:', err);
+          }
+        };
+
+		    const bootstrap = async () => {
+		      if (typeof window === 'undefined') return;
+		      try {
+		        const url = new URL(window.location.href);
+		        const code = url.searchParams.get('code');
+		        if (code && code !== lastHandledAuthCodeRef.current) {
+		          lastHandledAuthCodeRef.current = code;
+		          const { error } = await supabase.auth.exchangeCodeForSession(code);
+		          if (error) console.error('[Auth] exchangeCodeForSession error:', error);
 
 	          url.searchParams.delete('code');
 	          url.searchParams.delete('state');
@@ -1842,18 +1904,68 @@ const App = () => {
 	            // ignore
 	          }
 	        }
+          if (isNative) {
+            try {
+              const launch = await CapacitorApp.getLaunchUrl();
+              if (launch?.url) {
+                await handleAuthRedirectUrl(launch.url);
+              }
+            } catch {
+              // ignore
+            }
+          }
 	      } catch (err) {
 	        console.error('[Auth] bootstrap from URL fatal error:', err);
-	      } finally {
-	        await refreshSession();
-	      }
-	    };
+		      } finally {
+		        await refreshSession();
+		      }
+		    };
 
-	    void bootstrap();
+		    void bootstrap();
 
-	    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
-	      if (event === 'PASSWORD_RECOVERY') setNeedsPasswordReset(true);
-	      setSession(newSession);
+		    let appUrlOpenSub: PluginListenerHandle | null = null;
+        let appStateSub: PluginListenerHandle | null = null;
+		    if (isNative) {
+		      void CapacitorApp.addListener('appUrlOpen', async ({ url }) => {
+            await handleAuthRedirectUrl(url);
+		      }).then((sub) => {
+		        appUrlOpenSub = sub;
+		      });
+
+          void CapacitorApp.addListener('appStateChange', async ({ isActive }) => {
+            if (!isActive) return;
+            let inProgress = false;
+            try {
+              inProgress = localStorage.getItem(OAUTH_IN_PROGRESS_KEY) === '1';
+            } catch {
+              inProgress = false;
+            }
+            if (!inProgress) return;
+            try {
+              const { data } = await supabase.auth.getSession();
+              const hasSession = Boolean(data.session);
+              if (!hasSession) return;
+              try {
+                await Browser.close();
+              } catch {
+                // ignore
+              }
+              try {
+                localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+              } catch {
+                // ignore
+              }
+            } catch {
+              // ignore
+            }
+          }).then((sub) => {
+            appStateSub = sub;
+          });
+		    }
+
+		    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
+		      if (event === 'PASSWORD_RECOVERY') setNeedsPasswordReset(true);
+		      setSession(newSession);
 	       if (newSession) {
          setHasLoggedIn(true);
          try {
@@ -1866,10 +1978,12 @@ const App = () => {
       setAuthLoading(false);
     });
 
-    return () => {
-      listener?.subscription?.unsubscribe();
-    };
-  }, [refreshSession]);
+	    return () => {
+	      void appUrlOpenSub?.remove();
+        void appStateSub?.remove();
+	      listener?.subscription?.unsubscribe();
+	    };
+	  }, [refreshSession]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1905,7 +2019,7 @@ const App = () => {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-[var(--app-safe-top)]">
         <div className="text-center space-y-3">
           <div className="h-12 w-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin mx-auto" />
           <p className="text-sm text-gray-600 font-semibold">Загружаем профиль...</p>

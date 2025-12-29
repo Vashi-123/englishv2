@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatMessage } from '../../types';
 import { checkAudioInput, checkTextInput } from './messageParsing';
+import { Capacitor } from '@capacitor/core';
+import { isOfflineAsrUsable, offlineAsrCancel, offlineAsrStart, offlineAsrStopWithStats } from '../../services/offlineAsr';
 
 const normalizeTranscript = (value: string) =>
   String(value || '')
@@ -17,18 +19,44 @@ export function useSpeechInput({
 }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const offlineAsrActiveRef = useRef(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const hasSpeechResultRef = useRef<boolean>(false);
 
   const stopRecording = useCallback(() => {
+    if (offlineAsrActiveRef.current) {
+      setIsRecording(false);
+      void (async () => {
+        setIsTranscribing(true);
+        offlineAsrActiveRef.current = false;
+        const res = await offlineAsrStopWithStats();
+        const transcript = String(res?.transcript || '');
+        setIsTranscribing(false);
+        if (transcript.trim()) {
+          hasSpeechResultRef.current = true;
+          await onTranscript(normalizeTranscript(transcript));
+        } else {
+          const peak = typeof res?.peakAbs === 'number' ? res.peakAbs : null;
+          const rms = typeof res?.rms === 'number' ? res.rms : null;
+          const samples = typeof res?.acceptedSamplesTotal === 'number' ? res.acceptedSamplesTotal : null;
+          const likelySilence = Boolean(samples && samples > 2000 && ((peak != null && peak < 0.003) || (rms != null && rms < 0.001)));
+          alert(
+            likelySilence
+              ? 'Микрофон записал тишину. Проверь, что говоришь в микрофон и приложению разрешён доступ. (iOS offline ASR)'
+              : 'Речь не распознана. Попробуйте еще раз. (iOS offline ASR)'
+          );
+        }
+      })();
+      return;
+    }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current = null;
       setIsRecording(false);
     }
-  }, []);
+  }, [onTranscript]);
 
   const transcribeAudio = useCallback(
     async (audioBlob: Blob, _mimeType: string) => {
@@ -121,6 +149,18 @@ export function useSpeechInput({
 
   const startRecording = useCallback(async () => {
     try {
+      const canUseOffline = await isOfflineAsrUsable();
+      if (canUseOffline) {
+        const started = await offlineAsrStart();
+        if (!started) {
+          throw new Error('offline_asr_start_failed');
+        }
+        offlineAsrActiveRef.current = true;
+        setIsRecording(true);
+        hasSpeechResultRef.current = false;
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -170,7 +210,12 @@ export function useSpeechInput({
       setIsRecording(false);
 
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        alert('Доступ к микрофону запрещен. Разрешите доступ в настройках браузера.');
+        const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+        alert(
+          isNativeIos
+            ? 'Доступ к микрофону запрещен. Разрешите доступ: Настройки → EnglishV2 → Микрофон.'
+            : 'Доступ к микрофону запрещен. Разрешите доступ в настройках браузера.'
+        );
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
         alert('Микрофон не обнаружен. Проверьте подключение микрофона.');
       } else {
@@ -181,6 +226,10 @@ export function useSpeechInput({
 
   useEffect(() => {
     return () => {
+      if (offlineAsrActiveRef.current) {
+        offlineAsrActiveRef.current = false;
+        void offlineAsrCancel();
+      }
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
         mediaRecorderRef.current = null;
@@ -191,4 +240,3 @@ export function useSpeechInput({
 
   return { isRecording, isTranscribing, startRecording, stopRecording };
 }
-

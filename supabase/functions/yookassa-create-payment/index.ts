@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js";
+import { encodeBase64 } from "jsr:@std/encoding/base64";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,8 +11,8 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-const YOOKASSA_SHOP_ID = Deno.env.get("YOOKASSA_SHOP_ID");
-const YOOKASSA_SECRET_KEY = Deno.env.get("YOOKASSA_SECRET_KEY");
+const YOOKASSA_SHOP_ID = (Deno.env.get("YOOKASSA_SHOP_ID") || "").trim();
+const YOOKASSA_SECRET_KEY = (Deno.env.get("YOOKASSA_SECRET_KEY") || "").trim();
 const DEFAULT_PRODUCT_KEY = Deno.env.get("BILLING_PRODUCT_KEY") || "premium_a1";
 const YOOKASSA_SEND_RECEIPT = (Deno.env.get("YOOKASSA_SEND_RECEIPT") || "").trim() === "1";
 // Optional (required by YooKassa 54-FZ receipt, if you want automated checks):
@@ -43,11 +44,8 @@ const getBearerToken = (req: Request): string | null => {
   return m ? m[1] : null;
 };
 
-const basicAuth = (shopId: string, secretKey: string) => {
-  const input = `${shopId}:${secretKey}`;
-  const encoded = btoa(input);
-  return `Basic ${encoded}`;
-};
+const toBase64 = (value: string) => encodeBase64(new TextEncoder().encode(value));
+const basicAuth = (shopId: string, secretKey: string) => `Basic ${toBase64(`${shopId}:${secretKey}`)}`;
 
 const toAmountString = (value: number): string => {
   const safe = Math.max(0, Math.round(value * 100) / 100);
@@ -59,11 +57,11 @@ const normalizeCode = (code?: string): string => String(code || "").trim().toUpp
 const buildReceipt = (params: { email: string; description: string; amountValue: string; currency: string }) => {
   if (!YOOKASSA_SEND_RECEIPT) return null;
   const email = String(params.email || "").trim();
-  if (!email) return null;
   const taxSystemCode = Number(YOOKASSA_TAX_SYSTEM_CODE);
   const vatCode = Number(YOOKASSA_VAT_CODE);
-  if (!Number.isFinite(taxSystemCode) || taxSystemCode < 1) return null;
-  if (!Number.isFinite(vatCode) || vatCode < 1) return null;
+  if (!email || !Number.isFinite(taxSystemCode) || taxSystemCode < 1 || !Number.isFinite(vatCode) || vatCode < 1) {
+    return null;
+  }
 
   // Minimal receipt payload. Adjust `vat_code`/`tax_system_code` in env to match your tax settings.
   return {
@@ -235,6 +233,19 @@ Deno.serve(async (req: Request) => {
       amountValue: priced.amountValue,
       currency,
     });
+    if (YOOKASSA_SEND_RECEIPT && !receipt) {
+      console.error("[yookassa-create-payment] receipt config invalid", {
+        requestId,
+        hasEmail: Boolean(userEmail),
+        taxSystemCode: YOOKASSA_TAX_SYSTEM_CODE,
+        vatCode: YOOKASSA_VAT_CODE,
+      });
+      return json(500, {
+        ok: false,
+        error: "Receipt is required by merchant settings but missing required fields. Set YOOKASSA_TAX_SYSTEM_CODE/YOOKASSA_VAT_CODE and ensure user email is present.",
+        requestId,
+      });
+    }
 
     const ykResp = await fetch("https://api.yookassa.ru/v3/payments", {
       method: "POST",

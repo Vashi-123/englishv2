@@ -13,6 +13,10 @@
     "tts:run": "node scripts/tts.mjs run"
   },
   "dependencies": {
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/browser": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
     "@google/genai": "^1.31.0",
     "@supabase/supabase-js": "^2.87.0",
     "lucide-react": "^0.556.0",
@@ -20,6 +24,7 @@
     "react-dom": "^19.2.1"
   },
   "devDependencies": {
+    "@capacitor/ios": "^8.0.0",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",

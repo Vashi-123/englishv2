@@ -39,6 +39,7 @@ type Props = {
   renderMarkdown: (text: string) => React.ReactNode;
 
   processAudioQueue: (queue: AudioQueueItem[], messageId?: string) => void;
+  playVocabAudio: (queue: AudioQueueItem[], messageId?: string) => void;
 
   findMistakeTaskIndexFallback?: number;
   findMistakeUI: Record<string, { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean }>;
@@ -98,6 +99,7 @@ export function MessageContent({
   displayText,
   renderMarkdown,
   processAudioQueue,
+  playVocabAudio,
   findMistakeTaskIndexFallback,
   findMistakeUI,
   setFindMistakeUI,
@@ -246,14 +248,18 @@ export function MessageContent({
 		            const queue = [{ text: normalizedWord, lang: 'en', kind: 'word' }].filter(
 		              (x) => String(x.text || '').trim().length > 0
 		            );
-		            processAudioQueue(queue);
+		            // eslint-disable-next-line no-console
+		            console.log('[TTS] onPlayWord -> processAudioQueue', { text: normalizedWord, items: queue.length });
+		            playVocabAudio(queue);
 		          }}
 		          onPlayExample={(wordItem) => {
 		            const normalizedWord = String(wordItem.word || '').replace(/\s+/g, ' ').trim();
 		            const normalizedExample = String((wordItem as any).context || '').replace(/\s+/g, ' ').trim();
 		            if (!normalizedExample) return;
 		            if (normalizedExample === normalizedWord) return;
-		            processAudioQueue([{ text: normalizedExample, lang: 'en', kind: 'example' }]);
+		            // eslint-disable-next-line no-console
+		            console.log('[TTS] onPlayExample -> processAudioQueue', { text: normalizedExample.slice(0, 80) });
+		            playVocabAudio([{ text: normalizedExample, lang: 'en', kind: 'example' }]);
 		          }}
 		          onNextWord={() => {
 		            if (currentIdx + 1 >= words.length) return;
@@ -265,7 +271,7 @@ export function MessageContent({
 		              const queue = [{ text: normalizedWord, lang: 'en', kind: 'word' }].filter(
 		                (x) => String(x.text || '').trim().length > 0
 		              );
-		              processAudioQueue(queue);
+		              playVocabAudio(queue);
 		            }
 		          }}
 		        />

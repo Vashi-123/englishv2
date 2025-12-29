@@ -46,12 +46,13 @@ export function DialogueMessages({
 	  vocabWords,
 	  vocabIndex,
 	  setVocabIndex,
-	  vocabPronunciationByIndex,
-	  setVocabPronunciationByIndex,
-	  speechRecognitionSupported,
-	  vocabRefs,
-	  currentAudioItem,
-	  processAudioQueue,
+  vocabPronunciationByIndex,
+  setVocabPronunciationByIndex,
+  speechRecognitionSupported,
+  vocabRefs,
+  currentAudioItem,
+  processAudioQueue,
+  playVocabAudio,
 
   lessonScript,
   currentStep,
@@ -126,7 +127,8 @@ export function DialogueMessages({
 	  speechRecognitionSupported: boolean;
 	  vocabRefs: MutableRefObject<Map<number, HTMLDivElement>>;
 	  currentAudioItem: any;
-	  processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>) => void;
+  processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>) => void;
+  playVocabAudio: (items: Array<{ text: string; lang: string; kind?: string }>, messageId?: string) => void;
 
   lessonScript: any | null;
   currentStep: any | null;
@@ -490,6 +492,7 @@ export function DialogueMessages({
 	                  currentAudioItem={currentAudioItem}
 	                  vocabRefs={vocabRefs}
 	                  processAudioQueue={processAudioQueue}
+	                  playVocabAudio={playVocabAudio}
                   lessonScript={lessonScript}
                   currentStep={currentStep}
                   isAwaitingModelReply={Boolean(isAwaitingModelReply)}
@@ -514,26 +517,30 @@ export function DialogueMessages({
         })}
 
         {shouldRenderMatchingBlock && matchingInsertIndexSafe === messages.length && (
-          <MatchingGameCard
-            containerRef={matchingRef}
-            showMatching={showMatching}
-            matchesComplete={matchesComplete}
-            wordOptions={wordOptions}
-            translationOptions={translationOptions}
-            selectedWord={selectedWord}
-            selectedTranslation={selectedTranslation}
-            mismatchAttempt={matchingMismatchAttempt}
-            onPickWord={(wordId) => {
-              if (matchingMismatchAttempt) return;
-              setSelectedWord(wordId);
-              tryMatch(wordId, selectedTranslation);
-            }}
-            onPickTranslation={(translationId) => {
-              if (matchingMismatchAttempt) return;
-              setSelectedTranslation(translationId);
-              tryMatch(selectedWord, translationId);
-            }}
-          />
+          <div className="w-full flex justify-center px-4">
+            <div className="w-full max-w-2xl px-1">
+              <MatchingGameCard
+                containerRef={matchingRef}
+                showMatching={showMatching}
+                matchesComplete={matchesComplete}
+                wordOptions={wordOptions}
+                translationOptions={translationOptions}
+                selectedWord={selectedWord}
+                selectedTranslation={selectedTranslation}
+                mismatchAttempt={matchingMismatchAttempt}
+                onPickWord={(wordId) => {
+                  if (matchingMismatchAttempt) return;
+                  setSelectedWord(wordId);
+                  tryMatch(wordId, selectedTranslation);
+                }}
+                onPickTranslation={(translationId) => {
+                  if (matchingMismatchAttempt) return;
+                  setSelectedTranslation(translationId);
+                  tryMatch(selectedWord, translationId);
+                }}
+              />
+            </div>
+          </div>
         )}
 
         {isAwaitingModelReply &&
@@ -580,7 +587,7 @@ export function DialogueMessages({
 
         {ankiGateActive && !lessonCompletedPersisted && (
           <>
-            <div className="px-6">
+            <div className="px-4">
               <div className="flex justify-start">
                 <div className="flex flex-row items-start gap-3 min-w-0 max-w-[85%]">
                   <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">
@@ -592,8 +599,8 @@ export function DialogueMessages({
                 </div>
               </div>
             </div>
-            <div className="w-full flex justify-center">
-              <div className="w-full max-w-2xl">
+            <div className="w-full flex justify-center px-4">
+              <div className="w-full max-w-2xl px-1">
                 <AnkiQuizCard
                   items={ankiQuizItems || []}
                   total={8}

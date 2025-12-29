@@ -37,6 +37,17 @@ const safeStorage = {
 };
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: {
+    fetch: async (input, init) => {
+      try {
+        return await fetch(input, init);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[Supabase] fetch failed:', String(input), err);
+        throw err;
+      }
+    },
+  },
   auth: {
     flowType: 'pkce',
     persistSession: true,

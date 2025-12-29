@@ -37,11 +37,6 @@ export function TutorMiniChat({
 
   useEffect(() => {
     if (!open) return;
-    window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [open, messages.length, isAwaitingReply]);
 

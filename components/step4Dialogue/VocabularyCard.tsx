@@ -36,6 +36,20 @@ export function VocabularyCard({
   if (!visibleWords.length) return null;
   const completed = currentIdx + 1 >= words.length;
   const dividerRefs = useRef<Map<number, HTMLDivElement | null>>(new Map());
+  const lastTapMsRef = useRef(0);
+
+  const getClientY = (e: any): number | null => {
+    try {
+      if (typeof e?.clientY === 'number') return e.clientY;
+      const t = e?.changedTouches?.[0];
+      if (t && typeof t.clientY === 'number') return t.clientY;
+      const pt = e?.nativeEvent?.changedTouches?.[0];
+      if (pt && typeof pt.clientY === 'number') return pt.clientY;
+      return null;
+    } catch {
+      return null;
+    }
+  };
 
   return (
     <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4">
@@ -66,6 +80,7 @@ export function VocabularyCard({
 	          const status = pronunciationByIndex[i] || { wordOk: false, exampleOk: !hasExample };
 	          const wordOk = Boolean(status.wordOk);
 	          const exampleOk = Boolean(status.exampleOk) || !hasExample;
+	          const allDone = wordOk && exampleOk;
 	          const isCurrent = i === currentIdx;
 	          const showWordTask = speechRecognitionSupported && (isCurrent || wordOk);
 	          const showExampleDivider = Boolean(hasExample && wordOk && (isCurrent || exampleOk));
@@ -75,19 +90,57 @@ export function VocabularyCard({
 	            <div
 	              key={`${w.word}-${i}`}
 	              ref={(el) => onRegisterWordEl(i, el)}
-	              className="bg-gray-50 rounded-2xl border border-gray-200 shadow-sm p-4 transition-all duration-300 cursor-pointer hover:bg-gray-100"
+	              className="relative bg-gray-50 rounded-2xl border border-gray-200 shadow-sm p-4 transition-all duration-300 cursor-pointer hover:bg-gray-100"
 	              onClick={(e) => {
+	                const now = Date.now();
+	                if (now - lastTapMsRef.current < 350) return;
+	                lastTapMsRef.current = now;
 	                const dividerEl = dividerRefs.current.get(i);
-	                if (dividerEl && hasExample && (!speechRecognitionSupported || wordOk)) {
+	                const y = getClientY(e);
+	                if (dividerEl && hasExample && (!speechRecognitionSupported || wordOk) && typeof y === 'number') {
 	                  const dividerTop = dividerEl.getBoundingClientRect().top;
-	                  if (e.clientY >= dividerTop) {
+	                  if (y >= dividerTop) {
+	                    // eslint-disable-next-line no-console
+	                    console.log('[TTS] VocabularyCard tap -> example', { word: w.word, i });
 	                    onPlayExample(w);
 	                    return;
 	                  }
 	                }
+	                // eslint-disable-next-line no-console
+	                console.log('[TTS] VocabularyCard tap -> word', { word: w.word, i });
+	                onPlayWord(w);
+	              }}
+	              onTouchEnd={(e) => {
+	                const now = Date.now();
+	                if (now - lastTapMsRef.current < 350) return;
+	                lastTapMsRef.current = now;
+	                const dividerEl = dividerRefs.current.get(i);
+	                const y = getClientY(e);
+	                if (dividerEl && hasExample && (!speechRecognitionSupported || wordOk) && typeof y === 'number') {
+	                  const dividerTop = dividerEl.getBoundingClientRect().top;
+	                  if (y >= dividerTop) {
+	                    // eslint-disable-next-line no-console
+	                    console.log('[TTS] VocabularyCard touch -> example', { word: w.word, i });
+	                    onPlayExample(w);
+	                    return;
+	                  }
+	                }
+	                // eslint-disable-next-line no-console
+	                console.log('[TTS] VocabularyCard touch -> word', { word: w.word, i });
 	                onPlayWord(w);
 	              }}
 	            >
+              <div className="absolute top-3 right-3">
+                <span
+                  className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+                    allDone
+                      ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                      : 'border-gray-300 bg-white text-gray-300'
+                  }`}
+                >
+                  {allDone ? <Check className="w-4 h-4" /> : null}
+                </span>
+              </div>
               <div className="flex flex-col gap-1 mb-2">
                 <div className="flex items-baseline gap-3">
                   <span
@@ -95,13 +148,10 @@ export function VocabularyCard({
 	                  >
 	                    {w.word}
 	                  </span>
-	                  {w.translation ? (
-	                    <>
-                      <span className="text-gray-300 font-light text-sm">—</span>
-                      <span className="text-base font-medium text-gray-600">{w.translation}</span>
-                    </>
-                  ) : null}
                 </div>
+                {w.translation ? (
+                  <p className="text-sm text-gray-400 mt-0.5 leading-relaxed">{w.translation}</p>
+                ) : null}
 	              </div>
 
 	              {showWordTask ? (
@@ -130,7 +180,7 @@ export function VocabularyCard({
 	              ) : null}
 
 	              {(!speechRecognitionSupported || wordOk) && hasExample ? (
-	                <div className="relative mt-3">
+	                <div className="relative mt-3 animate-[fadeInUp_1.05s_cubic-bezier(0.16,1,0.3,1)_forwards]">
 	                  <p
 	                    className={`text-xl font-semibold tracking-tight leading-snug ${
 	                      isExampleSpeaking ? 'text-brand-primary' : 'text-gray-900'
@@ -145,7 +195,7 @@ export function VocabularyCard({
 	              ) : null}
 
 	              {showExampleTask ? (
-	                <div className="mt-3 space-y-2">
+	                <div className="mt-3 space-y-2 animate-[fadeInUp_1.1s_cubic-bezier(0.16,1,0.3,1)_forwards]">
 	                  <div className="text-xs font-semibold text-gray-600">Задание</div>
 	                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-900">
 	                    <span

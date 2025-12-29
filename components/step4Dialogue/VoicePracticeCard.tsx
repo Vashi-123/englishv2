@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import type { VocabWord } from '../../types';
 import { CardHeading } from './CardHeading';
 import { Mic, MicOff, Play, RotateCcw } from 'lucide-react';
@@ -80,7 +81,7 @@ export function VoicePracticeCard({ sessionKey, words, processAudioQueue, onChec
     processAudioQueue([{ text: normalized, lang: 'en', kind: 'voice_practice_prompt' }]);
   }, [currentWord, processAudioQueue]);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback(async () => {
     if (!supported) return;
     if (!currentWord) return;
     cleanup();
@@ -88,6 +89,26 @@ export function VoicePracticeCard({ sessionKey, words, processAudioQueue, onChec
     setLastHeard('');
     setLastCorrect(null);
     setPhase('listening');
+
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    } catch (err: any) {
+      const name = String(err?.name || '');
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+        setErrorText(
+          isNativeIos
+            ? 'Доступ к микрофону запрещен. Разрешите доступ: Настройки → EnglishV2 → Микрофон.'
+            : 'Доступ к микрофону запрещен. Разрешите доступ в настройках браузера.'
+        );
+        setPhase('idle');
+        cleanup();
+        return;
+      }
+    }
 
     const recognition = new SpeechRecognitionCtor();
     recognitionRef.current = recognition;
@@ -161,7 +182,9 @@ export function VoicePracticeCard({ sessionKey, words, processAudioQueue, onChec
   useEffect(() => {
     if (phase !== 'prompting') return;
     // Start listening shortly after we enqueue the prompt audio.
-    const t = window.setTimeout(() => startListening(), 350);
+    const t = window.setTimeout(() => {
+      void startListening();
+    }, 350);
     return () => window.clearTimeout(t);
   }, [phase, startListening]);
 
@@ -340,4 +363,3 @@ export function VoicePracticeCard({ sessionKey, words, processAudioQueue, onChec
     </div>
   );
 }
-

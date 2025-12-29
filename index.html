@@ -2,10 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>GoPractice</title>
     <link rel="icon" type="image/x-icon" href="%BASE_URL%favicon.ico?v=2" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        --app-safe-top: calc(env(safe-area-inset-top) + 24px);
+      }
+    </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {

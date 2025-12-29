@@ -52,7 +52,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   const showCard = !isMobile || step === 1;
 
   return (
-    <div className="min-h-[100dvh] h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 relative overflow-hidden flex">
+    <div className="min-h-[100dvh] h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 relative overflow-hidden flex pt-[var(--app-safe-top)]">
       <div className="absolute inset-0 pointer-events-none">
         <div
           className="absolute -top-24 -right-24 bg-brand-primary/10 rounded-full blur-3xl"
@@ -137,10 +137,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
           )}
         </div>
 
-        <div className={`flex items-center ${(!isMobile || step === 0) ? 'justify-between' : 'justify-end'}`}>
+        <div className="flex items-center">
           <button
             onClick={handlePrimary}
-            className="inline-flex items-center gap-2.5 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-md shadow-brand-primary/25 hover:opacity-90 active:scale-[0.99] transition w-fit"
+            className="ml-auto inline-flex items-center gap-2.5 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-md shadow-brand-primary/25 hover:opacity-90 active:scale-[0.99] transition w-fit"
           >
             <span>{ctaLabel}</span>
             <span className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/15 border border-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner shadow-white/10">

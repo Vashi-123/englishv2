@@ -74,7 +74,7 @@ export function DialogueInputBar({
               type="button"
               disabled={isLoading || isTranscribing}
               onClick={onToggleRecording}
-              className={`p-6 rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${
+              className={`h-14 w-14 flex items-center justify-center rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${
                 isRecording
                   ? 'bg-red-500 text-white animate-pulse'
                   : isTranscribing
@@ -83,7 +83,7 @@ export function DialogueInputBar({
               }`}
               aria-label={isRecording ? 'Stop recording' : 'Record audio'}
             >
-              <Mic className={`w-6 h-6 ${isRecording ? 'animate-pulse' : ''}`} />
+              <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
             </button>
             {isRecording && (
               <span className="ml-4 text-sm text-gray-600 flex items-center">
@@ -118,8 +118,8 @@ export function DialogueInputBar({
             </button>
           </div>
         ) : (
-          <div className="py-2">
-            {hiddenTopContent ? <div className="mb-3">{hiddenTopContent}</div> : null}
+          <div className="py-1">
+            {hiddenTopContent ? <div className="mb-1.5">{hiddenTopContent}</div> : null}
             {cta ? (
               <button
                 type="button"

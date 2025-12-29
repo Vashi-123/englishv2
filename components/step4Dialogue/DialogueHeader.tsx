@@ -15,7 +15,7 @@ export function DialogueHeader({ progressPercent, progressLabel, onBack, onResta
     : 0;
 
   return (
-    <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+    <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-6 pb-4 pt-[var(--app-safe-top)] flex items-center justify-between">
       {onBack ? (
         <button
           onClick={onBack}

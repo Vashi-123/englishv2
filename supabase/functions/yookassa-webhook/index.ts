@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js";
+import { encodeBase64 } from "jsr:@std/encoding/base64";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,17 +11,14 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-const YOOKASSA_SHOP_ID = Deno.env.get("YOOKASSA_SHOP_ID");
-const YOOKASSA_SECRET_KEY = Deno.env.get("YOOKASSA_SECRET_KEY");
+const YOOKASSA_SHOP_ID = (Deno.env.get("YOOKASSA_SHOP_ID") || "").trim();
+const YOOKASSA_SECRET_KEY = (Deno.env.get("YOOKASSA_SECRET_KEY") || "").trim();
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 
-const basicAuth = (shopId: string, secretKey: string) => {
-  const input = `${shopId}:${secretKey}`;
-  const encoded = btoa(input);
-  return `Basic ${encoded}`;
-};
+const toBase64 = (value: string) => encodeBase64(new TextEncoder().encode(value));
+const basicAuth = (shopId: string, secretKey: string) => `Basic ${toBase64(`${shopId}:${secretKey}`)}`;
 
 const ykFetchPayment = async (paymentId: string) => {
   const resp = await fetch(`https://api.yookassa.ru/v3/payments/${encodeURIComponent(paymentId)}`, {
@@ -98,4 +96,3 @@ Deno.serve(async (req: Request) => {
     return json(200, { ok: true }); // Always 200 to avoid retries storm; verification handles integrity.
   }
 });
-

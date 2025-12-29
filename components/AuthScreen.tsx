@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { supabase } from '../services/supabaseClient';
 import { Apple, Chrome, Lock, LogIn, Mail, UserPlus } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
@@ -25,6 +27,28 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
       (mode === 'login' && Boolean(email) && minPasswordOk) ||
       (mode === 'signup' && Boolean(email) && (otpRequested ? Boolean(otp) : minPasswordOk)));
 
+  const rawRedirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
+  const redirectTo =
+    rawRedirectTo.startsWith('http://') || rawRedirectTo.startsWith('https://') ? rawRedirectTo : undefined;
+  const isNative = Capacitor.isNativePlatform();
+  const oauthRedirectTo = isNative ? (import.meta.env.VITE_OAUTH_REDIRECT_TO || 'englishv2://auth') : redirectTo;
+  const OAUTH_IN_PROGRESS_KEY = 'englishv2:oauthInProgress';
+
+  const getErrorMessage = (err: unknown) => {
+    if (err instanceof Error) return err.message || err.name || 'Не удалось выполнить запрос';
+    if (typeof err === 'string') return err;
+    if (err && typeof err === 'object') {
+      const anyErr = err as any;
+      if (typeof anyErr.message === 'string' && anyErr.message) return anyErr.message;
+      try {
+        return JSON.stringify(err);
+      } catch {
+        return String(err);
+      }
+    }
+    return 'Не удалось выполнить запрос';
+  };
+
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -37,7 +61,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           setError('Заполни email');
           return;
         }
-        await supabase.auth.resetPasswordForEmail(email, { redirectTo });
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(
+          email,
+          redirectTo ? { redirectTo } : undefined
+        );
+        if (resetError) throw resetError;
         setMessage('Мы отправили письмо для сброса пароля. Откройте ссылку из письма и вернитесь в приложение.');
         return;
       }
@@ -72,7 +100,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             email,
             options: {
               shouldCreateUser: true,
-              emailRedirectTo: redirectTo,
+              ...(redirectTo ? { emailRedirectTo: redirectTo } : {}),
             },
           });
           if (otpError) throw otpError;
@@ -97,31 +125,51 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 
       if (onAuthSuccess) onAuthSuccess();
     } catch (err: any) {
-      setError(err?.message || 'Не удалось выполнить запрос');
+      // eslint-disable-next-line no-console
+      console.error('[AUTH] Auth error:', err);
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
   };
 
-  const redirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
-
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setError(null);
     setMessage(null);
     try {
-      await supabase.auth.signInWithOAuth({
+      if (!oauthRedirectTo) {
+        throw new Error('Для входа через OAuth нужен VITE_SITE_URL (https://...)');
+      }
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo,
+          redirectTo: oauthRedirectTo,
+          skipBrowserRedirect: isNative,
         },
       });
+      if (error) throw error;
+      if (isNative) {
+        if (!data?.url) throw new Error('Не удалось открыть OAuth (пустой URL)');
+        try {
+          localStorage.setItem(OAUTH_IN_PROGRESS_KEY, '1');
+        } catch {
+          // ignore
+        }
+        try {
+          await Browser.open({ url: data.url });
+        } catch {
+          window.location.href = data.url;
+        }
+      }
     } catch (err: any) {
-      setError(err?.message || 'OAuth недоступен');
+      // eslint-disable-next-line no-console
+      console.error('[AUTH] OAuth error:', err);
+      setError(getErrorMessage(err));
     }
   };
 
   return (
-    <div className="min-h-[100dvh] h-[100dvh] overflow-hidden bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center px-4 sm:px-6">
+    <div className="min-h-[100dvh] h-[100dvh] overflow-hidden bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 flex items-center justify-center px-4 sm:px-6 pt-[var(--app-safe-top)]">
       <div className="w-full max-w-lg flex-1 min-h-0 py-[clamp(16px,3vh,40px)]">
         <div className="w-full bg-white border border-gray-100 shadow-xl rounded-3xl flex flex-col min-h-0 max-h-[calc(100dvh-32px)]">
           <div className="p-[clamp(16px,3vh,32px)] flex flex-col gap-[clamp(12px,2vh,24px)] min-h-0">
