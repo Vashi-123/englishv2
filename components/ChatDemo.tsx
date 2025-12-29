@@ -171,10 +171,13 @@ export const ChatDemo: React.FC = () => {
                     show
                     words={demoWords}
                     vocabIndex={1}
+                    speechRecognitionSupported={false}
+                    pronunciationByIndex={{}}
                     currentAudioItem={null}
                     onRegisterWordEl={() => {}}
                     onNextWord={() => {}}
                     onPlayWord={() => {}}
+                    onPlayExample={() => {}}
                   />
                 </div>
               );

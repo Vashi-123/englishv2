@@ -4,6 +4,7 @@ import { Browser } from '@capacitor/browser';
 import { supabase } from '../services/supabaseClient';
 import { Apple, Chrome, Lock, LogIn, Mail, UserPlus } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
+import { openAuthSession } from '../services/authSession';
 
 type AuthScreenProps = {
   onAuthSuccess?: () => void;
@@ -16,6 +17,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [otp, setOtp] = useState('');
   const [otpRequested, setOtpRequested] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { copy } = useLanguage();
@@ -31,8 +33,17 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const redirectTo =
     rawRedirectTo.startsWith('http://') || rawRedirectTo.startsWith('https://') ? rawRedirectTo : undefined;
   const isNative = Capacitor.isNativePlatform();
+  const isIOS = Capacitor.getPlatform() === 'ios';
   const oauthRedirectTo = isNative ? (import.meta.env.VITE_OAUTH_REDIRECT_TO || 'englishv2://auth') : redirectTo;
   const OAUTH_IN_PROGRESS_KEY = 'englishv2:oauthInProgress';
+  const oauthRedirectScheme = (() => {
+    try {
+      const parsed = oauthRedirectTo ? new URL(oauthRedirectTo) : null;
+      return parsed?.protocol ? parsed.protocol.replace(':', '') : undefined;
+    } catch {
+      return undefined;
+    }
+  })();
 
   const getErrorMessage = (err: unknown) => {
     if (err instanceof Error) return err.message || err.name || 'Не удалось выполнить запрос';
@@ -106,6 +117,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           if (otpError) throw otpError;
           setOtpRequested(true);
           setMessage('Мы отправили код на почту. Введи его ниже.');
+          return; // ждём подтверждение кода прежде чем двигаться дальше
         } else {
           if (!otp) {
             setError('Введи код из письма');
@@ -114,7 +126,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           const { error: verifyError } = await supabase.auth.verifyOtp({
             email,
             token: otp,
-            type: 'email',
+            type: 'signup',
           });
           if (verifyError) throw verifyError;
           // Сохраняем пароль сразу после успешного OTP
@@ -136,35 +148,92 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setError(null);
     setMessage(null);
+    setOauthLoading(provider);
+    let keepSpinner = false; // если уходим на редирект, оставляем индикатор
     try {
       if (!oauthRedirectTo) {
         throw new Error('Для входа через OAuth нужен VITE_SITE_URL (https://...)');
       }
+      const manualRedirect = !isNative; // на вебе сами дергаем редирект, чтобы успел показаться спиннер
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo: oauthRedirectTo,
-          skipBrowserRedirect: isNative,
+          skipBrowserRedirect: manualRedirect || isNative,
+          ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {}),
         },
       });
       if (error) throw error;
-      if (isNative) {
+      if (isNative && isIOS) {
+        if (!data?.url) throw new Error('Не удалось открыть OAuth (пустой URL)');
+        if (!oauthRedirectScheme) throw new Error('Некорректный callback scheme для OAuth');
+        keepSpinner = true;
+        try {
+          const { url: callbackUrl } = await openAuthSession(data.url, oauthRedirectScheme);
+          if (callbackUrl) {
+            const parsed = new URL(callbackUrl);
+            const code = parsed.searchParams.get('code');
+            const accessToken = parsed.searchParams.get('access_token');
+            const refreshToken = parsed.searchParams.get('refresh_token');
+            if (accessToken && refreshToken) {
+              const { error } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken,
+              });
+              if (error) throw error;
+            } else if (code) {
+              const { error } = await supabase.auth.exchangeCodeForSession(code);
+              if (error) throw error;
+            }
+            if (onAuthSuccess) await onAuthSuccess();
+          }
+        } catch (iosErr: any) {
+          console.error('[AUTH] iOS auth session error:', iosErr);
+          throw iosErr;
+        }
+      } else if (isNative) {
         if (!data?.url) throw new Error('Не удалось открыть OAuth (пустой URL)');
         try {
           localStorage.setItem(OAUTH_IN_PROGRESS_KEY, '1');
         } catch {
           // ignore
         }
-        try {
-          await Browser.open({ url: data.url });
-        } catch {
-          window.location.href = data.url;
-        }
+        const openInBrowser = async () => {
+          try {
+            if (isIOS) {
+              // Даем кадру обновиться (спиннер) и открываем SFSafariViewController как снизу всплывающий лист, чтобы подтянулись cookies Safari.
+              await new Promise((res) => setTimeout(res, 120));
+              await Browser.open({
+                url: data.url,
+                presentationStyle: 'popover', // iOS: sheet снизу
+              });
+            } else {
+              await Browser.open({ url: data.url });
+            }
+            keepSpinner = true;
+          } catch {
+            window.location.href = data.url;
+            keepSpinner = true;
+          }
+        };
+        void openInBrowser();
+      } else if (data?.url) {
+        // Небольшая задержка, чтобы спиннер успел отрисоваться перед редиректом
+        setTimeout(() => {
+          window.location.assign(data.url);
+        }, 50);
+        keepSpinner = true;
+      } else {
+        throw new Error('Не удалось открыть OAuth (пустой URL)');
       }
     } catch (err: any) {
       // eslint-disable-next-line no-console
       console.error('[AUTH] OAuth error:', err);
       setError(getErrorMessage(err));
+    } finally {
+      if (!keepSpinner) {
+        setOauthLoading(null);
+      }
     }
   };
 
@@ -194,18 +263,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
               <button
                 type="button"
                 onClick={() => handleOAuth('google')}
-                className="w-full h-12 border border-gray-200 rounded-xl bg-white hover:border-brand-primary/40 hover:shadow-sm transition flex items-center justify-center gap-2 font-semibold text-slate-900"
+                disabled={oauthLoading !== null}
+                className="w-full h-12 border border-gray-200 rounded-xl bg-white hover:border-brand-primary/40 hover:shadow-sm transition flex items-center justify-center gap-2 font-semibold text-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Chrome className="w-4 h-4" />
-                {copy.auth.google}
+                {oauthLoading === 'google' ? (
+                  <span className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Chrome className="w-4 h-4" />
+                    {copy.auth.google}
+                  </>
+                )}
               </button>
               <button
                 type="button"
                 onClick={() => handleOAuth('apple')}
-                className="w-full h-12 border border-gray-200 rounded-xl bg-white hover:border-brand-primary/40 hover:shadow-sm transition flex items-center justify-center gap-2 font-semibold text-slate-900"
+                disabled={oauthLoading !== null}
+                className="w-full h-12 border border-gray-200 rounded-xl bg-white hover:border-brand-primary/40 hover:shadow-sm transition flex items-center justify-center gap-2 font-semibold text-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Apple className="w-4 h-4" />
-                {copy.auth.apple}
+                {oauthLoading === 'apple' ? (
+                  <span className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>
+                    <Apple className="w-4 h-4" />
+                    {copy.auth.apple}
+                  </>
+                )}
               </button>
             </div>
 

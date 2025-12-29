@@ -16,6 +16,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
 import { PaywallScreen } from './components/PaywallScreen';
 import { ResetPasswordScreen } from './components/ResetPasswordScreen';
+import { CheckStatusScreen } from './components/CheckStatusScreen';
 import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
 import { FREE_LESSON_COUNT } from './services/billingService';
@@ -1763,6 +1764,13 @@ const ConnectionRequiredScreen = () => {
 };
 
 const App = () => {
+  const isCheckRoute =
+    typeof window !== 'undefined' &&
+    (window.location.pathname === '/check' || window.location.pathname === '/check/');
+  if (isCheckRoute) {
+    return <CheckStatusScreen />;
+  }
+
   const isOnline = useOnlineStatus();
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);

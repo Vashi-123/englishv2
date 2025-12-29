@@ -13,6 +13,37 @@ export type BillingProduct = {
   active: boolean;
 };
 
+type CachedProduct = BillingProduct & { cachedAt: number };
+const BILLING_CACHE_PREFIX = "englishv2:billingProduct";
+const memoryCache = new Map<string, CachedProduct>();
+
+const getCacheKey = (key: string) => `${BILLING_CACHE_PREFIX}:${key}`;
+
+const readCachedProduct = (key: string): CachedProduct | null => {
+  const existing = memoryCache.get(key);
+  if (existing) return existing;
+  try {
+    const raw = window.localStorage.getItem(getCacheKey(key));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CachedProduct;
+    if (!parsed || typeof parsed !== "object") return null;
+    memoryCache.set(key, parsed);
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+const writeCachedProduct = (product: BillingProduct) => {
+  const cached: CachedProduct = { ...product, cachedAt: Date.now() };
+  memoryCache.set(product.key, cached);
+  try {
+    window.localStorage.setItem(getCacheKey(product.key), JSON.stringify(cached));
+  } catch {
+    // ignore
+  }
+};
+
 export type BillingQuoteResponse = {
   ok: true;
   productKey: string;
@@ -62,6 +93,27 @@ export const fetchBillingProduct = async (key: string = BILLING_PRODUCT_KEY): Pr
     priceCurrency: String((data as any).price_currency || "RUB"),
     active: Boolean((data as any).active),
   };
+};
+
+export const getCachedBillingProduct = (key: string = BILLING_PRODUCT_KEY): BillingProduct | null => {
+  const cached = readCachedProduct(key);
+  if (!cached) return null;
+  const { cachedAt, ...product } = cached;
+  return product;
+};
+
+// Returns cached product immediately (if present) and refreshes cache in background.
+export const primeBillingProductCache = async (key: string = BILLING_PRODUCT_KEY): Promise<BillingProduct | null> => {
+  const cached = getCachedBillingProduct(key);
+  void (async () => {
+    try {
+      const fresh = await fetchBillingProduct(key);
+      if (fresh) writeCachedProduct(fresh);
+    } catch {
+      // silent fail, keep cache
+    }
+  })();
+  return cached;
 };
 
 export const createYooKassaPayment = async (params: { returnUrl: string; description?: string; promoCode?: string; productKey?: string }) => {

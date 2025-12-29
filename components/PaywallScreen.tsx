@@ -1,13 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Crown, GraduationCap, Loader2, X } from "lucide-react";
 import {
   createYooKassaPayment,
   fetchBillingProduct,
+  getCachedBillingProduct,
   formatPrice,
   BILLING_PRODUCT_KEY,
   quoteBilling,
 } from "../services/billingService";
+import { fetchIosIapProduct, purchaseIosIap } from "../services/iapService";
 import { formatFirstLessonsRu } from "../services/ruPlural";
+const STATUS_URL = import.meta.env.VITE_PAYMENT_STATUS_URL || "/check";
 
 type PaywallScreenProps = {
   lessonNumber?: number;
@@ -34,7 +38,9 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   onClose,
   onEntitlementsRefresh,
 }) => {
+  const isNativeIos = useMemo(() => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios", []);
   const [paying, setPaying] = useState(false);
+  const [iapPaying, setIapPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [promoCode, setPromoCode] = useState("");
   const [priceValue, setPriceValue] = useState<string>("1500.00");
@@ -45,21 +51,42 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const [promoOk, setPromoOk] = useState<boolean | null>(null);
   const [basePriceValue, setBasePriceValue] = useState<string>("1500.00");
   const [basePriceCurrency, setBasePriceCurrency] = useState<string>("RUB");
+  const [iapSupported, setIapSupported] = useState(false);
+  const [iapLoading, setIapLoading] = useState(false);
+  const [iapPriceLabel, setIapPriceLabel] = useState<string | null>(null);
+  const [iapNote, setIapNote] = useState<string | null>(null);
 
   const listPriceLabel = useMemo(() => formatPrice("15000.00", "RUB"), []);
+  const priceBusy = priceLoading || (isNativeIos && iapLoading);
 
   useEffect(() => {
     let cancelled = false;
+    const cached = getCachedBillingProduct(BILLING_PRODUCT_KEY);
+    if (cached?.active && cached.priceValue) {
+      setPriceValue(cached.priceValue);
+      setPriceCurrency(cached.priceCurrency || "RUB");
+      setBasePriceValue(cached.priceValue);
+      setBasePriceCurrency(cached.priceCurrency || "RUB");
+      setPriceLoading(false);
+    }
+
     const load = async () => {
-      setPriceLoading(true);
       try {
         const product = await fetchBillingProduct(BILLING_PRODUCT_KEY);
         if (cancelled) return;
         if (product?.active && product.priceValue) {
+          const changed =
+            product.priceValue !== priceValue ||
+            product.priceCurrency !== priceCurrency;
           setPriceValue(product.priceValue);
           setPriceCurrency(product.priceCurrency || "RUB");
           setBasePriceValue(product.priceValue);
           setBasePriceCurrency(product.priceCurrency || "RUB");
+          if (changed) {
+            // ensure displayed price updates if background fetch returned new price
+            setPromoOk(null);
+            setPromoMessage(null);
+          }
         }
       } catch {
         // keep fallback price
@@ -71,13 +98,62 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [priceCurrency, priceValue]);
+
+  useEffect(() => {
+    if (!isNativeIos) return;
+    let cancelled = false;
+    const loadIap = async () => {
+      setIapLoading(true);
+      try {
+        const product = await fetchIosIapProduct();
+        if (cancelled) return;
+        if (product) {
+          setIapSupported(true);
+          if (product.price) {
+            setPriceValue(String(product.price));
+            setBasePriceValue(String(product.price));
+          }
+          if (product.currency) {
+            setPriceCurrency(product.currency);
+            setBasePriceCurrency(product.currency);
+          }
+          if (product.localizedPrice) {
+            setIapPriceLabel(product.localizedPrice);
+          } else if (product.price) {
+            setIapPriceLabel(product.currency ? `${product.price} ${product.currency}` : String(product.price));
+          }
+          setIapNote("Оплата через App Store с вашего Apple ID.");
+        } else {
+          setIapSupported(false);
+        }
+      } catch (err) {
+        console.error("[PaywallScreen] iap load error", err);
+        if (!cancelled) {
+          setIapSupported(false);
+          setIapNote("Покупки через App Store временно недоступны, попробуйте оплату картой.");
+        }
+      } finally {
+        if (!cancelled) setIapLoading(false);
+      }
+    };
+    void loadIap();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNativeIos]);
 
   const priceLabel = useMemo(() => formatPrice(String(priceValue), String(priceCurrency)), [priceCurrency, priceValue]);
   const basePriceLabel = useMemo(
     () => formatPrice(String(basePriceValue), String(basePriceCurrency)),
     [basePriceCurrency, basePriceValue]
   );
+  const displayedPriceLabel = useMemo(() => {
+    if (isNativeIos && iapPriceLabel && !promoOk) return iapPriceLabel;
+    if (promoOk && basePriceLabel !== priceLabel) return priceLabel;
+    if (isNativeIos && iapPriceLabel) return iapPriceLabel;
+    return basePriceLabel;
+  }, [basePriceLabel, iapPriceLabel, isNativeIos, priceLabel, promoOk]);
 
   const promoSavingsLabel = useMemo(() => {
     if (!promoOk) return null;
@@ -130,7 +206,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   };
 
   const handlePay = async () => {
-    if (paying) return;
+    if (paying || iapPaying) return;
     setError(null);
     setPaying(true);
     try {
@@ -165,7 +241,48 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     }
   };
 
+  const handlePayIos = async () => {
+    if (iapPaying || paying) return;
+    setError(null);
+    setIapPaying(true);
+    try {
+      const normalizedPromo = promoCode.trim();
+      const res = await purchaseIosIap({
+        productId: BILLING_PRODUCT_KEY,
+        promoCode: normalizedPromo || undefined,
+        priceValue: Number(priceValue),
+        priceCurrency: priceCurrency,
+      });
+      if (!res || res.ok !== true) {
+        const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось завершить покупку";
+        setError(msg);
+        return;
+      }
+      onEntitlementsRefresh();
+      onClose();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg || "Не удалось завершить покупку");
+    } finally {
+      setIapPaying(false);
+    }
+  };
+
   const payButtonLabel = isPremium ? "Premium активен" : "Оплатить";
+  const useIosIap = isNativeIos;
+  const anyPaying = paying || iapPaying || iapLoading || Boolean(isLoading);
+  const openStatusPage = () => {
+    if (!STATUS_URL) return;
+    try {
+      const url = new URL(STATUS_URL, window.location.origin);
+      if (userEmail) {
+        url.searchParams.set("email", userEmail);
+      }
+      window.open(url.toString(), "_blank", "noreferrer");
+    } catch {
+      window.open(STATUS_URL, "_blank", "noreferrer");
+    }
+  };
 
 	  return (
 	    <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900 pt-[var(--app-safe-top)]">
@@ -214,19 +331,19 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
           )}
 
 	          <div className="mt-6 pt-5 border-t border-gray-100">
-	            <div className="text-base font-extrabold text-brand-primary">Быстрее прогресс за меньшие деньги</div>
-	            <div className="mt-3">
-	              {priceLoading ? (
-	                <div className="flex items-center gap-2 text-slate-900">
-	                  <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
-	                </div>
-	              ) : (
-	                <>
-	                  <div className={`text-3xl font-black tracking-tight ${promoOk ? "text-emerald-600" : "text-slate-900"}`}>
-	                    {(promoOk && basePriceLabel !== priceLabel) ? priceLabel : basePriceLabel}{" "}
-	                    <span className="text-base font-extrabold text-gray-700">за 100 уроков</span>
-	                  </div>
-	                  <div className="mt-1 text-sm font-extrabold text-gray-400 line-through">вместо {listPriceLabel}</div>
+                <div className="text-base font-extrabold text-brand-primary">Быстрее прогресс за меньшие деньги</div>
+                <div className="mt-3">
+                  {priceBusy ? (
+                    <div className="flex items-center gap-2 text-slate-900">
+                      <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
+                    </div>
+                  ) : (
+                    <>
+                      <div className={`text-3xl font-black tracking-tight ${promoOk ? "text-emerald-600" : "text-slate-900"}`}>
+                        {displayedPriceLabel}{" "}
+                        <span className="text-base font-extrabold text-gray-700">за 100 уроков</span>
+                      </div>
+                      <div className="mt-1 text-sm font-extrabold text-gray-400 line-through">вместо {listPriceLabel}</div>
 	                  {promoOk && promoSavingsLabel ? (
 	                    <div className="mt-1 text-xs font-extrabold text-emerald-700">
 	                      Скидка по промокоду: −{promoSavingsLabel}
@@ -251,7 +368,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
               <button
                 type="button"
                 onClick={handleCheckPromo}
-                disabled={promoLoading || paying || isLoading || isPremium}
+                disabled={promoLoading || paying || iapPaying || iapLoading || isLoading || isPremium}
                 className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60"
               >
                 {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Проверить"}
@@ -264,21 +381,33 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
             )}
           </div>
 
-	          <div className="mt-6 grid gap-3">
-	            <button
-	              type="button"
-	              onClick={handlePay}
-	              disabled={paying || isLoading || isPremium}
-	              className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
-	            >
-	              <span className="inline-flex items-center justify-center gap-2">
-	                {(paying || isLoading) ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : null}
-	                <span className="whitespace-nowrap">{payButtonLabel}</span>
-	              </span>
-	            </button>
-	          </div>
-	        </div>
-	      </div>
-	    </div>
+          <div className="mt-6 grid gap-3">
+            <button
+              type="button"
+              onClick={useIosIap ? handlePayIos : handlePay}
+              disabled={anyPaying || isPremium}
+              className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              <span className="inline-flex items-center justify-center gap-2">
+                {anyPaying ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : null}
+                <span className="whitespace-nowrap">{payButtonLabel}</span>
+              </span>
+            </button>
+            {isNativeIos && (
+              <button
+                type="button"
+                onClick={openStatusPage}
+                className="h-11 rounded-2xl border border-dashed border-gray-300 text-brand-primary font-bold bg-white hover:bg-gray-50 transition flex items-center justify-center gap-2"
+              >
+                Проверить статус
+              </button>
+            )}
+            {useIosIap && iapNote ? (
+              <div className="text-xs font-semibold text-gray-500 text-center">{iapNote}</div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };
