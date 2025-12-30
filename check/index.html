@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>GoPractice / Check</title>
+    <link rel="icon" type="image/x-icon" href="%BASE_URL%favicon.ico?v=2" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.11/dist/tailwind.min.css">
+    <style>
+      :root {
+        --app-safe-top: calc(env(safe-area-inset-top) + 24px);
+      }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      if (window.tailwind) {
+        tailwind.config = {
+          theme: {
+            extend: {
+              fontFamily: {
+                sans: ['Inter', 'sans-serif'],
+              },
+              colors: {
+                brand: {
+                  primary: '#6366F1',
+                  primaryLight: '#818CF8',
+                  secondary: '#E0E7FF',
+                  accent: '#F472B6',
+                  dark: '#09090B',
+                  card: '#18181B',
+                  surface: '#27272A',
+                }
+              },
+              animation: {
+                'float': 'float 6s ease-in-out infinite',
+                'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+                'fade-in-up-fast': 'fadeInUp 0.22s ease-out forwards',
+                'fade-in-fast': 'fadeIn 0.22s ease-out forwards',
+                'fade-in-smooth': 'fadeIn 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                'fade-in-up-shadow': 'fadeInUpShadow 0.22s ease-out forwards',
+                'fade-in-up-shadow-smooth': 'fadeInUpShadow 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                'pop-in-shadow': 'popInShadow 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              },
+              keyframes: {
+                float: {
+                  '0%, 100%': { transform: 'translateY(0)' },
+                  '50%': { transform: 'translateY(-10px)' },
+                },
+                fadeIn: {
+                  '0%': { opacity: '0' },
+                  '100%': { opacity: '1' },
+                },
+                fadeInUp: {
+                  '0%': { opacity: '0', transform: 'translateY(20px)' },
+                  '100%': { opacity: '1', transform: 'translateY(0)' },
+                },
+                fadeInUpShadow: {
+                  '0%': {
+                    opacity: '0.55',
+                    transform: 'translateY(10px) scale(0.985)',
+                    boxShadow: '0 24px 70px -26px rgba(15, 23, 42, 0.38)',
+                  },
+                  '35%': {
+                    opacity: '0.85',
+                    transform: 'translateY(4px) scale(0.993)',
+                    boxShadow: '0 22px 58px -22px rgba(15, 23, 42, 0.30)',
+                  },
+                  '100%': {
+                    opacity: '1',
+                    transform: 'translateY(0) scale(1)',
+                    boxShadow: '0 28px 72px -24px rgba(15, 23, 42, 0.32)',
+                  },
+                },
+                popInShadow: {
+                  '0%': {
+                    opacity: '0',
+                    transform: 'scale(0.92)',
+                    boxShadow: '0 14px 42px -24px rgba(15, 23, 42, 0.22)',
+                  },
+                  '70%': {
+                    opacity: '1',
+                    transform: 'scale(1.01)',
+                    boxShadow: '0 28px 74px -26px rgba(15, 23, 42, 0.34)',
+                  },
+                  '100%': {
+                    opacity: '1',
+                    transform: 'scale(1)',
+                    boxShadow: '0 26px 70px -26px rgba(15, 23, 42, 0.32)',
+                  },
+                },
+              }
+            }
+          }
+        };
+      } else {
+        console.warn("[tailwind] CDN script not loaded, using fallback CSS only");
+      }
+    </script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #F8FAFC;
+        color: #0F172A;
+      }
+      
+      .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .hide-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0"
+  }
+}
+</script>
+</head>
+  <body class="min-h-screen selection:bg-brand-primary selection:text-white overflow-x-hidden bg-slate-50 text-slate-900">
+    <div id="root"></div>
+  <script type="module" src="/index.tsx"></script>
+</body>
+</html>
