@@ -296,23 +296,6 @@ async function handleGroqLessonV2(req, res) {
     if (tutorMode) {
       const safeText = (value) => String(value ?? "").trim();
 
-      const insertTutorMessage = async (role, text) => {
-        const trimmed = safeText(text);
-        if (!trimmed) return;
-        const { error } = await supabase.from("chat_messages").insert({
-          lesson_id: lessonId,
-          user_id: authedUserId,
-          role,
-          text: trimmed,
-          day: script?.day || 0,
-          lesson: script?.lesson || 0,
-          current_step_snapshot: { type: "completion", index: 0, tutor: true },
-        });
-        if (error) {
-          console.error("[groq-lesson-v2] Failed to save tutor message:", error.message, "payload:", { lessonId, userId: authedUserId, role });
-        }
-      };
-
       const lessonContext = (() => {
         const goal = safeText(script?.goal);
 
@@ -498,14 +481,12 @@ Lesson context (for you):\n\n${lessonContext}`;
           userLang.toLowerCase().startsWith("ru")
             ? "Мы уже разобрали 5 вопросов по этому уроку. Если хочешь — начнем следующий урок."
             : "We've already covered 5 questions for this lesson. If you want, let's start the next lesson.";
-        await insertTutorMessage("model", limitReached);
         sendJson(res, 200, { response: limitReached, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }, corsHeaders);
         return;
       }
 
       // If the user just opened tutor mode (no question yet), return a greeting and persist it so it shows on re-entry.
       if (!userQuestion) {
-        await insertTutorMessage("model", greeting);
         sendJson(res, 200, { response: greeting, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }, corsHeaders);
         return;
       }
@@ -523,14 +504,10 @@ Lesson context (for you):\n\n${lessonContext}`;
         const fallback = userLang.toLowerCase().startsWith("ru")
           ? "Не получилось ответить прямо сейчас. Попробуй еще раз."
           : "Couldn't answer right now. Please try again.";
-        await insertTutorMessage("user", userQuestion);
-        await insertTutorMessage("model", fallback);
         sendJson(res, 200, { response: fallback, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }, corsHeaders);
         return;
       }
 
-      await insertTutorMessage("user", userQuestion);
-      await insertTutorMessage("model", result.text.trim());
       sendJson(res, 200, { response: result.text.trim(), isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }, corsHeaders);
       return;
     }

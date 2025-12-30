@@ -41,10 +41,10 @@ import { useStep4ProgressPersistence } from './useStep4ProgressPersistence';
 import { useTtsQueue } from './useTtsQueue';
 import { useAutoScrollToEnd } from './useAutoScrollToEnd';
 import { useVocabScroll } from './useVocabScroll';
-import { isMatchExample, isMatchWord, scorePronunciation } from './speechMatching';
+import { isMatchExample, isMatchWord } from './speechMatching';
 import { Mic } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
-import { isOfflineAsrUsable, offlineAsrCancel, offlineAsrStart, offlineAsrStop } from '../../services/offlineAsr';
+import { isOfflineAsrUsable, offlineAsrCancel, offlineAsrCleanup, offlineAsrOnAutoStop, offlineAsrStart, offlineAsrStop } from '../../services/offlineAsr';
 
 export type Step4DialogueProps = {
   day?: number;
@@ -658,6 +658,25 @@ export function Step4DialogueScreen({
 
   useEffect(() => () => stopVocabListening(), [stopVocabListening]);
 
+  // Cleanup whisper model при выходе из урока
+  useEffect(() => {
+    return () => {
+      if (isNativeIos && offlineAsrSupported) {
+        void offlineAsrCleanup();
+      }
+    };
+  }, [isNativeIos, offlineAsrSupported]);
+
+  // Cleanup whisper model когда блок слов завершен (showVocab становится false)
+  const prevShowVocabRef = useRef<boolean>(showVocab);
+  useEffect(() => {
+    // Если showVocab изменился с true на false, значит блок слов завершен
+    if (prevShowVocabRef.current && !showVocab && isNativeIos && offlineAsrSupported) {
+      void offlineAsrCleanup();
+    }
+    prevShowVocabRef.current = showVocab;
+  }, [showVocab, isNativeIos, offlineAsrSupported]);
+
   useEffect(() => {
     if (typeof navigator === 'undefined') return;
     const perms = (navigator as any).permissions;
@@ -709,6 +728,53 @@ export function Step4DialogueScreen({
 	    [vocabWords]
 	  );
 
+  useEffect(() => {
+    if (!isNativeIos || !offlineAsrSupported) return;
+    let handle: { remove: () => Promise<void> } | null = null;
+    let cancelled = false;
+
+    void (async () => {
+      const h = await offlineAsrOnAutoStop((event) => {
+        if (cancelled) return;
+        if (vocabRecognitionRef.current !== 'offline') return;
+
+        const expected = vocabExpectedRef.current;
+        if (!expected) return;
+
+        if (vocabTimeoutRef.current) {
+          window.clearTimeout(vocabTimeoutRef.current);
+          vocabTimeoutRef.current = null;
+        }
+
+        const transcript = String(event?.transcript || '').trim();
+        vocabRecognitionRef.current = null;
+        vocabLastTranscriptRef.current = transcript;
+        setVocabHeard(transcript);
+
+        const ok =
+          transcript.length > 0
+            ? expected.kind === 'word'
+              ? isMatchWord(expected.expectedText, transcript)
+              : isMatchExample(expected.expectedText, transcript)
+            : false;
+        setVocabCorrect(ok);
+        if (ok) markVocabPronounced(expected.index, expected.kind);
+        stopVocabListening();
+      });
+      if (cancelled) {
+        if (h) void h.remove();
+        return;
+      }
+      if (!h) return;
+      handle = h as any;
+    })();
+
+    return () => {
+      cancelled = true;
+      if (handle) void handle.remove();
+    };
+  }, [isNativeIos, offlineAsrSupported, markVocabPronounced, stopVocabListening]);
+
   const enqueueVocabAudio = useCallback(
     (items: Array<{ text: string; lang: string; kind: string }>, messageId?: string) => {
       clearVocabAudioFallback();
@@ -736,7 +802,8 @@ export function Step4DialogueScreen({
 
   const startVocabListening = useCallback(
     ({ index, kind, expectedText }: { index: number; kind: 'word' | 'example'; expectedText: string }) => {
-      if (!speechRecognitionSupported) return;
+      // Offline ASR on native iOS does not depend on the browser SpeechRecognition API.
+      if (!speechRecognitionSupported && !(isNativeIos && offlineAsrSupported)) return;
 
       if (isNativeIos && offlineAsrSupported) {
         stopVocabListening();
@@ -745,37 +812,42 @@ export function Step4DialogueScreen({
         setVocabHeard('');
         vocabLastTranscriptRef.current = '';
         setVocabCorrect(null);
+        // Оптимистичное обновление UI сразу, до загрузки модели
         setVocabListening({ index, kind });
         vocabExpectedRef.current = { index, kind, expectedText };
 
         vocabRecognitionRef.current = 'offline';
 
-        void (async () => {
-          const started = await offlineAsrStart(expectedText);
-          if (!started) {
-            setVocabError('offline_asr_start_failed');
-            stopVocabListening();
-            return;
-          }
+        // Откладываем вызов offlineAsrStart, чтобы не блокировать UI поток
+        // Это позволяет кнопке обновиться плавно перед началом загрузки модели
+        window.setTimeout(() => {
+          void (async () => {
+            const started = await offlineAsrStart(expectedText);
+            if (!started) {
+              setVocabError('offline_asr_start_failed');
+              stopVocabListening();
+              return;
+            }
 
-          vocabTimeoutRef.current = window.setTimeout(async () => {
-            vocabTimeoutRef.current = null;
-            const transcript = String((await offlineAsrStop()) || '').trim();
-            vocabRecognitionRef.current = null;
-            vocabLastTranscriptRef.current = transcript;
-            setVocabHeard(transcript);
+            vocabTimeoutRef.current = window.setTimeout(async () => {
+              vocabTimeoutRef.current = null;
+              const transcript = String((await offlineAsrStop()) || '').trim();
+              vocabRecognitionRef.current = null;
+              vocabLastTranscriptRef.current = transcript;
+              setVocabHeard(transcript);
 
-            const ok =
-              transcript.length > 0
-                ? kind === 'word'
-                  ? isMatchWord(expectedText, transcript)
-                  : isMatchExample(expectedText, transcript)
-                : false;
-            setVocabCorrect(ok);
-            if (ok) markVocabPronounced(index, kind);
-            stopVocabListening();
-          }, 9000);
-        })();
+              const ok =
+                transcript.length > 0
+                  ? kind === 'word'
+                    ? isMatchWord(expectedText, transcript)
+                    : isMatchExample(expectedText, transcript)
+                  : false;
+              setVocabCorrect(ok);
+              if (ok) markVocabPronounced(index, kind);
+              stopVocabListening();
+            }, 6000);
+          })();
+        }, 0);
 
         return;
       }
@@ -1098,6 +1170,8 @@ export function Step4DialogueScreen({
     restoredVocabIndexRef,
     appliedVocabRestoreKeyRef,
     vocabIndex,
+    vocabPronunciationByIndex,
+    setVocabPronunciationByIndex,
     vocabWordsLength: vocabWords.length,
     matchingProgressStorageKey,
     matchingHydratedRef,
@@ -1685,6 +1759,12 @@ export function Step4DialogueScreen({
     const words = vocabWords;
     if (!words.length) return;
 
+    // Выгружаем модель whisper при переходе к matching заданию
+    if (isNativeIos && offlineAsrSupported) {
+      console.log('[Step4Dialogue] 🧹 CLEANUP: Unloading whisper model before starting matching exercise');
+      void offlineAsrCleanup();
+    }
+
     const pairs = words.map((w: any, idx: number) => ({
       pairId: `pair-${idx}`,
       word: w.word,
@@ -1717,7 +1797,7 @@ export function Step4DialogueScreen({
     setMatchingEverStarted(true);
     setMatchingInsertIndex(messages.length);
     window.setTimeout(() => matchingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-  }, [messages.length, vocabWords]);
+  }, [messages.length, vocabWords, isNativeIos, offlineAsrSupported]);
 
 	  const effectiveInputMode: InputMode = grammarGate.gated || ankiGateActive ? 'hidden' : inputMode;
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
@@ -2001,55 +2081,74 @@ export function Step4DialogueScreen({
         <button
           type="button"
           disabled={isLoading || isPlayingQueue || !vocabMicReady}
-          onClick={async () => {
+          onClick={() => {
+            // Синхронная проверка и обновление UI сразу
             if (isLoading || isPlayingQueue || !vocabMicReady) return;
-            if (!(isNativeIos && offlineAsrSupported)) {
-              if (micPermission !== 'granted') {
-                const ok = await ensureMicPermission();
-                if (!ok) {
-                  setVocabError('mic_permission_denied');
-	                  return;
-	                }
-	              }
-	            }
-	            const isListeningThis =
+            
+            const isListeningThis =
               Boolean(vocabListening) &&
-	              vocabListening.index === vocabIndex &&
-	              vocabListening.kind === vocabPronounceTask.kind;
+              vocabListening.index === vocabIndex &&
+              vocabListening.kind === vocabPronounceTask.kind;
+            
             if (isListeningThis) {
-              if (
-                isNativeIos &&
-                offlineAsrSupported &&
-                vocabRecognitionRef.current === 'offline' &&
-                vocabPronounceTask.kind === 'word'
-              ) {
-                const transcript = String((await offlineAsrStop()) || '').trim();
-                vocabRecognitionRef.current = null;
-                vocabLastTranscriptRef.current = transcript;
-                setVocabHeard(transcript);
-                const score = transcript.length
-                  ? scorePronunciation(vocabPronounceTask.expectedText, transcript)
-                  : 0;
-                const ok = score >= 0.3;
+              // Остановка записи - делаем асинхронно, но не блокируем UI
+              void (async () => {
+                if (isNativeIos && offlineAsrSupported && vocabRecognitionRef.current === 'offline') {
+                  const transcript = String((await offlineAsrStop()) || '').trim();
+                  vocabRecognitionRef.current = null;
+                  vocabLastTranscriptRef.current = transcript;
+                  setVocabHeard(transcript);
+                  const ok =
+                    transcript.length > 0
+                      ? vocabPronounceTask.kind === 'word'
+                        ? isMatchWord(vocabPronounceTask.expectedText, transcript)
+                        : isMatchExample(vocabPronounceTask.expectedText, transcript)
+                      : false;
+                  setVocabCorrect(ok);
+                  if (ok) markVocabPronounced(vocabIndex, vocabPronounceTask.kind);
+                  stopVocabListening();
+                  return;
+                }
+                const heard = String(vocabLastTranscriptRef.current || '').trim();
+                const ok =
+                  heard.length > 0
+                    ? vocabPronounceTask.kind === 'word'
+                      ? isMatchWord(vocabPronounceTask.expectedText, heard)
+                      : isMatchExample(vocabPronounceTask.expectedText, heard)
+                    : false;
                 setVocabCorrect(ok);
                 if (ok) markVocabPronounced(vocabIndex, vocabPronounceTask.kind);
                 stopVocabListening();
-                return;
-              }
-              const heard = String(vocabLastTranscriptRef.current || '').trim();
-              const score = heard.length ? scorePronunciation(vocabPronounceTask.expectedText, heard) : 0;
-              const ok = score >= 0.3;
-              setVocabCorrect(ok);
-              if (ok) markVocabPronounced(vocabIndex, vocabPronounceTask.kind);
-              stopVocabListening();
+              })();
               return;
             }
-	            startVocabListening({
-	              index: vocabIndex,
-	              kind: vocabPronounceTask.kind,
-	              expectedText: vocabPronounceTask.expectedText,
-	            });
-	          }}
+            
+            // Проверка разрешений - откладываем, чтобы не блокировать UI
+            if (!(isNativeIos && offlineAsrSupported)) {
+              void (async () => {
+                if (micPermission !== 'granted') {
+                  const ok = await ensureMicPermission();
+                  if (!ok) {
+                    setVocabError('mic_permission_denied');
+                    return;
+                  }
+                }
+                // Запускаем после проверки разрешений
+                startVocabListening({
+                  index: vocabIndex,
+                  kind: vocabPronounceTask.kind,
+                  expectedText: vocabPronounceTask.expectedText,
+                });
+              })();
+            } else {
+              // Для iOS offline ASR запускаем сразу - UI уже обновится в startVocabListening
+              startVocabListening({
+                index: vocabIndex,
+                kind: vocabPronounceTask.kind,
+                expectedText: vocabPronounceTask.expectedText,
+              });
+            }
+          }}
           className={`relative h-16 w-16 flex items-center justify-center rounded-full transition-all shadow-lg duration-100 ${
             isLoading || isPlayingQueue || !vocabMicReady
               ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'

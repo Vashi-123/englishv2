@@ -808,7 +808,9 @@ export const loadChatMessages = async (
     }
 
 	    console.log("[loadChatMessages] Loaded", data.length, "messages");
-		    const mapped = data.map(msg => ({
+		    const mapped = data
+          .filter((msg) => !isTutorSnapshot((msg as any).current_step_snapshot))
+          .map(msg => ({
 		      id: msg.id,
 		      role: msg.role as 'user' | 'model',
 		      text: msg.text,
@@ -974,6 +976,16 @@ export const clearLessonScriptCacheForLevel = (level: string) => {
 const chatMessagesStoragePrefix = 'englishv2:chatMessages:';
 const chatMessagesMemoryCache = new Map<string, ChatMessage[]>();
 
+const isTutorSnapshot = (snapshot: any): boolean => {
+  if (!snapshot || typeof snapshot !== 'object') return false;
+  return (snapshot as any).tutor === true;
+};
+
+const isTutorChatMessage = (msg: any): boolean => {
+  if (!msg || typeof msg !== 'object') return false;
+  return isTutorSnapshot((msg as any).currentStepSnapshot) || isTutorSnapshot((msg as any).current_step_snapshot);
+};
+
 const stripLocalChatMessageFields = (msg: ChatMessage): ChatMessage => {
   if (!msg || !msg.local) return msg;
   const { local, ...rest } = msg as any;
@@ -1009,7 +1021,7 @@ const readChatMessagesFromSession = (cacheKey: string): ChatMessage[] | null => 
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return null;
-    const sanitized = (parsed as any[]).filter(isPersistedChatMessage) as ChatMessage[];
+    const sanitized = (parsed as any[]).filter(isPersistedChatMessage).filter((m) => !isTutorChatMessage(m)) as ChatMessage[];
     return sanitized.map((m) => ({ ...m, local: { source: 'cache', saveStatus: 'saved' } }));
   } catch {
     return null;
@@ -1029,7 +1041,9 @@ const writeChatMessagesToSession = (cacheKey: string, messages: ChatMessage[]) =
 export const cacheChatMessages = (day: number, lesson: number, level: string, messages: ChatMessage[]) => {
   const cacheKey = getChatMessagesCacheKey(day, lesson, level);
   if (!cacheKey) return;
-  const persistedOnly = Array.isArray(messages) ? messages.filter(isPersistedChatMessage) : [];
+  const persistedOnly = Array.isArray(messages)
+    ? messages.filter(isPersistedChatMessage).filter((m) => !isTutorChatMessage(m))
+    : [];
   // Memory cache can retain local metadata; session cache should not.
   chatMessagesMemoryCache.set(
     cacheKey,
@@ -1042,7 +1056,14 @@ export const peekCachedChatMessages = (day: number, lesson: number, level: strin
   const cacheKey = getChatMessagesCacheKey(day, lesson, level);
   if (!cacheKey) return null;
   const mem = chatMessagesMemoryCache.get(cacheKey);
-  if (mem && Array.isArray(mem)) return mem;
+  if (mem && Array.isArray(mem)) {
+    const cleaned = mem.filter((m) => !isTutorChatMessage(m));
+    if (cleaned.length !== mem.length) {
+      chatMessagesMemoryCache.set(cacheKey, cleaned);
+      writeChatMessagesToSession(cacheKey, cleaned);
+    }
+    return cleaned;
+  }
   const sess = readChatMessagesFromSession(cacheKey);
   if (sess) {
     chatMessagesMemoryCache.set(cacheKey, sess);
@@ -1091,6 +1112,7 @@ export const subscribeChatMessages = async (
   const emitRow = (row: any) => {
     if (!row) return;
     if (row.lesson_id !== lessonId) return;
+    if (row.current_step_snapshot && typeof row.current_step_snapshot === 'object' && row.current_step_snapshot.tutor === true) return;
     onMessage({
       id: row.id,
       role: row.role,

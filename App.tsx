@@ -22,6 +22,9 @@ import { supabase } from './services/supabaseClient';
 import { FREE_LESSON_COUNT } from './services/billingService';
 import { useFreePlan } from './hooks/useFreePlan';
 import { formatFirstLessonsRu } from './services/ruPlural';
+import { getAllUserWords } from './services/srsService';
+import { loadLessonScript } from './services/generationService';
+import { parseMarkdown } from './components/step4Dialogue/markdown';
 import { 
   X, 
   AlertTriangle,
@@ -34,7 +37,11 @@ import {
   GraduationCap,
   Quote,
   ChevronRight,
+  BookOpen,
+  Book,
+  Volume2,
 } from 'lucide-react';
+import { useTtsQueue } from './components/step4Dialogue/useTtsQueue';
 
 const ConnectionRequiredScreen = () => {
   return (
@@ -62,6 +69,8 @@ const ConnectionRequiredScreen = () => {
 	}> = ({ userId, userEmail, onSignOut }) => {
 	  // Language management
 	  const { language, setLanguage, copy, languages } = useLanguage();
+	  // TTS for word pronunciation
+	  const { processAudioQueue, currentAudioItem } = useTtsQueue();
 	  const [showLangMenu, setShowLangMenu] = useState(false);
 	  const [langMenuVisible, setLangMenuVisible] = useState(false);
 	  const langMenuRef = useRef<HTMLDivElement | null>(null);
@@ -193,6 +202,22 @@ const ConnectionRequiredScreen = () => {
   const [premiumGateVisible, setPremiumGateVisible] = useState(false);
   const premiumGateCloseTimerRef = useRef<number | null>(null);
   const [showCourseTopics, setShowCourseTopics] = useState(false);
+  const [showWordsModal, setShowWordsModal] = useState(false);
+  const [wordsModalActive, setWordsModalActive] = useState(false);
+  const wordsModalTimerRef = useRef<number | null>(null);
+  const [userWords, setUserWords] = useState<Array<{ id: number; word: string; translation: string }>>([]);
+  const [wordsLoading, setWordsLoading] = useState(false);
+  const [grammarCards, setGrammarCards] = useState<Array<{ day: number; lesson: number; theme: string; grammar: string }>>([]);
+  const [grammarLoading, setGrammarLoading] = useState(false);
+  const [showGrammarModal, setShowGrammarModal] = useState(false);
+  const [grammarModalActive, setGrammarModalActive] = useState(false);
+  const grammarModalTimerRef = useRef<number | null>(null);
+  const [reviewMode, setReviewMode] = useState(false);
+  const [reviewIndex, setReviewIndex] = useState(0);
+  const [reviewSelected, setReviewSelected] = useState<string | null>(null);
+  const [reviewWasCorrect, setReviewWasCorrect] = useState<boolean | null>(null);
+  const [shuffledReviewWords, setShuffledReviewWords] = useState<Array<{ id: number; word: string; translation: string; options: string[] }>>([]);
+  const reviewAdvanceTimerRef = useRef<number | null>(null);
   const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>(() => {
     try {
       if (typeof window === 'undefined') return {};
@@ -234,6 +259,129 @@ const ConnectionRequiredScreen = () => {
       setShowInsightPopup(false);
       insightPopupTimerRef.current = null;
   }, INSIGHT_POPUP_ANIM_MS);
+  }, []);
+
+  const shuffle = useCallback(<T,>(arr: T[]): T[] => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }, []);
+
+  const openWordsModal = useCallback(async () => {
+    if (typeof window === 'undefined') return;
+    if (wordsModalTimerRef.current != null) {
+      window.clearTimeout(wordsModalTimerRef.current);
+      wordsModalTimerRef.current = null;
+    }
+    setShowWordsModal(true);
+    setReviewMode(false);
+    setReviewIndex(0);
+    setReviewSelected(null);
+    setReviewWasCorrect(null);
+    setWordsLoading(true);
+    try {
+      const words = await getAllUserWords({
+        level,
+        targetLang: language || 'ru',
+      });
+      setUserWords(words);
+    } catch (error) {
+      console.error('[App] Failed to load words:', error);
+      setUserWords([]);
+    } finally {
+      setWordsLoading(false);
+      window.requestAnimationFrame(() => setWordsModalActive(true));
+    }
+  }, [level, language]);
+
+  const startReviewMode = useCallback(() => {
+    if (userWords.length === 0) return;
+    const shuffled = shuffle([...userWords]);
+    
+    // Создаем варианты ответов для каждого слова
+    const wordsWithOptions = shuffled.map((word) => {
+      const correctAnswer = word.translation;
+      const distractors = shuffle(
+        userWords
+          .filter((w) => w.translation.toLowerCase() !== word.translation.toLowerCase())
+          .map((w) => w.translation)
+          .filter(Boolean)
+      )
+        .filter((t, idx, arr) => arr.indexOf(t) === idx)
+        .slice(0, 3);
+      const options = shuffle([correctAnswer, ...distractors]);
+      return { ...word, options };
+    });
+    
+    setShuffledReviewWords(wordsWithOptions);
+    setReviewMode(true);
+    setReviewIndex(0);
+    setReviewSelected(null);
+    setReviewWasCorrect(null);
+  }, [userWords, shuffle]);
+
+  const goNextReviewWord = useCallback(() => {
+    if (reviewAdvanceTimerRef.current != null) {
+      window.clearTimeout(reviewAdvanceTimerRef.current);
+      reviewAdvanceTimerRef.current = null;
+    }
+    setReviewSelected(null);
+    setReviewWasCorrect(null);
+    setReviewIndex((prev) => (prev + 1) % shuffledReviewWords.length);
+  }, [shuffledReviewWords.length]);
+
+  // Автоматическое воспроизведение аудио при изменении слова в режиме повторения
+  const prevReviewIndexRef = useRef<number>(-1);
+  useEffect(() => {
+    if (!reviewMode) {
+      prevReviewIndexRef.current = -1;
+      return;
+    }
+    if (reviewIndex === prevReviewIndexRef.current) return;
+    if (shuffledReviewWords.length === 0) return;
+    
+    const currentWord = shuffledReviewWords[reviewIndex];
+    if (!currentWord) return;
+    
+    prevReviewIndexRef.current = reviewIndex;
+    
+    const normalizedWord = String(currentWord.word || '').replace(/\s+/g, ' ').trim();
+    if (normalizedWord) {
+      // Небольшая задержка для плавности перехода
+      const timer = window.setTimeout(() => {
+        processAudioQueue([{ text: normalizedWord, lang: 'en', kind: 'word' }]);
+      }, 300);
+      return () => window.clearTimeout(timer);
+    }
+  }, [reviewMode, reviewIndex, shuffledReviewWords, processAudioQueue]);
+
+  useEffect(() => {
+    return () => {
+      if (reviewAdvanceTimerRef.current != null) {
+        window.clearTimeout(reviewAdvanceTimerRef.current);
+        reviewAdvanceTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  const closeWordsModal = useCallback(() => {
+    if (typeof window === 'undefined') {
+      setShowWordsModal(false);
+      setWordsModalActive(false);
+      return;
+    }
+    setWordsModalActive(false);
+    if (wordsModalTimerRef.current != null) {
+      window.clearTimeout(wordsModalTimerRef.current);
+      wordsModalTimerRef.current = null;
+    }
+    wordsModalTimerRef.current = window.setTimeout(() => {
+      setShowWordsModal(false);
+      wordsModalTimerRef.current = null;
+    }, INSIGHT_POPUP_ANIM_MS);
   }, []);
 
   const openPremiumGate = useCallback((lessonNumber: number) => {
@@ -301,8 +449,17 @@ const ConnectionRequiredScreen = () => {
         window.clearTimeout(confirmCloseTimerRef.current);
         confirmCloseTimerRef.current = null;
       }
+      if (wordsModalTimerRef.current != null) {
+        window.clearTimeout(wordsModalTimerRef.current);
+        wordsModalTimerRef.current = null;
+      }
+      if (grammarModalTimerRef.current != null) {
+        window.clearTimeout(grammarModalTimerRef.current);
+        grammarModalTimerRef.current = null;
+      }
     };
   }, []);
+
 
   useEffect(() => {
     if (!showInsightPopup) return;
@@ -312,6 +469,15 @@ const ConnectionRequiredScreen = () => {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [closeInsightPopup, showInsightPopup]);
+
+  useEffect(() => {
+    if (!showWordsModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeWordsModal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [closeWordsModal, showWordsModal]);
 
   useEffect(() => {
     if (!confirmAction) return;
@@ -562,6 +728,115 @@ const ConnectionRequiredScreen = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDayPlan, view, isInitializing]);
+
+  // Load user words count
+  useEffect(() => {
+    if (!userId || isInitializing) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const words = await getAllUserWords({
+          level,
+          targetLang: language || 'ru',
+        });
+        if (!cancelled) {
+          setUserWords(words);
+        }
+      } catch (error) {
+        console.error('[App] Failed to load words count:', error);
+        if (!cancelled) {
+          setUserWords([]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, level, language, isInitializing]);
+
+  // Load grammar for all lessons
+  const loadGrammarCards = useCallback(async () => {
+    if (dayPlans.length === 0) return;
+    setGrammarLoading(true);
+    try {
+      const cards: Array<{ day: number; lesson: number; theme: string; grammar: string }> = [];
+      
+      for (const plan of dayPlans) {
+        try {
+          const scriptJson = await loadLessonScript(plan.day, plan.lesson, level);
+          if (scriptJson) {
+            const script = JSON.parse(scriptJson);
+            if (script?.grammar?.explanation) {
+              // Убираем часть с заданием (всё, что начинается с <h>Задание<h>)
+              let grammarText = script.grammar.explanation;
+              const assignmentIndex = grammarText.indexOf('<h>Задание<h>');
+              if (assignmentIndex !== -1) {
+                grammarText = grammarText.substring(0, assignmentIndex).trim();
+              }
+              
+              cards.push({
+                day: plan.day,
+                lesson: plan.lesson,
+                theme: plan.theme || `Урок ${plan.lesson}`,
+                grammar: grammarText,
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`[App] Failed to load grammar for day ${plan.day}, lesson ${plan.lesson}:`, error);
+        }
+      }
+      
+      setGrammarCards(cards);
+    } catch (error) {
+      console.error('[App] Failed to load grammar cards:', error);
+      setGrammarCards([]);
+    } finally {
+      setGrammarLoading(false);
+    }
+  }, [dayPlans, level]);
+
+  useEffect(() => {
+    if (dayPlans.length > 0 && !isInitializing) {
+      loadGrammarCards();
+    }
+  }, [dayPlans, level, isInitializing, loadGrammarCards]);
+
+  const openGrammarModal = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (grammarModalTimerRef.current != null) {
+      window.clearTimeout(grammarModalTimerRef.current);
+      grammarModalTimerRef.current = null;
+    }
+    setShowGrammarModal(true);
+    window.requestAnimationFrame(() => setGrammarModalActive(true));
+  }, []);
+
+  const closeGrammarModal = useCallback(() => {
+    if (typeof window === 'undefined') {
+      setShowGrammarModal(false);
+      setGrammarModalActive(false);
+      return;
+    }
+    setGrammarModalActive(false);
+    if (grammarModalTimerRef.current != null) {
+      window.clearTimeout(grammarModalTimerRef.current);
+      grammarModalTimerRef.current = null;
+    }
+    grammarModalTimerRef.current = window.setTimeout(() => {
+      setShowGrammarModal(false);
+      grammarModalTimerRef.current = null;
+    }, INSIGHT_POPUP_ANIM_MS);
+  }, []);
+
+  useEffect(() => {
+    if (!showGrammarModal) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') closeGrammarModal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [closeGrammarModal, showGrammarModal]);
 
   // Realtime прогресс больше не используем: статус урока определяется по chat_messages (<lesson_complete>).
 
@@ -983,7 +1258,7 @@ const ConnectionRequiredScreen = () => {
 		                              {module.moduleTitle}
 		                            </div>
 		                            <div className="relative mt-3">
-			                              <div className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-slate-900">
+			                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-600">
 			                                Цель
 			                              </div>
 				                              <div className="mt-1 text-[15px] font-medium text-slate-900 leading-snug">
@@ -991,7 +1266,7 @@ const ConnectionRequiredScreen = () => {
 				                              </div>
 		                            </div>
 		                            <div className="relative mt-3 pt-3 border-t border-gray-100">
-			                              <div className="text-[11px] font-extrabold uppercase tracking-[0.22em] text-slate-900">
+			                              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-600">
 			                                Итог
 			                              </div>
 				                              <div className="mt-1 text-[15px] font-medium text-slate-900 leading-snug">
@@ -1039,18 +1314,23 @@ const ConnectionRequiredScreen = () => {
 	        <div className="flex items-start justify-between gap-3">
 	          <div className="relative" ref={langMenuRef}>
             <div className="flex items-center gap-3">
-	              <div
-	                className="w-10 h-10 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center cursor-pointer"
-	                onClick={() => {
-	                  if (showLangMenu) closeLangMenu();
-	                  else openLangMenu();
-	                }}
-	              >
-	                <div className="w-full h-full bg-gradient-to-tr from-brand-primary to-brand-primaryLight flex items-center justify-center text-[11px] font-bold text-white">
-	                  ME
-	                </div>
-	              </div>
-              <div>
+		              <div
+		                className="w-10 h-10 rounded-2xl bg-white border border-gray-200 overflow-hidden shadow-sm flex items-center justify-center cursor-pointer"
+		                onClick={() => {
+		                  if (showLangMenu) closeLangMenu();
+		                  else openLangMenu();
+		                }}
+		              >
+		                <div className="w-full h-full bg-white flex items-center justify-center p-0.5">
+		                  <img
+		                    src="/logo.png"
+		                    alt="Logo"
+		                    className="w-full h-full object-contain object-center"
+		                    draggable={false}
+		                  />
+		                </div>
+		              </div>
+	              <div>
                 <div className="text-xs font-medium text-gray-600">{copy.header.greeting}</div>
                 <div className="text-2xl font-semibold leading-tight text-slate-900">
                   {studyPlanFirst} {studyPlanRest && <span className="font-bold text-brand-primary">{studyPlanRest}</span>}
@@ -1195,9 +1475,9 @@ const ConnectionRequiredScreen = () => {
 	                type="button"
                 onClick={() => setShowCourseTopics((prev) => !prev)}
                 className="flex items-center gap-1 text-[10px] font-semibold text-gray-400 hover:text-brand-primary transition-colors"
-                aria-label={showCourseTopics ? 'Скрыть темы курса' : 'Показать темы курса'}
+                aria-label={showCourseTopics ? 'Скрыть уроки курса' : 'Показать уроки курса'}
               >
-                <span>Темы</span>
+                <span>Уроки</span>
                 <ChevronRight className={`w-3 h-3 transition-transform ${showCourseTopics ? 'rotate-90' : ''}`} />
               </button>
 	            </div>
@@ -1263,15 +1543,15 @@ const ConnectionRequiredScreen = () => {
 				                        ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105' 
 				                        : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
 				                      }
-				                      ${
-				                        isLockedByProgress
-				                          ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
-				                          : isLockedByPaywall
-				                            ? 'opacity-95 cursor-pointer border-amber-200 bg-amber-50/70 hover:bg-amber-50 hover:border-amber-300'
-				                            : 'cursor-pointer'
-				                      }
-					                    `}
-				                >
+					                      ${
+					                        isLockedByPaywall
+					                          ? 'opacity-95 cursor-pointer border-amber-200 bg-amber-50/70 hover:bg-amber-50 hover:border-amber-300'
+					                          : isLockedByProgress
+					                            ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
+					                            : 'cursor-pointer'
+					                      }
+						                    `}
+					                >
                     {/* Анимированный фон для завершенного дня */}
                     {isDayCompleted && !isSelected && (
                       <>
@@ -1537,6 +1817,51 @@ const ConnectionRequiredScreen = () => {
                 </div>
               </div>
             </button>
+
+            {/* 3.5. Words and Grammar Blocks */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={openWordsModal}
+                className="bg-white border border-gray-200 rounded-3xl p-4 relative overflow-hidden group hover:border-brand-primary/30 transition-all cursor-pointer shadow-sm text-left"
+              >
+                <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-brand-primary/10 rounded-full blur-xl pointer-events-none"></div>
+                <div className="flex flex-col gap-2 relative z-10">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/20 flex items-center justify-center border border-brand-primary/20 shadow-md shrink-0 group-hover:scale-110 transition-transform duration-300">
+                    <BookOpen className="w-5 h-5 text-brand-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 mb-0.5">
+                      Слова
+                    </h3>
+                    <p className="text-xs text-gray-600 font-medium">
+                      {userWords.length > 0 ? `${userWords.length} слов` : 'Нет слов'}
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={openGrammarModal}
+                className="bg-white border border-gray-200 rounded-3xl p-4 relative overflow-hidden group hover:border-brand-primary/30 transition-all cursor-pointer shadow-sm text-left"
+              >
+                <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-brand-primary/10 rounded-full blur-xl pointer-events-none"></div>
+                <div className="flex flex-col gap-2 relative z-10">
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/20 flex items-center justify-center border border-brand-primary/20 shadow-md shrink-0 group-hover:scale-110 transition-transform duration-300">
+                    <Book className="w-5 h-5 text-brand-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-sm text-slate-900 mb-0.5">
+                      Грамматика
+                    </h3>
+                    <p className="text-xs text-gray-600 font-medium">
+                      {grammarCards.length > 0 ? `${grammarCards.length} тем` : 'Загрузка...'}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
           </>
         ) : null}
       </div>
@@ -1720,6 +2045,330 @@ const ConnectionRequiredScreen = () => {
 	    );
 	  };
 
+  const renderWordsModal = () => {
+    if (!showWordsModal) return null;
+
+    return createPortal(
+      <div
+        className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ${
+          wordsModalActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        aria-modal="true"
+        role="dialog"
+      >
+        <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none" />
+
+        <div className="relative h-full w-full flex flex-col">
+          <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
+            <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
+                  <BookOpen className="w-7 h-7 text-brand-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                    Изученные слова
+                  </h2>
+                  <div className="mt-1 text-sm font-semibold text-gray-500">
+                    {userWords.length > 0 ? `${userWords.length} слов` : 'Нет сохраненных слов'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (reviewMode) {
+                      setReviewMode(false);
+                      setReviewSelected(null);
+                      setReviewWasCorrect(null);
+                      if (reviewAdvanceTimerRef.current != null) {
+                        window.clearTimeout(reviewAdvanceTimerRef.current);
+                        reviewAdvanceTimerRef.current = null;
+                      }
+                    } else {
+                      closeWordsModal();
+                    }
+                  }}
+                  className="bg-white/80 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm self-start"
+                  aria-label="Закрыть"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 py-6">
+              {wordsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="relative">
+                    <div className="w-12 h-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin" />
+                  </div>
+                </div>
+              ) : userWords.length === 0 ? (
+                <div className="text-center py-12">
+                  <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-600 font-medium">Пока нет изученных слов</p>
+                  <p className="text-sm text-gray-500 mt-2">Слова появятся здесь после прохождения уроков</p>
+                </div>
+              ) : reviewMode ? (
+                <div className="flex flex-col items-center justify-center min-h-[400px]">
+                  {shuffledReviewWords.length > 0 && shuffledReviewWords[reviewIndex] && (() => {
+                    const currentWord = shuffledReviewWords[reviewIndex];
+                    const isWordSpeaking = currentAudioItem?.text === currentWord.word && currentAudioItem?.kind === 'word';
+                    const correctAnswer = currentWord.translation;
+                    const showResult = reviewWasCorrect !== null;
+                    
+                    return (
+                      <div className="w-full max-w-2xl">
+                        <div className="rounded-3xl border-2 border-gray-200 bg-white shadow-lg p-8">
+                          <div className="text-center mb-6">
+                            <div className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-4">
+                              {reviewIndex + 1} / {shuffledReviewWords.length}
+                            </div>
+                            <div className="flex items-center justify-center gap-3 mb-6">
+                              <div className={`text-4xl font-extrabold text-slate-900 ${isWordSpeaking ? 'text-brand-primary' : ''}`}>
+                                {currentWord.word}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const normalizedWord = String(currentWord.word || '').replace(/\s+/g, ' ').trim();
+                                  if (normalizedWord) {
+                                    processAudioQueue([{ text: normalizedWord, lang: 'en', kind: 'word' }]);
+                                  }
+                                }}
+                                className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
+                                  isWordSpeaking
+                                    ? 'bg-brand-primary text-white shadow-md'
+                                    : 'bg-gray-100 text-gray-600 hover:bg-brand-primary/10 hover:text-brand-primary'
+                                }`}
+                                aria-label={`Произнести ${currentWord.word}`}
+                              >
+                                <Volume2 className={`w-6 h-6 ${isWordSpeaking ? 'animate-pulse' : ''}`} />
+                              </button>
+                            </div>
+                            <div className="text-sm font-semibold text-gray-600 mb-6">
+                              Выбери правильный перевод
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {currentWord.options.map((opt) => {
+                              const v = String(opt || '').trim();
+                              const picked = reviewSelected === v;
+                              const correct = v === correctAnswer;
+                              const cls = (() => {
+                                if (!showResult) {
+                                  return picked
+                                    ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
+                                    : 'border-gray-200 bg-white text-gray-900 hover:border-brand-primary/40';
+                                }
+                                if (picked && correct) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
+                                if (picked && !correct) return 'border-red-200 bg-red-50 text-red-900';
+                                if (correct && showResult) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
+                                return 'border-gray-200 bg-white text-gray-500';
+                              })();
+
+                              return (
+                                <button
+                                  key={`${currentWord.word}:${v}`}
+                                  type="button"
+                                  disabled={showResult}
+                                  onClick={(e) => {
+                                    if (showResult) return;
+                                    setReviewSelected(v);
+                                    const ok = v === correctAnswer;
+                                    setReviewWasCorrect(ok);
+                                    (e.currentTarget as HTMLButtonElement).blur();
+                                    reviewAdvanceTimerRef.current = window.setTimeout(() => {
+                                      goNextReviewWord();
+                                    }, ok ? 800 : 1500);
+                                  }}
+                                  style={{ WebkitTapHighlightColor: 'transparent' }}
+                                  className={`px-4 py-4 rounded-2xl border text-sm font-bold shadow-sm transition-all disabled:opacity-100 select-none active:scale-[0.98] ${cls}`}
+                                >
+                                  {v || '—'}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {showResult && reviewWasCorrect === false && (
+                            <div className="mt-4 text-sm font-semibold text-red-700 text-center">
+                              Неверно. Правильно: <span className="font-extrabold">{correctAnswer}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
+                  <div className="p-5 space-y-3">
+                    {userWords.map((word) => {
+                      const isWordSpeaking = currentAudioItem?.text === word.word && currentAudioItem?.kind === 'word';
+                      return (
+                        <div
+                          key={word.id}
+                          className="w-full rounded-2xl border border-gray-200 bg-white hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className={`text-lg font-extrabold text-slate-900 mb-1 ${isWordSpeaking ? 'text-brand-primary' : ''}`}>
+                                {word.word}
+                              </div>
+                              <div className="text-sm font-medium text-gray-600">
+                                {word.translation}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const normalizedWord = String(word.word || '').replace(/\s+/g, ' ').trim();
+                                if (normalizedWord) {
+                                  processAudioQueue([{ text: normalizedWord, lang: 'en', kind: 'word' }]);
+                                }
+                              }}
+                              className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                                isWordSpeaking
+                                  ? 'bg-brand-primary text-white shadow-md'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-brand-primary/10 hover:text-brand-primary'
+                              }`}
+                              aria-label={`Произнести ${word.word}`}
+                            >
+                              <Volume2 className={`w-5 h-5 ${isWordSpeaking ? 'animate-pulse' : ''}`} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            {!wordsLoading && userWords.length > 0 && !reviewMode && (
+              <div className="border-t border-gray-200 px-5 sm:px-6 lg:px-8 py-4 bg-white">
+                <button
+                  type="button"
+                  onClick={startReviewMode}
+                  className="w-full px-6 py-3 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5"
+                >
+                  Повторить
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
+  const renderGrammarModal = () => {
+    if (!showGrammarModal) return null;
+
+    return createPortal(
+      <div
+        className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ${
+          grammarModalActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        aria-modal="true"
+        role="dialog"
+      >
+        <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none" />
+
+        <div className="relative h-full w-full flex flex-col">
+          <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
+            <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
+                  <Book className="w-7 h-7 text-brand-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+                    Грамматика
+                  </h2>
+                  <div className="mt-1 text-sm font-semibold text-gray-500">
+                    {grammarCards.length > 0 ? `${grammarCards.length} тем` : 'Нет сохраненной грамматики'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={closeGrammarModal}
+                  className="bg-white/80 hover:bg-white p-2 rounded-full text-slate-900 border border-gray-200 transition-colors shadow-sm self-start"
+                  aria-label="Закрыть"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 py-6">
+              {grammarLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="relative">
+                    <div className="w-12 h-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin" />
+                  </div>
+                </div>
+              ) : grammarCards.length === 0 ? (
+                <div className="text-center py-12">
+                  <Book className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-600 font-medium">Пока нет изученной грамматики</p>
+                  <p className="text-sm text-gray-500 mt-2">Грамматика появится здесь после прохождения уроков</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {grammarCards.map((card, index) => {
+                    const currentDay = selectedDayId || (dayPlans[0]?.day ?? 1);
+                    const isActive = card.day <= currentDay;
+                    
+                    return (
+                      <div
+                        key={`grammar-${card.day}-${card.lesson}-${index}`}
+                        className={`rounded-3xl border overflow-hidden transition-all ${
+                          isActive
+                            ? 'border-gray-200 bg-white shadow-sm hover:border-brand-primary/30'
+                            : 'border-gray-100 bg-gray-50 opacity-60'
+                        }`}
+                      >
+                        <div className={`px-5 py-4 border-b ${
+                          isActive
+                            ? 'border-gray-100 bg-gradient-to-r from-brand-primary/5 to-transparent'
+                            : 'border-gray-100 bg-gray-100'
+                        }`}>
+                          <h3 className={`text-lg font-extrabold ${
+                            isActive ? 'text-slate-900' : 'text-gray-500'
+                          }`}>
+                            {card.theme}
+                          </h3>
+                          <p className="text-xs font-semibold text-gray-500 mt-1">
+                            Урок {card.lesson} · День {card.day}
+                          </p>
+                        </div>
+                        <div className="px-5 py-4">
+                          <div className={`text-sm font-medium leading-relaxed whitespace-pre-wrap ${
+                            isActive ? 'text-gray-700' : 'text-gray-400'
+                          }`}>
+                            {parseMarkdown(card.grammar)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
   return (
     <>
       {view === ViewState.DASHBOARD && renderDashboard()}
@@ -1741,6 +2390,8 @@ const ConnectionRequiredScreen = () => {
       {renderInsightPopup()}
       {renderConfirmModal()}
       {renderPremiumGateModal()}
+      {renderWordsModal()}
+      {renderGrammarModal()}
 
       {/* Loading Overlay */}
        {isCheckingStatus && (

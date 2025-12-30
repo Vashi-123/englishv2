@@ -45,6 +45,14 @@ export function TutorMiniChat({
   const panelBottom = 'calc(var(--dialogue-inputbar-height, 88px) + 76px)';
   const rightOffset = 'calc(var(--dialogue-layout-right-offset, 16px) + 16px)';
 
+  const overlayClassName = `fixed inset-0 z-[119] bg-black/10 transition-opacity duration-200 ease-out ${
+    open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+  }`;
+
+  const panelClassName = `fixed z-[120] w-[min(380px,calc(100vw-2rem))] max-h-[60vh] rounded-3xl border-2 border-brand-primary/35 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] overflow-hidden origin-bottom-right will-change-transform transition-[opacity,transform] duration-200 ease-out ${
+    open ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' : 'opacity-0 translate-y-2 scale-[0.98] pointer-events-none'
+  }`;
+
   return (
     <>
       <button
@@ -57,20 +65,14 @@ export function TutorMiniChat({
         <Sparkles className="h-6 w-6 mx-auto" />
       </button>
 
-      {open ? (
-        <div
-          className="fixed inset-0 z-[119]"
-          onClick={onClose}
-          aria-hidden="true"
-        />
-      ) : null}
+      <div className={overlayClassName} onClick={open ? onClose : undefined} aria-hidden="true" />
 
-      {open ? (
-        <div
-          style={{ bottom: panelBottom, right: rightOffset }}
-          className="fixed z-[120] w-[min(380px,calc(100vw-2rem))] max-h-[60vh] rounded-3xl border-2 border-brand-primary/35 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] overflow-hidden"
-          onClick={(e) => e.stopPropagation()}
-        >
+      <div
+        style={{ bottom: panelBottom, right: rightOffset }}
+        className={panelClassName}
+        onClick={(e) => e.stopPropagation()}
+        aria-hidden={!open}
+      >
           <div className="flex items-center justify-between gap-3 px-4 py-3 bg-white border-b border-brand-primary/10">
             <div className="min-w-0">
               <div className="text-sm font-extrabold text-gray-900 truncate">{title}</div>
@@ -141,11 +143,10 @@ export function TutorMiniChat({
 	              className="h-11 w-11 inline-flex items-center justify-center rounded-xl bg-brand-primary text-white shadow-sm hover:opacity-90 transition disabled:opacity-50 disabled:cursor-not-allowed"
 	              aria-label="Send to tutor"
 	            >
-	              <Send className="h-5 w-5" />
-	            </button>
-	          </div>
-	        </div>
-	      ) : null}
+              <Send className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
 	    </>
 	  );
 }

@@ -3,6 +3,7 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { isStep4DebugEnabled } from './debugFlags';
 
 type MatchingOption = { id: string; text: string; pairId: string; matched: boolean };
+type PronunciationProgress = Record<number, { wordOk: boolean; exampleOk: boolean }>;
 
 export function useStep4ProgressPersistence({
   day,
@@ -17,6 +18,8 @@ export function useStep4ProgressPersistence({
   restoredVocabIndexRef,
   appliedVocabRestoreKeyRef,
   vocabIndex,
+  vocabPronunciationByIndex,
+  setVocabPronunciationByIndex,
   vocabWordsLength,
   matchingProgressStorageKey,
   matchingHydratedRef,
@@ -59,6 +62,8 @@ export function useStep4ProgressPersistence({
   restoredVocabIndexRef: MutableRefObject<number | null>;
   appliedVocabRestoreKeyRef: MutableRefObject<string | null>;
   vocabIndex: number;
+  vocabPronunciationByIndex: PronunciationProgress;
+  setVocabPronunciationByIndex: Dispatch<SetStateAction<PronunciationProgress>>;
   vocabWordsLength: number;
 
   matchingProgressStorageKey: string;
@@ -132,10 +137,24 @@ export function useStep4ProgressPersistence({
       if (typeof idx === 'number' && Number.isFinite(idx) && idx >= 0) {
         restoredVocabIndexRef.current = idx;
       }
+
+      // Also restore pronunciation progress (used when speech recognition is enabled).
+      const map = parsed?.pronunciationByIndex;
+      if (map && typeof map === 'object' && !Array.isArray(map)) {
+        const restored: PronunciationProgress = {};
+        for (const [k, v] of Object.entries(map as Record<string, any>)) {
+          const index = Number(k);
+          if (!Number.isFinite(index) || index < 0) continue;
+          const wordOk = typeof (v as any)?.wordOk === 'boolean' ? (v as any).wordOk : false;
+          const exampleOk = typeof (v as any)?.exampleOk === 'boolean' ? (v as any).exampleOk : false;
+          restored[index] = { wordOk, exampleOk };
+        }
+        setVocabPronunciationByIndex(restored);
+      }
     } catch {
       // ignore
     }
-  }, [vocabProgressStorageKey, restoredVocabIndexRef, appliedVocabRestoreKeyRef]);
+  }, [vocabProgressStorageKey, restoredVocabIndexRef, appliedVocabRestoreKeyRef, setVocabPronunciationByIndex]);
 
   // Restore persisted matching state (so refresh keeps "Проверить" progress)
   useEffect(() => {
@@ -278,11 +297,17 @@ export function useStep4ProgressPersistence({
   useEffect(() => {
     if (!vocabWordsLength) return;
     try {
-      localStorage.setItem(vocabProgressStorageKey, JSON.stringify({ vocabIndex }));
+      localStorage.setItem(
+        vocabProgressStorageKey,
+        JSON.stringify({
+          vocabIndex,
+          pronunciationByIndex: vocabPronunciationByIndex || {},
+        })
+      );
     } catch {
       // ignore
     }
-  }, [vocabIndex, vocabWordsLength, vocabProgressStorageKey]);
+  }, [vocabIndex, vocabPronunciationByIndex, vocabWordsLength, vocabProgressStorageKey]);
 
   useEffect(() => {
     try {

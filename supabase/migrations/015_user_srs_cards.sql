@@ -89,7 +89,7 @@ CREATE OR REPLACE FUNCTION get_srs_review_batch(
   p_level TEXT,
   p_source_lang TEXT,
   p_target_lang TEXT,
-  p_limit INT DEFAULT 8
+  p_limit INT DEFAULT 5
 )
 RETURNS TABLE (
   id BIGINT,
@@ -216,3 +216,4 @@ BEGIN
   WHERE c.id = p_card_id AND c.user_id = auth.uid();
 END;
 $$;
+

@@ -1,14 +1,26 @@
 import { Capacitor } from '@capacitor/core';
 import { registerPlugin } from '@capacitor/core';
+import type { PluginListenerHandle } from '@capacitor/core';
 
 type OfflineAsrIsAvailableResult = { available: boolean; reason?: string };
-type OfflineAsrStopResult = { transcript: string; acceptedSamplesTotal?: number; peakAbs?: number; rms?: number };
+type OfflineAsrStopResult = {
+  transcript: string;
+  acceptedSamplesTotal?: number;
+  peakAbs?: number;
+  rms?: number;
+  reason?: string;
+};
 
 export interface OfflineAsrPlugin {
   isAvailable(): Promise<OfflineAsrIsAvailableResult>;
   start(options?: { lang?: string; expectedText?: string }): Promise<{ started: boolean; reason?: string }>;
   stop(): Promise<OfflineAsrStopResult>;
   cancel(): Promise<void>;
+  cleanup(): Promise<void>;
+  addListener(
+    eventName: 'autoStop',
+    listenerFunc: (event: OfflineAsrStopResult) => void
+  ): Promise<PluginListenerHandle>;
 }
 
 const OfflineAsr = registerPlugin<OfflineAsrPlugin>('OfflineAsr');
@@ -82,5 +94,23 @@ export async function offlineAsrCancel(): Promise<void> {
     await OfflineAsr.cancel();
   } catch {
     // ignore
+  }
+}
+
+export async function offlineAsrCleanup(): Promise<void> {
+  try {
+    await OfflineAsr.cleanup();
+  } catch {
+    // ignore
+  }
+}
+
+export async function offlineAsrOnAutoStop(
+  listener: (event: OfflineAsrStopResult) => void
+): Promise<PluginListenerHandle | null> {
+  try {
+    return await OfflineAsr.addListener('autoStop', listener);
+  } catch {
+    return null;
   }
 }

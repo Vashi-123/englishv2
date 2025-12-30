@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { Crown, GraduationCap, Loader2, X } from "lucide-react";
@@ -59,14 +59,21 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const listPriceLabel = useMemo(() => formatPrice("15000.00", "RUB"), []);
   const priceBusy = priceLoading || (isNativeIos && iapLoading);
 
+  const promoAppliedRef = useRef(false);
+  useEffect(() => {
+    promoAppliedRef.current = promoOk === true;
+  }, [promoOk]);
+
   useEffect(() => {
     let cancelled = false;
     const cached = getCachedBillingProduct(BILLING_PRODUCT_KEY);
     if (cached?.active && cached.priceValue) {
-      setPriceValue(cached.priceValue);
-      setPriceCurrency(cached.priceCurrency || "RUB");
       setBasePriceValue(cached.priceValue);
       setBasePriceCurrency(cached.priceCurrency || "RUB");
+      if (!promoAppliedRef.current) {
+        setPriceValue(cached.priceValue);
+        setPriceCurrency(cached.priceCurrency || "RUB");
+      }
       setPriceLoading(false);
     }
 
@@ -75,17 +82,11 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
         const product = await fetchBillingProduct(BILLING_PRODUCT_KEY);
         if (cancelled) return;
         if (product?.active && product.priceValue) {
-          const changed =
-            product.priceValue !== priceValue ||
-            product.priceCurrency !== priceCurrency;
-          setPriceValue(product.priceValue);
-          setPriceCurrency(product.priceCurrency || "RUB");
           setBasePriceValue(product.priceValue);
           setBasePriceCurrency(product.priceCurrency || "RUB");
-          if (changed) {
-            // ensure displayed price updates if background fetch returned new price
-            setPromoOk(null);
-            setPromoMessage(null);
+          if (!promoAppliedRef.current) {
+            setPriceValue(product.priceValue);
+            setPriceCurrency(product.priceCurrency || "RUB");
           }
         }
       } catch {
@@ -98,7 +99,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [priceCurrency, priceValue]);
+  }, []);
 
   useEffect(() => {
     if (!isNativeIos) return;
@@ -111,12 +112,12 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
         if (product) {
           setIapSupported(true);
           if (product.price) {
-            setPriceValue(String(product.price));
             setBasePriceValue(String(product.price));
+            if (!promoAppliedRef.current) setPriceValue(String(product.price));
           }
           if (product.currency) {
-            setPriceCurrency(product.currency);
             setBasePriceCurrency(product.currency);
+            if (!promoAppliedRef.current) setPriceCurrency(product.currency);
           }
           if (product.localizedPrice) {
             setIapPriceLabel(product.localizedPrice);
@@ -174,6 +175,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const handleCheckPromo = async () => {
     setPromoMessage(null);
     setPromoOk(null);
+    promoAppliedRef.current = false;
     const code = promoCode.trim();
     if (!code) {
       setPromoMessage("Введите промокод");
@@ -193,6 +195,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       setPriceCurrency(String(res.amountCurrency || "RUB"));
       setPromoMessage(res.promoApplied ? "Промокод применён" : "Промокод не применён");
       setPromoOk(Boolean(res.promoApplied));
+      promoAppliedRef.current = Boolean(res.promoApplied);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setPromoMessage(msg || "Не удалось проверить промокод");
