@@ -47,36 +47,27 @@ Deno.serve(async (req: Request) => {
   const email = normalizeEmail(body?.email);
   if (!email) return json(400, { ok: false, error: "email is required" });
 
-  const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-  try {
-    const restUrl = `${SUPABASE_URL}/rest/v1/users?select=id,email&email=eq.${encodeURIComponent(email)}`;
-    const userRes = await fetch(restUrl, {
-      headers: {
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      },
-    });
-    if (!userRes.ok) {
-      throw new Error("Failed to query users");
-    }
-    const users = (await userRes.json()) as Array<{ id: string; email: string }>;
-    const user = users?.[0];
-    if (!user) {
-      return json(404, { ok: false, error: "User not found" });
-    }
-    const userId = user.id;
-    const { data: entitlement } = await client
-      .from("user_entitlements")
-      .select("is_premium,premium_until")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    try {
+      const { data: userIdResult, error: rpcError } = await client.rpc("get_user_id_by_email", { email });
+      if (rpcError) throw rpcError;
+      const userId = typeof userIdResult === "string" ? userIdResult : (Array.isArray(userIdResult) ? userIdResult[0] : null);
+      if (!userId) {
+        return json(404, { ok: false, error: "User not found" });
+      }
 
-    const { data: payments } = await client
-      .from("payments")
-      .select("status,amount_value,amount_currency,provider,created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(5);
+      const { data: entitlement } = await client
+        .from("user_entitlements")
+        .select("is_premium,premium_until")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      const { data: payments } = await client
+        .from("payments")
+        .select("status,amount_value,amount_currency,provider,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(5);
 
     return json(200, {
       ok: true,

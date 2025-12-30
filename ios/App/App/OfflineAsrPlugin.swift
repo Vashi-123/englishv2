@@ -292,9 +292,6 @@ public class OfflineAsrPlugin: CAPPlugin {
                 transcript += String(cString: cText)
             }
         }
-        // Release context to free memory when not needed between checks
-        whisper_free(ctx)
-        whisperContext = nil
         lastTranscript = transcript
         return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
     }

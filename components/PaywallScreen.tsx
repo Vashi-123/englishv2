@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Capacitor } from "@capacitor/core";
+import { Browser } from "@capacitor/browser";
 import { Crown, GraduationCap, Loader2, X } from "lucide-react";
 import {
   createYooKassaPayment,
@@ -12,6 +13,7 @@ import {
 import { fetchIosIapProduct, purchaseIosIap } from "../services/iapService";
 import { formatFirstLessonsRu } from "../services/ruPlural";
 const STATUS_URL = import.meta.env.VITE_PAYMENT_STATUS_URL || "/check";
+const SITE_URL = import.meta.env.VITE_SITE_URL || "https://go-practice.com";
 
 type PaywallScreenProps = {
   lessonNumber?: number;
@@ -41,20 +43,18 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const isNativeIos = useMemo(() => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios", []);
   const [paying, setPaying] = useState(false);
   const [iapPaying, setIapPaying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [promoCode, setPromoCode] = useState("");
-  const [priceValue, setPriceValue] = useState<string>("1500.00");
+  const [priceValue, setPriceValue] = useState<string>("1490.00");
   const [priceCurrency, setPriceCurrency] = useState<string>("RUB");
   const [priceLoading, setPriceLoading] = useState<boolean>(true);
   const [promoLoading, setPromoLoading] = useState<boolean>(false);
   const [promoMessage, setPromoMessage] = useState<string | null>(null);
   const [promoOk, setPromoOk] = useState<boolean | null>(null);
-  const [basePriceValue, setBasePriceValue] = useState<string>("1500.00");
+  const [basePriceValue, setBasePriceValue] = useState<string>("1490.00");
   const [basePriceCurrency, setBasePriceCurrency] = useState<string>("RUB");
   const [iapSupported, setIapSupported] = useState(false);
   const [iapLoading, setIapLoading] = useState(false);
   const [iapPriceLabel, setIapPriceLabel] = useState<string | null>(null);
-  const [iapNote, setIapNote] = useState<string | null>(null);
 
   const listPriceLabel = useMemo(() => formatPrice("15000.00", "RUB"), []);
   const priceBusy = priceLoading || (isNativeIos && iapLoading);
@@ -123,7 +123,6 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
           } else if (product.price) {
             setIapPriceLabel(product.currency ? `${product.price} ${product.currency}` : String(product.price));
           }
-          setIapNote("Оплата через App Store с вашего Apple ID.");
         } else {
           setIapSupported(false);
         }
@@ -131,7 +130,6 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
         console.error("[PaywallScreen] iap load error", err);
         if (!cancelled) {
           setIapSupported(false);
-          setIapNote("Покупки через App Store временно недоступны, попробуйте оплату картой.");
         }
       } finally {
         if (!cancelled) setIapLoading(false);
@@ -174,7 +172,6 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   };
 
   const handleCheckPromo = async () => {
-    setError(null);
     setPromoMessage(null);
     setPromoOk(null);
     const code = promoCode.trim();
@@ -207,7 +204,6 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 
   const handlePay = async () => {
     if (paying || iapPaying) return;
-    setError(null);
     setPaying(true);
     try {
       const normalizedPromo = promoCode.trim();
@@ -219,7 +215,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       });
       if (!res || res.ok !== true || !("confirmationUrl" in res)) {
         const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось создать оплату";
-        setError(msg);
+        console.error("[PaywallScreen] create payment failed", msg);
         return;
       }
       if (res.granted) {
@@ -229,13 +225,13 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       }
       const url = res.confirmationUrl || "";
       if (!url) {
-        setError("Не удалось открыть страницу оплаты");
+        console.error("[PaywallScreen] no confirmation URL");
         return;
       }
       window.location.href = url;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg || "Не удалось создать оплату");
+      console.error("[PaywallScreen] create payment catch", msg || "Не удалось создать оплату");
     } finally {
       setPaying(false);
     }
@@ -243,7 +239,6 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 
   const handlePayIos = async () => {
     if (iapPaying || paying) return;
-    setError(null);
     setIapPaying(true);
     try {
       const normalizedPromo = promoCode.trim();
@@ -255,14 +250,14 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       });
       if (!res || res.ok !== true) {
         const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось завершить покупку";
-        setError(msg);
+        console.error("[PaywallScreen] iOS purchase failed", msg);
         return;
       }
       onEntitlementsRefresh();
       onClose();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg || "Не удалось завершить покупку");
+      console.error("[PaywallScreen] iOS purchase catch", msg || "Не удалось завершить покупку");
     } finally {
       setIapPaying(false);
     }
@@ -271,16 +266,26 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const payButtonLabel = isPremium ? "Premium активен" : "Оплатить";
   const useIosIap = isNativeIos;
   const anyPaying = paying || iapPaying || iapLoading || Boolean(isLoading);
-  const openStatusPage = () => {
+  const openStatusPage = async () => {
     if (!STATUS_URL) return;
     try {
-      const url = new URL(STATUS_URL, window.location.origin);
+      const baseOrigin = Capacitor.isNativePlatform() ? SITE_URL : window.location.origin;
+      const url = new URL(STATUS_URL, baseOrigin);
       if (userEmail) {
         url.searchParams.set("email", userEmail);
       }
-      window.open(url.toString(), "_blank", "noreferrer");
+      const target = url.toString();
+      if (Capacitor.isNativePlatform()) {
+        await Browser.open({ url: target });
+      } else {
+        window.open(target, "_blank", "noreferrer");
+      }
     } catch {
-      window.open(STATUS_URL, "_blank", "noreferrer");
+      if (Capacitor.isNativePlatform()) {
+        await Browser.open({ url: STATUS_URL });
+      } else {
+        window.open(STATUS_URL, "_blank", "noreferrer");
+      }
     }
   };
 
@@ -323,12 +328,6 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 		              </span>
 	            </p>
 	          </div>
-
-          {error && (
-            <div className="mt-4 text-sm text-rose-700 bg-rose-50 border border-rose-100 rounded-2xl px-4 py-3">
-              {error}
-            </div>
-          )}
 
 	          <div className="mt-6 pt-5 border-t border-gray-100">
                 <div className="text-base font-extrabold text-brand-primary">Быстрее прогресс за меньшие деньги</div>
@@ -399,12 +398,9 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
                 onClick={openStatusPage}
                 className="h-11 rounded-2xl border border-dashed border-gray-300 text-brand-primary font-bold bg-white hover:bg-gray-50 transition flex items-center justify-center gap-2"
               >
-                Проверить статус
+                Не работает?
               </button>
             )}
-            {useIosIap && iapNote ? (
-              <div className="text-xs font-semibold text-gray-500 text-center">{iapNote}</div>
-            ) : null}
           </div>
         </div>
       </div>
