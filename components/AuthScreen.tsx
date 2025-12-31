@@ -115,6 +115,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
         });
         if (signUpError) throw signUpError;
         setMessage('Мы отправили письмо для подтверждения email. Перейди по ссылке из письма.');
+        return; // Не вызываем onAuthSuccess для signup - пользователь еще не подтвержден
       }
 
       if (onAuthSuccess) onAuthSuccess();
