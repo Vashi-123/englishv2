@@ -2387,10 +2387,32 @@ const App = () => {
     return <CheckStatusScreen />;
   }
 
+  // Проверяем email confirmation route по pathname или по query параметрам (для GitHub Pages 404 redirect)
   const isEmailConfirmRoute =
     typeof window !== 'undefined' &&
-    (window.location.pathname === '/auth/confirm' || window.location.pathname === '/auth/confirm/');
+    ((window.location.pathname === '/auth/confirm' || window.location.pathname === '/auth/confirm/') ||
+     (window.location.pathname === '/index.html' || window.location.pathname === '/') &&
+     (window.location.search.includes('token=') || window.location.search.includes('code=')));
   if (isEmailConfirmRoute) {
+    // Восстанавливаем правильный pathname для React роутинга
+    if (window.location.pathname !== '/auth/confirm' && window.location.pathname !== '/auth/confirm/') {
+      try {
+        const savedPath = sessionStorage.getItem('spa_redirect_path');
+        if (savedPath && savedPath.startsWith('/auth/confirm')) {
+          const url = new URL(savedPath, window.location.origin);
+          window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+          sessionStorage.removeItem('spa_redirect_path');
+        } else {
+          // Если нет сохраненного пути, но есть токен/код, устанавливаем правильный pathname
+          const url = new URL(window.location.href);
+          if (url.searchParams.has('token') || url.searchParams.has('code')) {
+            window.history.replaceState({}, '', '/auth/confirm' + url.search + url.hash);
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
     return <EmailConfirmScreen />;
   }
 

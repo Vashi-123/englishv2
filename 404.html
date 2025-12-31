@@ -24,10 +24,33 @@
       </a>
     </div>
     <script>
-      // Redirect to main app for SPA routing
-      if (window.location.pathname !== '%BASE_URL%' && window.location.pathname !== '%BASE_URL%index.html') {
-        window.location.href = '%BASE_URL%';
-      }
+      // SPA routing: redirect to index.html while preserving the path and query params
+      (function() {
+        const path = window.location.pathname;
+        const search = window.location.search;
+        const hash = window.location.hash;
+        const base = '%BASE_URL%';
+        
+        // Don't redirect if already on index.html or root
+        if (path === base || path === base + 'index.html' || path.endsWith('/index.html')) {
+          return;
+        }
+        
+        // Save original path for React to read
+        try {
+          sessionStorage.setItem('spa_redirect_path', path + search + hash);
+        } catch (e) {
+          // ignore if sessionStorage not available
+        }
+        
+        // Preserve query params and hash for email confirmation links (e.g., /auth/confirm?token=...)
+        // Redirect to index.html - React will read the path from sessionStorage or URL
+        const newPath = base + (base.endsWith('/') ? '' : '/') + 'index.html';
+        const newUrl = newPath + search + hash;
+        
+        // Use replace to avoid adding to history
+        window.location.replace(newUrl);
+      })();
     </script>
   </body>
 </html>
