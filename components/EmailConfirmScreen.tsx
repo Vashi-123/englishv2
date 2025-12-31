@@ -106,20 +106,52 @@ export const EmailConfirmScreen: React.FC = () => {
           setEmail(emailParam);
         }
 
-        // Для PKCE flow используем code
-        // Но если verifier не найден (переход из другого браузера), пробуем использовать token
+        // Приоритет: сначала пробуем token (для email confirmation), потом code (для PKCE)
+        // Если есть token, используем его в первую очередь
+        if (token) {
+          // Подтверждаем email через verifyOtp с token
+          const { data, error } = await supabase.auth.verifyOtp({
+            token_hash: token,
+            type: type as 'signup' | 'email' | 'recovery' | 'email_change',
+          });
+
+          if (error) {
+            throw error;
+          }
+
+          if (data?.user) {
+            setEmail(data.user.email || emailParam || null);
+            setUserId(data.user.id);
+            
+            // Для recovery типа (сброс пароля) редиректим на страницу сброса
+            if (type === 'recovery') {
+              setTimeout(() => {
+                window.location.href = '/#reset-password';
+              }, 2000);
+              return;
+            }
+            
+            // Для signup показываем страницу с информацией о регистрации и предложением открыть полный доступ
+            setStatus('showPaywall');
+            return;
+          }
+        }
+
+        // Если нет token, но есть code, пробуем PKCE flow
+        // Но для email confirmation через ссылку это обычно не работает, если verifier не найден
         if (code) {
           try {
             const { data, error } = await supabase.auth.exchangeCodeForSession(code);
             if (error) {
-              // Если ошибка связана с отсутствием verifier, пробуем использовать token если он есть
-              if (error.message?.includes('code verifier') && token) {
-                console.log('[EmailConfirm] PKCE verifier not found, trying token instead');
-                // Продолжим обработку с token ниже
-              } else {
-                throw error;
+              // Если ошибка связана с отсутствием verifier, это нормально для email confirmation
+              // Показываем понятное сообщение
+              if (error.message?.includes('code verifier')) {
+                throw new Error('Ссылка подтверждения была открыта в другом браузере или устройстве. Пожалуйста, откройте ссылку в том же браузере, где вы регистрировались, или попробуйте зарегистрироваться заново.');
               }
-            } else if (data?.user) {
+              throw error;
+            }
+            
+            if (data?.user) {
               setEmail(data.user.email || emailParam || null);
               setUserId(data.user.id);
               
@@ -136,52 +168,17 @@ export const EmailConfirmScreen: React.FC = () => {
               return;
             }
           } catch (err: any) {
-            // Если PKCE не сработал и есть token, пробуем использовать token
-            if (err?.message?.includes('code verifier') && token) {
-              console.log('[EmailConfirm] PKCE failed, falling back to token');
-              // Продолжим обработку с token ниже
-            } else {
-              throw err;
-            }
+            throw err;
           }
         }
 
-        // Для OTP используем token
-        if (!token) {
-          // Если нет токена и кода, значит пользователь зашел напрямую на страницу
+        // Если нет ни token, ни code, значит пользователь зашел напрямую на страницу
+        if (!token && !code) {
           setStatus('error');
           setMessage('Ссылка подтверждения не найдена. Если ты перешел по ссылке из письма, убедись, что скопировал её полностью.');
           return;
         }
 
-        // Подтверждаем email через verifyOtp
-        // Для ссылок Supabase передает token, который нужно использовать как token_hash
-        const { data, error } = await supabase.auth.verifyOtp({
-          token_hash: token,
-          type: type as 'signup' | 'email' | 'recovery' | 'email_change',
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        if (data?.user) {
-          setEmail(data.user.email || emailParam || null);
-          setUserId(data.user.id);
-          
-          // Для recovery типа (сброс пароля) редиректим на страницу сброса
-          if (type === 'recovery') {
-            setTimeout(() => {
-              window.location.href = '/#reset-password';
-            }, 2000);
-            return;
-          }
-          
-          // Для signup показываем страницу с информацией о регистрации и предложением открыть полный доступ
-          setStatus('showPaywall');
-        } else {
-          throw new Error('Не удалось подтвердить email');
-        }
       } catch (err: any) {
         console.error('[EmailConfirm] Error:', err);
         setStatus('error');
