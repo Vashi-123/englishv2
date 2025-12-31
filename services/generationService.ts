@@ -29,7 +29,11 @@ const getIdentityFilter = async (): Promise<{ column: 'user_id'; value: string }
 const lessonScriptCache = new Map<string, string>();
 const lessonScriptStoragePrefix = 'englishv2:lessonScript:';
 
+// In-memory lesson ID cache to avoid repeated queries
+const lessonIdCache = new Map<string, string>();
+
 const getLessonScriptCacheKey = (day: number, lesson: number, level: string) => `${level}:${day}:${lesson}`;
+const getLessonIdCacheKey = (day: number, lesson: number, level: string) => `${level}:${day}:${lesson}`;
 
 const readLessonScriptFromSession = (cacheKey: string): string | null => {
   try {
@@ -270,6 +274,11 @@ export const getLessonIdForDayLesson = async (
   lesson: number,
   level: string = 'A1'
 ): Promise<string> => {
+  // Check cache first
+  const cacheKey = getLessonIdCacheKey(day, lesson, level);
+  const cached = lessonIdCache.get(cacheKey);
+  if (cached) return cached;
+
   // lesson_scripts contains multiple rows for the same (day, lesson) across levels.
   // Avoid .single() 406 errors by filtering by level and limiting to 1 row.
   const base = supabase
@@ -281,11 +290,19 @@ export const getLessonIdForDayLesson = async (
     .limit(1);
 
   const primary = await base.eq('level', level).maybeSingle();
-  if (!primary.error && primary.data?.lesson_id) return primary.data.lesson_id as string;
+  if (!primary.error && primary.data?.lesson_id) {
+    const lessonId = primary.data.lesson_id as string;
+    lessonIdCache.set(cacheKey, lessonId);
+    return lessonId;
+  }
 
   // Fallback for rows that don't have level populated yet.
   const fallback = await base.maybeSingle();
-  if (!fallback.error && fallback.data?.lesson_id) return fallback.data.lesson_id as string;
+  if (!fallback.error && fallback.data?.lesson_id) {
+    const lessonId = fallback.data.lesson_id as string;
+    lessonIdCache.set(cacheKey, lessonId);
+    return lessonId;
+  }
 
   throw new Error('Не найден lesson id для day/lesson');
 };
@@ -551,6 +568,101 @@ type LessonProgressRow = {
 
 const toLessonProgressCompleted = (row: LessonProgressRow | null | undefined): boolean =>
   !!row?.completed_at;
+
+/**
+ * Load all initial lesson data in one RPC call
+ */
+export const loadLessonInitData = async (
+  day: number,
+  lesson: number,
+  level: string = 'A1',
+  options?: { includeScript?: boolean; includeMessages?: boolean }
+): Promise<{
+  lessonId: string;
+  script: string | null;
+  progress: { currentStepSnapshot: any | null; completed: boolean } | null;
+  messages: ChatMessage[];
+}> => {
+  try {
+    // Try to get userId, but allow null for unauthenticated users
+    let userId: string | null = null;
+    try {
+      userId = await requireAuthUserId();
+    } catch {
+      // User not authenticated, continue with null userId
+      userId = null;
+    }
+
+    const { data, error } = await supabase.rpc('get_lesson_init_data', {
+      p_user_id: userId,
+      p_day: day,
+      p_lesson: lesson,
+      p_level: level,
+      p_include_script: options?.includeScript !== false,
+      p_include_messages: options?.includeMessages !== false && userId !== null,
+    });
+
+    if (error) throw error;
+    if (!data) throw new Error('No data returned from RPC');
+
+    const lessonId = data.lessonId as string;
+    if (!lessonId) throw new Error('lessonId not found');
+
+    // Cache lessonId
+    const cacheKey = getLessonIdCacheKey(day, lesson, level);
+    lessonIdCache.set(cacheKey, lessonId);
+
+    // Process script
+    let script: string | null = null;
+    if (data.script) {
+      script = JSON.stringify(data.script);
+      // Clean BOM/zero-width characters
+      script = script.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, '');
+      // Cache script
+      const scriptCacheKey = getLessonScriptCacheKey(day, lesson, level);
+      lessonScriptCache.set(scriptCacheKey, script);
+      writeLessonScriptToSession(scriptCacheKey, script);
+    }
+
+    // Process progress
+    const progress = data.progress
+      ? {
+          currentStepSnapshot: (data.progress as any).currentStepSnapshot ?? null,
+          completed: (data.progress as any).completed ?? false,
+        }
+      : null;
+
+    // Process messages
+    const messages: ChatMessage[] = Array.isArray(data.messages)
+      ? (data.messages as any[])
+          .filter((msg) => !isTutorSnapshot(msg.currentStepSnapshot))
+          .map((msg) => ({
+            id: msg.id,
+            role: msg.role as 'user' | 'model',
+            text: msg.text,
+            translation: undefined,
+            moduleId: undefined,
+            messageOrder: msg.messageOrder || undefined,
+            createdAt: msg.createdAt || undefined,
+            currentStepSnapshot: msg.currentStepSnapshot,
+            local: { source: 'db' as const, saveStatus: 'saved' as const },
+          }))
+      : [];
+
+    // Cache messages
+    if (messages.length > 0 && userId) {
+      const cacheKey = getChatMessagesCacheKey(day, lesson, level, userId);
+      if (cacheKey) {
+        chatMessagesMemoryCache.set(cacheKey, messages);
+      }
+    }
+
+    return { lessonId, script, progress, messages };
+  } catch (error) {
+    console.error('[loadLessonInitData] Error:', error);
+    throw error;
+  }
+};
 
 export const loadLessonProgress = async (
   day: number,

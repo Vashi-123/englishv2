@@ -124,7 +124,7 @@ export const MessageRow: React.FC<Props> = ({
             {showTranslationToggle && (
               <button
                 onClick={onToggleTranslation}
-                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-50 transition-colors shadow-sm"
+                className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white border border-gray-200 flex items-center justify-center hover:bg-gray-50 active:scale-95 active:bg-gray-100 transition-all duration-150 shadow-sm"
                 aria-label="Toggle translation"
               >
                 <Languages className="w-3.5 h-3.5 text-gray-600" />

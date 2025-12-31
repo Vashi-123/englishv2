@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import type { AudioQueueItem, ChatMessage, LessonScript, VocabWord } from '../../types';
 import { extractIntroText, deriveFindMistakeKey } from './messageUtils';
 import { VocabularyCard } from './VocabularyCard';
@@ -9,6 +9,10 @@ import { FindTheMistakeCard } from './FindTheMistakeCard';
 import { SituationThreadCard } from './SituationThreadCard';
 import { parseSituationMessage } from './situationParsing';
 import { CardHeading } from './CardHeading';
+
+// Global ref to track played situation audio across all component instances
+// This prevents double playback even if the component re-renders or is mounted multiple times
+const globalAutoPlayedSituationAiRef = new Set<string>();
 
 type Props = {
   msg: ChatMessage;
@@ -26,9 +30,6 @@ type Props = {
   vocabWords: VocabWord[];
   vocabIndex: number;
   setVocabIndex: (idx: number) => void;
-  vocabPronunciationByIndex: Record<number, { wordOk: boolean; exampleOk: boolean }>;
-  setVocabPronunciationByIndex: React.Dispatch<React.SetStateAction<Record<number, { wordOk: boolean; exampleOk: boolean }>>>;
-  speechRecognitionSupported: boolean;
   vocabRefs: React.MutableRefObject<Map<number, HTMLDivElement>>;
   currentAudioItem: AudioQueueItem | null;
   isAwaitingModelReply: boolean;
@@ -87,9 +88,6 @@ export function MessageContent({
   vocabWords,
   vocabIndex,
   setVocabIndex,
-  vocabPronunciationByIndex,
-  setVocabPronunciationByIndex,
-  speechRecognitionSupported,
   vocabRefs,
   currentAudioItem,
   isAwaitingModelReply,
@@ -126,8 +124,7 @@ export function MessageContent({
   };
 
   // Auto-play the situation's AI line once when that scenario becomes active (mp3-only).
-  // This uses processAudioQueue messageId gating + an extra ref guard to avoid rerender loops.
-  const autoPlayedSituationAiRef = useRef<Set<string>>(new Set());
+  // This uses processAudioQueue messageId gating + a global ref guard to avoid double playback.
   let autoPlaySituationAiText: string | null = null;
   let autoPlaySituationAiMessageId: string | null = null;
   let shouldAutoPlaySituationAi = false;
@@ -171,13 +168,19 @@ export function MessageContent({
       return firstModel ? parseSituationMessage(firstModel.text || '', stripModuleTag) : {};
     })();
 
+    // Check if this is the first situation (index 0, subIndex 0) - should auto-play even if currentStep hasn't updated yet
+    const isFirstSituation = scenarioIndexForCard === 0 && 
+      Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0) === 0;
+    
     const isActiveScenario =
-      currentStep?.type === 'situations' &&
+      (currentStep?.type === 'situations' &&
       typeof currentStep?.index === 'number' &&
       scenarioIndexForCard != null &&
       currentStep.index === scenarioIndexForCard &&
       Number(((currentStep as any)?.subIndex) ?? 0) ===
-        Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0);
+        Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0)) ||
+      // Also auto-play first situation if it's the first one and we're in or past situations step
+      (isFirstSituation && (currentStep?.type === 'situations' || currentStep?.type === 'completion'));
 
     const hasUserReplyInSituation = (() => {
       // For multi-step situations, we only consider a reply after the latest situation payload.
@@ -205,15 +208,28 @@ export function MessageContent({
     );
   }
 
+  // Use useMemo to stabilize the messageId to prevent unnecessary effect runs
+  const stableMessageId = useMemo(() => autoPlaySituationAiMessageId, [autoPlaySituationAiMessageId]);
+  const stableAiText = useMemo(() => autoPlaySituationAiText, [autoPlaySituationAiText]);
+
   useEffect(() => {
     if (!shouldAutoPlaySituationAi) return;
-    if (!autoPlaySituationAiText) return;
-    if (!autoPlaySituationAiMessageId) return;
-    if (autoPlayedSituationAiRef.current.has(autoPlaySituationAiMessageId)) return;
-    autoPlayedSituationAiRef.current.add(autoPlaySituationAiMessageId);
+    if (!stableAiText) return;
+    if (!stableMessageId) return;
+    
+    // Use global ref to prevent double playback across all component instances
+    // This prevents double playback even if React StrictMode runs effects twice
+    // or if the component is mounted multiple times
+    if (globalAutoPlayedSituationAiRef.has(stableMessageId)) {
+      return;
+    }
+    
+    // Mark as played BEFORE calling processAudioQueue to prevent race conditions
+    // This ensures that even if the effect runs twice (StrictMode), only one playback happens
+    globalAutoPlayedSituationAiRef.add(stableMessageId);
 
-    processAudioQueue([{ text: autoPlaySituationAiText, lang: 'en', kind: 'situation_ai' }], autoPlaySituationAiMessageId);
-  }, [autoPlaySituationAiMessageId, autoPlaySituationAiText, processAudioQueue, shouldAutoPlaySituationAi]);
+    processAudioQueue([{ text: stableAiText, lang: 'en', kind: 'situation_ai' }], stableMessageId);
+  }, [stableMessageId, stableAiText, processAudioQueue, shouldAutoPlaySituationAi]);
 
   if (parsed && (parsed.type === 'goal' || parsed.type === 'words_list')) {
     if (parsed.type === 'goal') {
@@ -236,8 +252,6 @@ export function MessageContent({
 		          show={showVocab}
 		          words={words}
 		          vocabIndex={vocabIndex}
-	            speechRecognitionSupported={speechRecognitionSupported}
-	            pronunciationByIndex={vocabPronunciationByIndex}
 		          currentAudioItem={currentAudioItem}
 	          onRegisterWordEl={(index, el) => {
 	            if (el) vocabRefs.current.set(index, el);
@@ -268,10 +282,18 @@ export function MessageContent({
 		            const nextWord = words[nextIdx];
 		            if (nextWord) {
 		              const normalizedWord = String(nextWord.word || '').replace(/\s+/g, ' ').trim();
-		              const queue = [{ text: normalizedWord, lang: 'en', kind: 'word' }].filter(
-		                (x) => String(x.text || '').trim().length > 0
-		              );
+		              const normalizedExample = String(nextWord.context || '').replace(/\s+/g, ' ').trim();
+		              const queue: Array<{ text: string; lang: string; kind: string }> = [];
+		              if (normalizedWord) {
+		                queue.push({ text: normalizedWord, lang: 'en', kind: 'word' });
+		              }
+		              // Add example after word if it exists and is different from word
+		              if (normalizedExample && normalizedExample !== normalizedWord) {
+		                queue.push({ text: normalizedExample, lang: 'en', kind: 'example' });
+		              }
+		              if (queue.length) {
 		              playVocabAudio(queue);
+		              }
 		            }
 		          }}
 		        />
@@ -398,7 +420,7 @@ export function MessageContent({
           {structuredSections.map((section, i) => (
             <div
               key={`${section.title}-${i}`}
-              className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto"
+              className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto animate-[fadeIn_0.3s_ease-out]"
             >
               <CardHeading>{section.title}</CardHeading>
               <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
@@ -411,7 +433,7 @@ export function MessageContent({
     }
     return (
       <div className="space-y-4">
-        <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{renderMarkdown(cleanContent)}</div>
+        <div className="text-gray-900 whitespace-pre-wrap leading-relaxed animate-[fadeIn_0.3s_ease-out]">{renderMarkdown(cleanContent)}</div>
       </div>
     );
   }

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check } from 'lucide-react';
 import { CardHeading } from './CardHeading';
-import { CompletionBadge } from './CompletionBadge';
 
 type Props = {
   instruction: string;
@@ -190,7 +190,15 @@ export function ConstructorCard({
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
             <CardHeading>Твоя задача</CardHeading>
-            {completed && <CompletionBadge label="Собрано!" />}
+            <span
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+                completed
+                  ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                  : 'border-gray-300 bg-white text-gray-300'
+              }`}
+            >
+              {completed ? <Check className="w-4 h-4" /> : null}
+            </span>
           </div>
           <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{renderMarkdown(instruction)}</div>
         </div>

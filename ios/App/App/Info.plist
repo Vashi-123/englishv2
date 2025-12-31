@@ -32,9 +32,7 @@
 		</dict>
 	</array>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Нужен доступ к микрофону, чтобы записывать вашу речь для упражнений и распознавания.</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Нужно распознавание речи, чтобы проверять произношение и ответы голосом.</string>
+	<string>Нужен доступ к микрофону, чтобы записывать вашу речь для упражнений.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>CFBundleVersion</key>

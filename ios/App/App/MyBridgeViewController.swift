@@ -168,8 +168,6 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
 class MyBridgeViewController: CAPBridgeViewController {
     
     override open func capacitorDidLoad() {
-        NSLog("[MyBridgeViewController] capacitorDidLoad - registering OfflineAsrPlugin")
-        bridge?.registerPluginInstance(OfflineAsrPlugin())
         NSLog("[MyBridgeViewController] capacitorDidLoad - registering AuthSessionPlugin")
         bridge?.registerPluginInstance(AuthSessionPlugin())
         NSLog("[MyBridgeViewController] capacitorDidLoad - registering NativeIapPlugin")

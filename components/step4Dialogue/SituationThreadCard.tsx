@@ -2,7 +2,6 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { Bot, Check, Languages } from 'lucide-react';
 import type { AudioQueueItem } from '../../types';
 import { CardHeading } from './CardHeading';
-import { CompletionBadge } from './CompletionBadge';
 
 type Item =
   | { kind: 'ai'; text: string; translation?: string; task?: string }
@@ -118,7 +117,15 @@ export function SituationThreadCard({
       >
         <div className="flex items-start justify-between gap-4">
           <CardHeading>Ситуация</CardHeading>
-          {completedCorrect && <CompletionBadge label="Отлично!" />}
+          <span
+            className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+              completedCorrect
+                ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                : 'border-gray-300 bg-white text-gray-300'
+            }`}
+          >
+            {completedCorrect ? <Check className="w-4 h-4" /> : null}
+          </span>
         </div>
         {title && <div className="text-xl font-bold text-gray-900">{title}</div>}
 
@@ -343,7 +350,7 @@ export function SituationThreadCard({
                   type="button"
                   onClick={onContinue}
                   disabled={isLoading}
-                  className="relative overflow-hidden px-5 py-2.5 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_85%_85%,rgba(255,255,255,0.22),transparent_55%)] after:pointer-events-none"
+                  className="relative overflow-hidden px-5 py-4 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none disabled:transform-none after:absolute after:inset-0 after:bg-[radial-gradient(circle_at_85%_85%,rgba(255,255,255,0.22),transparent_55%)] after:pointer-events-none"
                 >
                   {continueLabel}
                 </button>

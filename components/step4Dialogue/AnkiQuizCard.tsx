@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Check } from 'lucide-react';
 import { CardHeading } from './CardHeading';
-import { CompletionBadge } from './CompletionBadge';
 
 type DeckItem = { id?: number; word: string; translation: string };
 
@@ -10,6 +10,7 @@ type Props = {
   direction?: 'en->ru' | 'ru->en';
   onAnswer?: (params: { id?: number; word: string; translation: string; isCorrect: boolean }) => void | Promise<void>;
   onComplete: () => void;
+  playAudio?: (text: string, lang?: string) => void;
 };
 
 function shuffle<T>(arr: ReadonlyArray<T>): T[] {
@@ -21,7 +22,7 @@ function shuffle<T>(arr: ReadonlyArray<T>): T[] {
   return a;
 }
 
-export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer, onComplete }: Props) {
+export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer, onComplete, playAudio }: Props) {
   const deck = useMemo<DeckItem[]>(() => {
     const normalized = items
       .map((x) => ({
@@ -68,6 +69,9 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
   const [selected, setSelected] = useState<string | null>(null);
   const [wasCorrect, setWasCorrect] = useState<boolean | null>(null);
   const advanceTimerRef = useRef<number | null>(null);
+  const playedAudioRef = useRef<boolean>(false);
+
+  const current = quiz[index] || null;
 
   useEffect(() => {
     return () => {
@@ -75,13 +79,26 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
     };
   }, []);
 
+  // Play audio when showing correct answer after wrong answer
+  useEffect(() => {
+    if (wasCorrect === false && direction === 'ru->en' && playAudio && current?.word && !playedAudioRef.current) {
+      playedAudioRef.current = true;
+      // Small delay to ensure UI is updated
+      const timer = window.setTimeout(() => {
+        playAudio(current.word, 'en');
+      }, 100);
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
+    return undefined;
+  }, [wasCorrect, direction, playAudio, current?.word]);
+
   const blurActiveElement = () => {
     if (typeof document === 'undefined') return;
     const el = document.activeElement as HTMLElement | null;
     el?.blur?.();
   };
-
-  const current = quiz[index] || null;
   const progressLabel = `${Math.min(index + 1, quiz.length)}/${quiz.length || total}`;
   const promptLabel = direction === 'ru->en' ? 'Перевод' : 'Слово';
   const promptText = current ? (direction === 'ru->en' ? current.translation : current.word) : '';
@@ -113,14 +130,22 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
         <div className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-3">
           <div className="flex items-start justify-between gap-4">
             <CardHeading>Повтори слова</CardHeading>
-            <CompletionBadge label="Готово!" />
+            <span
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+                true
+                  ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                  : 'border-gray-300 bg-white text-gray-300'
+              }`}
+            >
+              <Check className="w-4 h-4" />
+            </span>
           </div>
           <div className="text-sm text-gray-700">Недостаточно слов для повторения.</div>
           <div className="flex justify-end">
             <button
               type="button"
               onClick={finish}
-              className="px-5 py-2.5 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200"
+              className="px-5 py-4 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200"
             >
               Продолжить
             </button>
@@ -158,6 +183,8 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
               }
               if (picked && correct) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
               if (picked && !correct) return 'border-red-200 bg-red-50 text-red-900';
+              // Show correct answer in green when wrong answer was selected
+              if (wasCorrect === false && correct) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
               return 'border-gray-200 bg-white text-gray-500';
             })();
 
@@ -171,7 +198,15 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
                   setSelected(v);
                   const ok = v === correctText;
                   setWasCorrect(ok);
+                  playedAudioRef.current = false;
                   (e.currentTarget as HTMLButtonElement).blur();
+                  
+                  // Play audio for the correct answer (English word) if answer is correct
+                  if (ok && direction === 'ru->en' && playAudio && current.word) {
+                    playedAudioRef.current = true;
+                    playAudio(current.word, 'en');
+                  }
+                  
                   void (async () => {
                     try {
                       await Promise.resolve(

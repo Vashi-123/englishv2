@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
-import { loadChatMessages, loadLessonProgress, loadLessonScript, peekCachedChatMessages, upsertLessonProgress } from '../../services/generationService';
+import { loadLessonInitData, peekCachedChatMessages, upsertLessonProgress } from '../../services/generationService';
 import { createInitialLessonMessages, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { parseJsonBestEffort } from './lessonScriptUtils';
-import { isStep4DebugEnabled } from './debugFlags';
 
 type EnsureLessonContext = () => Promise<void>;
 type EnsureLessonScript = () => Promise<any>;
@@ -73,18 +72,62 @@ export function useChatInitialization({
           setIsLoading(false);
         }
 
-        const progress = await loadLessonProgress(day || 1, lesson || 1, level || 'A1');
-        if (progress?.completed) {
+        // Load all initial data in one RPC call
+        const initData = await loadLessonInitData(day || 1, lesson || 1, level || 'A1', {
+          includeScript: !lessonScript, // Only load script if not already loaded
+          includeMessages: true,
+        });
+
+        // Cache lessonId in ensureLessonContext refs (for compatibility with existing code)
+        if (ensureLessonContextRef.current) {
+          await ensureLessonContextRef.current();
+        }
+
+        // Set progress completion status
+        if (initData.progress?.completed) {
           setLessonCompletedPersisted(true);
         }
 
-        // If there's no progress row, the lesson was never started — skip hitting chat_messages and seed immediately.
-        if (!force && !progress) {
-          console.log('[Step4Dialogue] No lesson_progress found, starting new chat without loading history');
+        // Process script if loaded
+        if (initData.script && !lessonScript) {
+          const parsed = parseJsonBestEffort(initData.script, 'lessonScript');
+          setLessonScript(parsed);
+        }
+
+        // If there are saved messages, restore them
+        if (!force && initData.messages && initData.messages.length > 0) {
+          console.log('[Step4Dialogue] Restoring chat history:', initData.messages.length, 'messages');
+          setMessages(initData.messages);
+          setIsLoading(false);
+
+          // Restore currentStep from progress or last message
+          if (initData.progress?.currentStepSnapshot) {
+            console.log('[Step4Dialogue] Restoring currentStep from lesson_progress');
+            setCurrentStep(initData.progress.currentStepSnapshot);
+          } else {
+            const lastModelMsg = [...initData.messages].reverse().find((m) => m.role === 'model' && m.currentStepSnapshot);
+            if (lastModelMsg && lastModelMsg.currentStepSnapshot) {
+              console.log('[Step4Dialogue] Restoring currentStep from history');
+              setCurrentStep(lastModelMsg.currentStepSnapshot);
+            }
+          }
+        } else if (!force && !initData.progress) {
+          // No progress and no messages - start new lesson
+          console.log('[Step4Dialogue] No lesson_progress found, starting new chat');
+
+          // Ensure we have the script
+          let script: LessonScriptV2;
+          if (lessonScript) {
+            script = lessonScript;
+          } else if (initData.script) {
+            script = parseJsonBestEffort(initData.script, 'lessonScript') as LessonScriptV2;
+            setLessonScript(script);
+          } else {
+            // Fallback: load script via ensureLessonScript
+            script = (await ensureLessonScriptRef.current()) as LessonScriptV2;
+          }
 
           console.log('[Step4Dialogue] Seeding first messages locally (v2)...');
-          await ensureLessonContextRef.current();
-          const script = (await ensureLessonScriptRef.current()) as LessonScriptV2;
           const seeded = createInitialLessonMessages(script);
           setCurrentStep(seeded.nextStep || null);
           setMessages([]);
@@ -97,60 +140,22 @@ export function useChatInitialization({
             completed: false,
           });
           setIsLoading(false);
-          return;
-        }
-
-        const savedMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1', { preferCache: true });
-        console.log('[Step4Dialogue] Loaded messages:', savedMessages.length);
-
-        if (!force && savedMessages && savedMessages.length > 0) {
-          console.log('[Step4Dialogue] Restoring chat history');
-          setMessages(savedMessages);
-          setIsLoading(false);
-
-          if (progress?.currentStepSnapshot) {
-            console.log('[Step4Dialogue] Restoring currentStep from lesson_progress:', progress.currentStepSnapshot);
-            setCurrentStep(progress.currentStepSnapshot);
-          } else {
-            const lastModelMsg = [...savedMessages].reverse().find((m) => m.role === 'model' && m.currentStepSnapshot);
-            if (lastModelMsg && lastModelMsg.currentStepSnapshot) {
-              console.log('[Step4Dialogue] Restoring currentStep from history:', lastModelMsg.currentStepSnapshot);
-              setCurrentStep(lastModelMsg.currentStepSnapshot);
-            }
-          }
-
-          if (!lessonScript && day && lesson) {
-            const script = await loadLessonScript(day, lesson, level || 'A1');
-            if (script) {
-              const parsed = parseJsonBestEffort(script, 'lessonScript');
-              setLessonScript(parsed);
-            }
-          }
-          // completion is now derived from lesson_progress; keep message tag compatibility only as a fallback
         } else {
-          console.log('[Step4Dialogue] No history found, starting new chat');
+          // No messages but progress exists - start new chat (edge case)
+          console.log('[Step4Dialogue] No messages found, starting new chat');
 
-          if (!force) {
-            const retryDelays = isStep4DebugEnabled('instant') ? [0] : [60, 140, 260];
-            for (const ms of retryDelays) {
-              await new Promise((resolve) => setTimeout(resolve, ms));
-              const recheckMessages = await loadChatMessages(day || 1, lesson || 1, level || 'A1');
-              if (recheckMessages && recheckMessages.length > 0) {
-                console.log(
-                  '[Step4Dialogue] Messages appeared after delay (preloaded), using them:',
-                  recheckMessages.length
-                );
-                setMessages(recheckMessages);
-                setIsLoading(false);
-                setIsInitializing(false);
-                return;
-              }
-            }
+          // Ensure we have the script
+          let script: LessonScriptV2;
+          if (lessonScript) {
+            script = lessonScript;
+          } else if (initData.script) {
+            script = parseJsonBestEffort(initData.script, 'lessonScript') as LessonScriptV2;
+            setLessonScript(script);
+          } else {
+            script = (await ensureLessonScriptRef.current()) as LessonScriptV2;
           }
 
           console.log('[Step4Dialogue] Seeding first messages locally (v2)...');
-          await ensureLessonContextRef.current();
-          const script = (await ensureLessonScriptRef.current()) as LessonScriptV2;
           const seeded = createInitialLessonMessages(script);
           setCurrentStep(seeded.nextStep || null);
           setMessages([]);

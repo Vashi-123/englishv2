@@ -316,6 +316,13 @@ export function useTtsQueue() {
 
       if (messageId && playedMessageIdsRef.current.has(messageId)) return;
 
+      // Mark messageId as played BEFORE starting playback to prevent double playback
+      // if processAudioQueue is called multiple times quickly
+      if (messageId) {
+        playedMessageIdsRef.current.add(messageId);
+        setPlayedMessageIds((prev) => new Set(prev).add(messageId));
+      }
+
       // If something is already playing (e.g. vocab auto-play), interrupt it so the next queue isn't dropped.
       if (isPlayingRef.current) {
         cancel();
@@ -337,12 +344,9 @@ export function useTtsQueue() {
         playedAny = true;
       }
 
-      // Only mark messageId as played once we actually played something.
-      // This is important on iOS where autoplay can fail until the user taps once.
-      if (messageId && playedAny) {
-        playedMessageIdsRef.current.add(messageId);
-        setPlayedMessageIds((prev) => new Set(prev).add(messageId));
-      }
+      // Note: messageId is already marked as played above to prevent race conditions
+      // If playback failed (playedAny = false), we still keep it marked to avoid
+      // repeated attempts that would also fail
 
       if (runIdRef.current === runId) {
         setCurrentAudioItem(null);

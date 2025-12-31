@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
+import { Check } from 'lucide-react';
 import { CardHeading } from './CardHeading';
-import { CompletionBadge } from './CompletionBadge';
 
 type UiState = { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean };
 
@@ -56,7 +56,15 @@ export function FindTheMistakeCard({
       <div className="p-5 rounded-3xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 space-y-4 w-full max-w-2xl mx-auto relative">
         <div className="flex items-start justify-between gap-4">
           <CardHeading>Найди ошибку</CardHeading>
-          {ui.selected && ui.correct === true && <CompletionBadge label="Отлично!" />}
+          <span
+            className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+              ui.selected && ui.correct === true
+                ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                : 'border-gray-300 bg-white text-gray-300'
+            }`}
+          >
+            {ui.selected && ui.correct === true ? <Check className="w-4 h-4" /> : null}
+          </span>
         </div>
         {instruction && <div className="text-sm text-gray-600">{renderMarkdown(instruction)}</div>}
         <div className="space-y-3">

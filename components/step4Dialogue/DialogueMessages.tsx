@@ -46,9 +46,6 @@ export function DialogueMessages({
 	  vocabWords,
 	  vocabIndex,
 	  setVocabIndex,
-  vocabPronunciationByIndex,
-  setVocabPronunciationByIndex,
-  speechRecognitionSupported,
   vocabRefs,
   currentAudioItem,
   processAudioQueue,
@@ -122,9 +119,6 @@ export function DialogueMessages({
 	  vocabWords: any[];
 	  vocabIndex: number;
 	  setVocabIndex: Dispatch<SetStateAction<number>>;
-	  vocabPronunciationByIndex: Record<number, { wordOk: boolean; exampleOk: boolean }>;
-	  setVocabPronunciationByIndex: Dispatch<SetStateAction<Record<number, { wordOk: boolean; exampleOk: boolean }>>>;
-	  speechRecognitionSupported: boolean;
 	  vocabRefs: MutableRefObject<Map<number, HTMLDivElement>>;
 	  currentAudioItem: any;
   processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>) => void;
@@ -486,9 +480,6 @@ export function DialogueMessages({
 	                  vocabWords={vocabWords}
 	                  vocabIndex={vocabIndex}
 	                  setVocabIndex={setVocabIndex}
-	                  vocabPronunciationByIndex={vocabPronunciationByIndex}
-	                  setVocabPronunciationByIndex={setVocabPronunciationByIndex}
-	                  speechRecognitionSupported={speechRecognitionSupported}
 	                  currentAudioItem={currentAudioItem}
 	                  vocabRefs={vocabRefs}
 	                  processAudioQueue={processAudioQueue}
@@ -607,6 +598,9 @@ export function DialogueMessages({
                   direction="ru->en"
                   onAnswer={(p) => onAnkiAnswer?.(p)}
                   onComplete={() => onAnkiComplete?.()}
+                  playAudio={(text, lang = 'en') => {
+                    processAudioQueue([{ text, lang, kind: 'word' }]);
+                  }}
                 />
               </div>
             </div>

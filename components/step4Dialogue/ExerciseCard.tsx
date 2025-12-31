@@ -1,6 +1,6 @@
 import React from 'react';
+import { Check } from 'lucide-react';
 import { CardHeading } from './CardHeading';
-import { CompletionBadge } from './CompletionBadge';
 
 type Props = {
   kind: 'audio' | 'text';
@@ -18,7 +18,17 @@ export function ExerciseCard({ kind, content, renderMarkdown, completed, showCom
           <CardHeading className={kind === 'text' ? 'text-brand-primary' : undefined}>
             {kind === 'audio' ? '🎙️ Аудио-задание' : '✍️ Письменное задание'}
           </CardHeading>
-          {completed && showCompletionBadge ? <CompletionBadge label="Готово!" /> : null}
+          {showCompletionBadge ? (
+            <span
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+                completed
+                  ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                  : 'border-gray-300 bg-white text-gray-300'
+              }`}
+            >
+              {completed ? <Check className="w-4 h-4" /> : null}
+            </span>
+          ) : null}
         </div>
         <div className="text-sm text-gray-600">{renderMarkdown(content)}</div>
       </div>

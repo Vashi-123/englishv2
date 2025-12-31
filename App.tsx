@@ -6,11 +6,9 @@ import { Browser } from '@capacitor/browser';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { ActivityType, ViewState } from './types';
 import { useLanguage } from './hooks/useLanguage';
-import { useDayPlans } from './hooks/useDayPlans';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
-import { useAvailableLevels } from './hooks/useAvailableLevels';
-import { useCourseModules } from './hooks/useCourseModules';
-import { isPremiumEffective, useEntitlements } from './hooks/useEntitlements';
+import { useDashboardData } from './hooks/useDashboardData';
+import { isPremiumEffective } from './hooks/useEntitlements';
 import Step4Dialogue from './components/Step4Dialogue';
 import { AuthScreen } from './components/AuthScreen';
 import { IntroScreen } from './components/IntroScreen';
@@ -20,10 +18,8 @@ import { CheckStatusScreen } from './components/CheckStatusScreen';
 import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
 import { FREE_LESSON_COUNT } from './services/billingService';
-import { useFreePlan } from './hooks/useFreePlan';
 import { formatFirstLessonsRu } from './services/ruPlural';
 import { getAllUserWords } from './services/srsService';
-import { loadLessonScript } from './services/generationService';
 import { parseMarkdown } from './components/step4Dialogue/markdown';
 import { 
   X, 
@@ -76,8 +72,11 @@ const ConnectionRequiredScreen = () => {
 	  const langMenuRef = useRef<HTMLDivElement | null>(null);
 	  const [langMenuPos, setLangMenuPos] = useState<{ top: number; left: number } | null>(null);
 	  const [level, setLevel] = useState<string>('A1');
-	  const { levels: availableLevels, loading: levelsLoading } = useAvailableLevels();
-  const { modules: courseModules, loading: modulesLoading } = useCourseModules(level, language || 'ru');
+	  const { data: dashboardData, loading: dashboardLoading, reload: reloadDashboard } = useDashboardData(userId, level, language || 'ru');
+	  const availableLevels = dashboardData?.availableLevels || [];
+	  const courseModules = dashboardData?.courseModules || [];
+	  const levelsLoading = dashboardLoading;
+	  const modulesLoading = dashboardLoading;
   const modulesByStage = useMemo(() => {
     const groups = new Map<
       number,
@@ -168,9 +167,15 @@ const ConnectionRequiredScreen = () => {
   // Menu uses a fullscreen overlay, so we don't need a global "click outside" listener.
 
   // Day plans management
-	  const { dayPlans, planLoading, error: planError, reload: reloadPlans } = useDayPlans(level);
-	  const { freeLessonCount } = useFreePlan();
-	  const { isPremium, loading: entitlementsLoading, refresh: refreshEntitlements } = useEntitlements(userId);
+	  const dayPlans = dashboardData?.dayPlans || [];
+	  const planLoading = dashboardLoading;
+	  const planError = null; // Error handled by useDashboardData
+	  const reloadPlans = reloadDashboard;
+	  const freeLessonCount = dashboardData?.freePlan?.lessonAccessLimit || 3;
+	  const entitlements = dashboardData?.entitlements;
+	  const isPremium = entitlements ? isPremiumEffective(entitlements) : false;
+	  const entitlementsLoading = dashboardLoading;
+	  const refreshEntitlements = reloadDashboard;
   const [paywallLesson, setPaywallLesson] = useState<number | null>(null);
   const [selectedDayId, setSelectedDayId] = useState<number>(() => {
     try {
@@ -207,8 +212,8 @@ const ConnectionRequiredScreen = () => {
   const wordsModalTimerRef = useRef<number | null>(null);
   const [userWords, setUserWords] = useState<Array<{ id: number; word: string; translation: string }>>([]);
   const [wordsLoading, setWordsLoading] = useState(false);
-  const [grammarCards, setGrammarCards] = useState<Array<{ day: number; lesson: number; theme: string; grammar: string }>>([]);
-  const [grammarLoading, setGrammarLoading] = useState(false);
+  const grammarCards = dashboardData?.grammarCards || [];
+  const grammarLoading = dashboardLoading;
   const [showGrammarModal, setShowGrammarModal] = useState(false);
   const [grammarModalActive, setGrammarModalActive] = useState(false);
   const grammarModalTimerRef = useRef<number | null>(null);
@@ -754,53 +759,7 @@ const ConnectionRequiredScreen = () => {
     };
   }, [userId, level, language, isInitializing]);
 
-  // Load grammar for all lessons
-  const loadGrammarCards = useCallback(async () => {
-    if (dayPlans.length === 0) return;
-    setGrammarLoading(true);
-    try {
-      const cards: Array<{ day: number; lesson: number; theme: string; grammar: string }> = [];
-      
-      for (const plan of dayPlans) {
-        try {
-          const scriptJson = await loadLessonScript(plan.day, plan.lesson, level);
-          if (scriptJson) {
-            const script = JSON.parse(scriptJson);
-            if (script?.grammar?.explanation) {
-              // Убираем часть с заданием (всё, что начинается с <h>Задание<h>)
-              let grammarText = script.grammar.explanation;
-              const assignmentIndex = grammarText.indexOf('<h>Задание<h>');
-              if (assignmentIndex !== -1) {
-                grammarText = grammarText.substring(0, assignmentIndex).trim();
-              }
-              
-              cards.push({
-                day: plan.day,
-                lesson: plan.lesson,
-                theme: plan.theme || `Урок ${plan.lesson}`,
-                grammar: grammarText,
-              });
-            }
-          }
-        } catch (error) {
-          console.error(`[App] Failed to load grammar for day ${plan.day}, lesson ${plan.lesson}:`, error);
-        }
-      }
-      
-      setGrammarCards(cards);
-    } catch (error) {
-      console.error('[App] Failed to load grammar cards:', error);
-      setGrammarCards([]);
-    } finally {
-      setGrammarLoading(false);
-    }
-  }, [dayPlans, level]);
-
-  useEffect(() => {
-    if (dayPlans.length > 0 && !isInitializing) {
-      loadGrammarCards();
-    }
-  }, [dayPlans, level, isInitializing, loadGrammarCards]);
+  // Grammar cards are now loaded via RPC in useDashboardData
 
   const openGrammarModal = useCallback(() => {
     if (typeof window === 'undefined') return;

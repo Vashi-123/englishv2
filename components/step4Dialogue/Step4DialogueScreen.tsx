@@ -41,10 +41,6 @@ import { useStep4ProgressPersistence } from './useStep4ProgressPersistence';
 import { useTtsQueue } from './useTtsQueue';
 import { useAutoScrollToEnd } from './useAutoScrollToEnd';
 import { useVocabScroll } from './useVocabScroll';
-import { isMatchExample, isMatchWord } from './speechMatching';
-import { Mic } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
-import { isOfflineAsrUsable, offlineAsrCancel, offlineAsrCleanup, offlineAsrOnAutoStop, offlineAsrStart, offlineAsrStop } from '../../services/offlineAsr';
 
 export type Step4DialogueProps = {
   day?: number;
@@ -113,31 +109,6 @@ export function Step4DialogueScreen({
 
   const [showTranslations, setShowTranslations] = useState<Record<number, boolean>>({});
 
-  const isNativeIos = useMemo(() => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios', []);
-  const [offlineAsrSupported, setOfflineAsrSupported] = useState(false);
-
-  useEffect(() => {
-    if (!isNativeIos) return;
-    let cancelled = false;
-    (async () => {
-      const ok = await isOfflineAsrUsable();
-      if (!cancelled) setOfflineAsrSupported(ok);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isNativeIos]);
-
-  const speechRecognitionSupported = useMemo(() => {
-    if (offlineAsrSupported) return true;
-    if (typeof window === 'undefined') return false;
-    const w = window as any;
-    return Boolean(w.SpeechRecognition || w.webkitSpeechRecognition);
-  }, [offlineAsrSupported]);
-
-  const [vocabPronunciationByIndex, setVocabPronunciationByIndex] = useState<Record<number, { wordOk: boolean; exampleOk: boolean }>>(
-    {}
-  );
 
   const [tutorMiniOpen, setTutorMiniOpen] = useState(false);
   const [tutorQuestionsUsed, setTutorQuestionsUsed] = useState(0);
@@ -210,12 +181,6 @@ export function Step4DialogueScreen({
     };
   }, []);
 
-  useEffect(() => {
-    // Reset pronunciation progress when lesson context changes.
-    const key = `${day || 0}:${lesson || 0}:${resolvedLevel}:${resolvedLanguage}`;
-    setVocabPronunciationByIndex({});
-    void key;
-  }, [day, lesson, resolvedLanguage, resolvedLevel]);
 
   const goalSeenRef = useRef<boolean>(false);
   const hasRecordedLessonCompleteRef = useRef<boolean>(false);
@@ -600,180 +565,11 @@ export function Step4DialogueScreen({
 	  const restoredVocabIndexRef = useRef<number | null>(null);
 	  const appliedVocabRestoreKeyRef = useRef<string | null>(null);
 
-	  const SpeechRecognitionCtor = useMemo(() => {
-	    if (typeof window === 'undefined') return null;
-	    const w = window as any;
-	    return w.SpeechRecognition || w.webkitSpeechRecognition || null;
-	  }, []);
-
-  const [vocabListening, setVocabListening] = useState<{ index: number; kind: 'word' | 'example' } | null>(null);
-  const [vocabHeard, setVocabHeard] = useState<string>('');
-  const [vocabCorrect, setVocabCorrect] = useState<boolean | null>(null);
-  const [vocabError, setVocabError] = useState<string | null>(null);
-  const [micPermission, setMicPermission] = useState<'unknown' | 'granted' | 'denied'>('unknown');
-  const vocabRecognitionRef = useRef<any | null>(null);
-  const vocabTimeoutRef = useRef<number | null>(null);
-  const vocabSilenceTimerRef = useRef<number | null>(null);
-  const vocabStartRetryTimerRef = useRef<number | null>(null);
   const vocabAutoAdvanceTimerRef = useRef<number | null>(null);
-  const vocabExpectedRef = useRef<{ index: number; kind: 'word' | 'example'; expectedText: string } | null>(null);
-  const vocabLastTranscriptRef = useRef<string>('');
 
-  const stopVocabListening = useCallback(() => {
-	    if (vocabTimeoutRef.current) {
-	      window.clearTimeout(vocabTimeoutRef.current);
-	      vocabTimeoutRef.current = null;
-	    }
-   if (vocabSilenceTimerRef.current) {
-     window.clearTimeout(vocabSilenceTimerRef.current);
-     vocabSilenceTimerRef.current = null;
-   }
-   clearVocabAudioFallback();
-    if (vocabAutoAdvanceTimerRef.current) {
-      window.clearTimeout(vocabAutoAdvanceTimerRef.current);
-      vocabAutoAdvanceTimerRef.current = null;
-    }
-    if (vocabStartRetryTimerRef.current) {
-      window.clearTimeout(vocabStartRetryTimerRef.current);
-      vocabStartRetryTimerRef.current = null;
-    }
-      if (vocabRecognitionRef.current === 'offline') {
-        vocabRecognitionRef.current = null;
-        void offlineAsrCancel();
-      }
-	    if (vocabRecognitionRef.current) {
-	      try {
-	        vocabRecognitionRef.current.onresult = null;
-	        vocabRecognitionRef.current.onerror = null;
-	        vocabRecognitionRef.current.onend = null;
-	        vocabRecognitionRef.current.stop();
-	      } catch {
-	        // ignore
-	      }
-	      vocabRecognitionRef.current = null;
-	    }
-    setVocabListening(null);
-    vocabExpectedRef.current = null;
-  }, []);
 
-  useEffect(() => () => stopVocabListening(), [stopVocabListening]);
 
-  // Cleanup whisper model при выходе из урока
-  useEffect(() => {
-    return () => {
-      if (isNativeIos && offlineAsrSupported) {
-        void offlineAsrCleanup();
-      }
-    };
-  }, [isNativeIos, offlineAsrSupported]);
 
-  // Cleanup whisper model когда блок слов завершен (showVocab становится false)
-  const prevShowVocabRef = useRef<boolean>(showVocab);
-  useEffect(() => {
-    // Если showVocab изменился с true на false, значит блок слов завершен
-    if (prevShowVocabRef.current && !showVocab && isNativeIos && offlineAsrSupported) {
-      void offlineAsrCleanup();
-    }
-    prevShowVocabRef.current = showVocab;
-  }, [showVocab, isNativeIos, offlineAsrSupported]);
-
-  useEffect(() => {
-    if (typeof navigator === 'undefined') return;
-    const perms = (navigator as any).permissions;
-    if (!perms?.query) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const status = await perms.query({ name: 'microphone' });
-        if (cancelled) return;
-        setMicPermission(status?.state === 'granted' ? 'granted' : status?.state === 'denied' ? 'denied' : 'unknown');
-        status.onchange = () => {
-          if (cancelled) return;
-          setMicPermission(status?.state === 'granted' ? 'granted' : status?.state === 'denied' ? 'denied' : 'unknown');
-        };
-      } catch {
-        // ignore
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const ensureMicPermission = useCallback(async () => {
-    try {
-      if (typeof navigator === 'undefined') return false;
-      if (!navigator.mediaDevices?.getUserMedia) return false;
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((t) => t.stop());
-      setMicPermission('granted');
-      return true;
-    } catch {
-      setMicPermission('denied');
-      return false;
-    }
-  }, []);
-
-  const markVocabPronounced = useCallback(
-    (index: number, kind: 'word' | 'example') => {
-	      const w = vocabWords[index];
-	      const hasExample = Boolean(String((w as any)?.context || '').trim());
-	      setVocabPronunciationByIndex((prev) => {
-	        const existing = prev[index] || { wordOk: false, exampleOk: !hasExample };
-	        const next = kind === 'word' ? { ...existing, wordOk: true } : { ...existing, exampleOk: true };
-	        if (existing.wordOk === next.wordOk && existing.exampleOk === next.exampleOk) return prev;
-	        return { ...prev, [index]: next };
-	      });
-	    },
-	    [vocabWords]
-	  );
-
-  useEffect(() => {
-    if (!isNativeIos || !offlineAsrSupported) return;
-    let handle: { remove: () => Promise<void> } | null = null;
-    let cancelled = false;
-
-    void (async () => {
-      const h = await offlineAsrOnAutoStop((event) => {
-        if (cancelled) return;
-        if (vocabRecognitionRef.current !== 'offline') return;
-
-        const expected = vocabExpectedRef.current;
-        if (!expected) return;
-
-        if (vocabTimeoutRef.current) {
-          window.clearTimeout(vocabTimeoutRef.current);
-          vocabTimeoutRef.current = null;
-        }
-
-        const transcript = String(event?.transcript || '').trim();
-        vocabRecognitionRef.current = null;
-        vocabLastTranscriptRef.current = transcript;
-        setVocabHeard(transcript);
-
-        const ok =
-          transcript.length > 0
-            ? expected.kind === 'word'
-              ? isMatchWord(expected.expectedText, transcript)
-              : isMatchExample(expected.expectedText, transcript)
-            : false;
-        setVocabCorrect(ok);
-        if (ok) markVocabPronounced(expected.index, expected.kind);
-        stopVocabListening();
-      });
-      if (cancelled) {
-        if (h) void h.remove();
-        return;
-      }
-      if (!h) return;
-      handle = h as any;
-    })();
-
-    return () => {
-      cancelled = true;
-      if (handle) void handle.remove();
-    };
-  }, [isNativeIos, offlineAsrSupported, markVocabPronounced, stopVocabListening]);
 
   const enqueueVocabAudio = useCallback(
     (items: Array<{ text: string; lang: string; kind: string }>, messageId?: string) => {
@@ -800,188 +596,7 @@ export function Step4DialogueScreen({
     [clearVocabAudioFallback, processAudioQueue]
   );
 
-  const startVocabListening = useCallback(
-    ({ index, kind, expectedText }: { index: number; kind: 'word' | 'example'; expectedText: string }) => {
-      // Offline ASR on native iOS does not depend on the browser SpeechRecognition API.
-      if (!speechRecognitionSupported && !(isNativeIos && offlineAsrSupported)) return;
 
-      if (isNativeIos && offlineAsrSupported) {
-        stopVocabListening();
-
-        setVocabError(null);
-        setVocabHeard('');
-        vocabLastTranscriptRef.current = '';
-        setVocabCorrect(null);
-        // Оптимистичное обновление UI сразу, до загрузки модели
-        setVocabListening({ index, kind });
-        vocabExpectedRef.current = { index, kind, expectedText };
-
-        vocabRecognitionRef.current = 'offline';
-
-        // Откладываем вызов offlineAsrStart, чтобы не блокировать UI поток
-        // Это позволяет кнопке обновиться плавно перед началом загрузки модели
-        window.setTimeout(() => {
-          void (async () => {
-            const started = await offlineAsrStart(expectedText);
-            if (!started) {
-              setVocabError('offline_asr_start_failed');
-              stopVocabListening();
-              return;
-            }
-
-            vocabTimeoutRef.current = window.setTimeout(async () => {
-              vocabTimeoutRef.current = null;
-              const transcript = String((await offlineAsrStop()) || '').trim();
-              vocabRecognitionRef.current = null;
-              vocabLastTranscriptRef.current = transcript;
-              setVocabHeard(transcript);
-
-              const ok =
-                transcript.length > 0
-                  ? kind === 'word'
-                    ? isMatchWord(expectedText, transcript)
-                    : isMatchExample(expectedText, transcript)
-                  : false;
-              setVocabCorrect(ok);
-              if (ok) markVocabPronounced(index, kind);
-              stopVocabListening();
-            }, 6000);
-          })();
-        }, 0);
-
-        return;
-      }
-
-      if (!SpeechRecognitionCtor) return;
-      stopVocabListening();
-
-	      setVocabError(null);
-	      setVocabHeard('');
-	      vocabLastTranscriptRef.current = '';
-	      setVocabCorrect(null);
-	      setVocabListening({ index, kind });
-	      vocabExpectedRef.current = { index, kind, expectedText };
-
-	      const recognition = new SpeechRecognitionCtor();
-	      vocabRecognitionRef.current = recognition;
-	      recognition.lang = 'en-US';
-	      recognition.continuous = false;
-	      recognition.interimResults = true;
-	      recognition.maxAlternatives = 1;
-	      let retriedStart = false;
-
-	      const tryStart = () => {
-	        if (vocabStartRetryTimerRef.current) {
-	          window.clearTimeout(vocabStartRetryTimerRef.current);
-	          vocabStartRetryTimerRef.current = null;
-	        }
-	        try {
-	          recognition.start();
-	        } catch (err: any) {
-	          const name = String(err?.name || '');
-	          const msg = String(err?.message || '');
-	          const looksBusy =
-	            name === 'InvalidStateError' ||
-	            msg.toLowerCase().includes('already') ||
-	            msg.toLowerCase().includes('busy') ||
-	            msg.toLowerCase().includes('in use');
-	          if (!retriedStart && looksBusy) {
-	            retriedStart = true;
-	            vocabStartRetryTimerRef.current = window.setTimeout(() => tryStart(), 120);
-	            return;
-	          }
-	          setVocabError(String(msg || name || 'speech_start_failed'));
-	          stopVocabListening();
-	        }
-	      };
-
-	      const finalizeFromTranscript = () => {
-	        const heard = String(vocabLastTranscriptRef.current || '').trim();
-	        const ok =
-	          heard.length > 0 ? (kind === 'word' ? isMatchWord(expectedText, heard) : isMatchExample(expectedText, heard)) : false;
-	        setVocabCorrect(ok);
-	        if (ok) markVocabPronounced(index, kind);
-	        stopVocabListening();
-	      };
-
-	      const armSilenceTimer = (ms: number) => {
-	        if (vocabSilenceTimerRef.current) window.clearTimeout(vocabSilenceTimerRef.current);
-	        vocabSilenceTimerRef.current = window.setTimeout(() => {
-	          vocabSilenceTimerRef.current = null;
-	          finalizeFromTranscript();
-	        }, ms);
-	      };
-
-	      // If the browser doesn't emit a final result, auto-finish after a short silence.
-	      armSilenceTimer(2500);
-
-      recognition.onresult = (event: any) => {
-        let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += String(event.results[i]?.[0]?.transcript || '');
-        }
-        transcript = transcript.trim();
-        if (transcript) {
-          vocabLastTranscriptRef.current = transcript;
-          setVocabHeard(transcript);
-          armSilenceTimer(1200);
-        }
-
-        const isFinal = Boolean(event.results?.[event.results.length - 1]?.isFinal);
-        const ok = transcript.length
-          ? kind === 'word'
-            ? isMatchWord(expectedText, transcript)
-            : isMatchExample(expectedText, transcript)
-          : false;
-
-        if (ok) {
-          if (vocabSilenceTimerRef.current) {
-            window.clearTimeout(vocabSilenceTimerRef.current);
-            vocabSilenceTimerRef.current = null;
-          }
-          setVocabCorrect(true);
-          markVocabPronounced(index, kind);
-          stopVocabListening();
-          return;
-        }
-
-        if (!isFinal) return;
-
-        if (vocabSilenceTimerRef.current) {
-          window.clearTimeout(vocabSilenceTimerRef.current);
-          vocabSilenceTimerRef.current = null;
-        }
-        setVocabCorrect(false);
-        stopVocabListening();
-      };
-
-	      recognition.onerror = (event: any) => {
-	        const code = String(event?.error || '');
-	        setVocabError(code || 'speech_error');
-	        setVocabCorrect(null);
-	        stopVocabListening();
-	      };
-
-	      recognition.onend = () => {
-	        stopVocabListening();
-	      };
-
-	      tryStart();
-
-	      vocabTimeoutRef.current = window.setTimeout(() => {
-	        stopVocabListening();
-	      }, 9000);
-	    },
-	    [SpeechRecognitionCtor, isNativeIos, markVocabPronounced, offlineAsrSupported, speechRecognitionSupported, stopVocabListening]
-	  );
-
-  useEffect(() => {
-    if (!showVocab) return;
-    stopVocabListening();
-    setVocabHeard('');
-    setVocabCorrect(null);
-    setVocabError(null);
-  }, [showVocab, vocabIndex, stopVocabListening]);
 
   useEffect(() => {
     if (!showVocab) {
@@ -1019,35 +634,6 @@ export function Step4DialogueScreen({
     }, 1600);
   }, [clearVocabAudioFallback, showVocab, vocabIndex]);
 
-		  useEffect(() => {
-		    if (!speechRecognitionSupported) return;
-		    const word = Array.isArray(vocabWords) ? vocabWords[vocabIndex] : null;
-		    if (!word) return;
-		    const hasExample = Boolean(String((word as any)?.context || '').trim());
-		    setVocabPronunciationByIndex((prev) => {
-		      if (prev[vocabIndex]) return prev;
-		      return { ...prev, [vocabIndex]: { wordOk: false, exampleOk: !hasExample } };
-		    });
-		  }, [speechRecognitionSupported, vocabIndex, vocabWords]);
-
-		  const prevWordOkRef = useRef<boolean>(false);
-		  useEffect(() => {
-		    if (!showVocab) return;
-		    const word = vocabWords[vocabIndex];
-		    const hasExample = Boolean(String((word as any)?.context || '').trim());
-		    const wordOk = Boolean(vocabPronunciationByIndex[vocabIndex]?.wordOk);
-		    const prev = prevWordOkRef.current;
-		    prevWordOkRef.current = wordOk;
-		    if (!hasExample) return;
-		    if (!wordOk || prev) return;
-		
-		    // When the example gets revealed (wordOk flips to true), keep the current card in view.
-		    const t = window.setTimeout(() => {
-		      const el = vocabRefs.current.get(vocabIndex);
-		      el?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-		    }, 80);
-		    return () => window.clearTimeout(t);
-		  }, [showVocab, vocabIndex, vocabPronunciationByIndex, vocabRefs, vocabWords]);
 
 	  const [showMatching, setShowMatching] = useState(false);
 	  const [matchingPersisted, setMatchingPersisted] = useState(false);
@@ -1085,6 +671,11 @@ export function Step4DialogueScreen({
         setTranslationOptions((prev) => prev.map((t) => (t.id === tr.id ? { ...t, matched: true } : t)));
         setSelectedWord(null);
         setSelectedTranslation(null);
+        // Play the word audio when correctly matched
+        const normalizedWord = String(word.text || '').replace(/\s+/g, ' ').trim();
+        if (normalizedWord) {
+          enqueueVocabAudio([{ text: normalizedWord, lang: 'en', kind: 'word' }]);
+        }
         return;
       }
       const nonce = Date.now();
@@ -1101,7 +692,7 @@ export function Step4DialogueScreen({
         matchingMismatchTimerRef.current = null;
       }, 650);
     },
-    [translationOptions, wordOptions]
+    [translationOptions, wordOptions, enqueueVocabAudio]
   );
 
   useEffect(() => {
@@ -1170,8 +761,6 @@ export function Step4DialogueScreen({
     restoredVocabIndexRef,
     appliedVocabRestoreKeyRef,
     vocabIndex,
-    vocabPronunciationByIndex,
-    setVocabPronunciationByIndex,
     vocabWordsLength: vocabWords.length,
     matchingProgressStorageKey,
     matchingHydratedRef,
@@ -1299,18 +888,114 @@ export function Step4DialogueScreen({
 	  }, [ankiDeckStorageKey, vocabWords]);
 
 	  const ankiGateIndex = useMemo(() => {
-	    if (ankiDone) return null;
-	    if (grammarGate.gated) return null;
+	    if (ankiDone) {
+	      // eslint-disable-next-line no-console
+	      console.log('[AnkiGate] Blocked: ankiDone is true');
+	      return null;
+	    }
+	    if (grammarGate.gated) {
+	      // eslint-disable-next-line no-console
+	      console.log('[AnkiGate] Blocked: grammarGate.gated is true');
+	      return null;
+	    }
+	    
+	    // Check if situations exist in lessonScript
+	    const hasSituationsInScript = lessonScript?.situations?.scenarios && 
+	                                   Array.isArray(lessonScript.situations.scenarios) && 
+	                                   lessonScript.situations.scenarios.length > 0;
+	    
+	    if (!hasSituationsInScript) {
+	      // eslint-disable-next-line no-console
+	      console.log('[AnkiGate] Blocked: no situations in script');
+	      return null;
+	    }
+	    
+	    // Check if we've seen situations messages already
+	    let firstSituationsIndex: number | null = null;
 	    for (let i = 0; i < visibleMessages.length; i++) {
 	      const m = visibleMessages[i];
 	      const parsed = tryParseJsonMessage(m?.text);
 	      const isSituationsSeparator =
 	        parsed?.type === 'section' && typeof parsed.title === 'string' && /ситуац|situat/i.test(parsed.title);
 	      const isSituationsStep = m?.currentStepSnapshot?.type === 'situations';
-	      if (isSituationsSeparator || isSituationsStep) return i;
+	      if (isSituationsSeparator || isSituationsStep) {
+	        firstSituationsIndex = i;
+	        break;
+	      }
 	    }
+	    
+	    // If situations already appeared, show anki before them
+	    if (typeof firstSituationsIndex === 'number') {
+	      // eslint-disable-next-line no-console
+	      console.log('[AnkiGate] Showing before situations at index', firstSituationsIndex);
+	      return firstSituationsIndex;
+	    }
+	    
+	    // Situations haven't appeared yet - check if we're past constructor/find_the_mistake
+	    const currentStepType = currentStep?.type;
+	    
+	    // If we're already in situations step (but messages not yet visible), show anki
+	    if (currentStepType === 'situations') {
+	      // eslint-disable-next-line no-console
+	      console.log('[AnkiGate] Showing: currentStep is situations, messages not yet visible');
+	      return visibleMessages.length;
+	    }
+	    
+	    // Don't show anki while we're still in constructor or find_the_mistake
+	    // We need to wait until they are completed
+	    if (currentStepType === 'constructor' || currentStepType === 'find_the_mistake') {
+	      // eslint-disable-next-line no-console
+	      console.log('[AnkiGate] Blocked: still in', currentStepType);
+	      return null;
+	    }
+	    
+	    // Check if constructor/find_the_mistake is completed by checking visibleMessages and constructorUI
+	    // Look for the last constructor/find_the_mistake message and check if it's completed
+	    let lastConstructorIndex: number | null = null;
+	    let lastConstructorMsgId: string | null = null;
+	    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+	      const m = visibleMessages[i];
+	      const stepType = m?.currentStepSnapshot?.type;
+	      if (stepType === 'constructor' || stepType === 'find_the_mistake') {
+	        lastConstructorIndex = i;
+	        lastConstructorMsgId = getMessageStableId(m, i);
+	        break;
+	      }
+	    }
+	    
+	    if (lastConstructorIndex !== null && lastConstructorMsgId) {
+	      // Check if constructor is completed
+	      const ctorState = constructorUI[lastConstructorMsgId];
+	      if (ctorState?.completed === true) {
+	        // eslint-disable-next-line no-console
+	        console.log('[AnkiGate] Showing: constructor completed at index', lastConstructorIndex, 'msgId', lastConstructorMsgId);
+	        return visibleMessages.length;
+	      }
+	      
+	      // Also check if the message after constructor is from model (indicates completion)
+	      if (lastConstructorIndex < visibleMessages.length - 1) {
+	        const nextMsg = visibleMessages[lastConstructorIndex + 1];
+	        if (nextMsg?.role === 'model') {
+	          // eslint-disable-next-line no-console
+	          console.log('[AnkiGate] Showing: model message after constructor at index', lastConstructorIndex + 1);
+	          return visibleMessages.length;
+	        }
+	      }
+	    }
+	    
+	    // If we're past words/grammar/goal but not yet in constructor/situations, don't show anki yet
+	    if (currentStepType === 'completion') {
+	      return null;
+	    }
+	    
+	    if (!currentStepType || currentStepType === 'goal' || currentStepType === 'words' || currentStepType === 'grammar') {
+	      return null;
+	    }
+	    
+	    // eslint-disable-next-line no-console
+	    console.log('[AnkiGate] No match: currentStepType=', currentStepType, 'visibleMessages.length=', visibleMessages.length);
 	    return null;
-	  }, [ankiDone, grammarGate.gated, tryParseJsonMessage, visibleMessages]);
+	  }, [ankiDone, grammarGate.gated, tryParseJsonMessage, visibleMessages, currentStep, lessonScript, constructorUI, getMessageStableId]);
 
 	  const ankiGateActive = typeof ankiGateIndex === 'number' && ankiGateIndex >= 0;
 
@@ -1559,13 +1244,21 @@ export function Step4DialogueScreen({
     const first = vocabWords[0];
     if (!first) return;
     const normalizedWord = String(first.word || '').replace(/\s+/g, ' ').trim();
-    const queue = [{ text: normalizedWord, lang: 'en', kind: 'word' }].filter((x) => x.text.trim().length > 0);
+    const normalizedExample = String(first.context || '').replace(/\s+/g, ' ').trim();
+    const queue: Array<{ text: string; lang: string; kind: string }> = [];
+    if (normalizedWord) {
+      queue.push({ text: normalizedWord, lang: 'en', kind: 'word' });
+    }
+    // Add example after word if it exists and is different from word
+    if (normalizedExample && normalizedExample !== normalizedWord) {
+      queue.push({ text: normalizedExample, lang: 'en', kind: 'example' });
+    }
     if (!queue.length) return;
     enqueueVocabAudio(queue, `vocab:first:${vocabProgressStorageKey}`);
     setPendingVocabPlay(false);
   }, [
     pendingVocabPlay,
-    processAudioQueue,
+    enqueueVocabAudio,
     setPendingVocabPlay,
     showVocab,
     isInitializing,
@@ -1593,49 +1286,25 @@ export function Step4DialogueScreen({
 	    const word = vocabWords[vocabIndex];
 	    if (!word) return;
 	    const normalizedWord = String(word.word || '').replace(/\s+/g, ' ').trim();
-	    const queue = [{ text: normalizedWord, lang: 'en', kind: 'word' }].filter((x) => x.text.trim().length > 0);
+	    const normalizedExample = String(word.context || '').replace(/\s+/g, ' ').trim();
+	    const queue: Array<{ text: string; lang: string; kind: string }> = [];
+	    if (normalizedWord) {
+	      queue.push({ text: normalizedWord, lang: 'en', kind: 'word' });
+	    }
+	    // Add example after word if it exists and is different from word
+	    if (normalizedExample && normalizedExample !== normalizedWord) {
+	      queue.push({ text: normalizedExample, lang: 'en', kind: 'example' });
+	    }
 	    if (queue.length) {
 	      enqueueVocabAudio(queue);
 	    }
-		  }, [vocabIndex, showVocab, vocabWords, processAudioQueue, isInitializing, pendingVocabPlay]);
+		  }, [vocabIndex, showVocab, vocabWords, enqueueVocabAudio, isInitializing, pendingVocabPlay]);
 
 	  const autoPlayedVocabExampleRef = useRef<Set<string>>(new Set());
 	  useEffect(() => {
 	    autoPlayedVocabExampleRef.current = new Set();
 	  }, [vocabProgressStorageKey]);
 
-	  useEffect(() => {
-	    if (!speechRecognitionSupported) return;
-	    if (!showVocab) return;
-	    const word = vocabWords[vocabIndex];
-	    if (!word) return;
-
-	    const hasExample = Boolean(String((word as any)?.context || '').trim());
-	    if (!hasExample) return;
-
-	    const status = vocabPronunciationByIndex[vocabIndex];
-	    if (!status?.wordOk) return;
-	    if (status?.exampleOk) return;
-
-	    const normalizedWord = String((word as any)?.word || '').replace(/\s+/g, ' ').trim();
-	    const normalizedExample = String((word as any)?.context || '').replace(/\s+/g, ' ').trim();
-	    if (!normalizedExample) return;
-	    if (normalizedExample === normalizedWord) return;
-
-	    const playKey = `example:${vocabProgressStorageKey}:${vocabIndex}`;
-	    if (autoPlayedVocabExampleRef.current.has(playKey)) return;
-	    autoPlayedVocabExampleRef.current.add(playKey);
-
-	    enqueueVocabAudio([{ text: normalizedExample, lang: 'en', kind: 'example' }], `vocab:example:${playKey}`);
-  }, [
-    enqueueVocabAudio,
-    showVocab,
-    speechRecognitionSupported,
-    vocabIndex,
-	    vocabProgressStorageKey,
-	    vocabPronunciationByIndex,
-	    vocabWords,
-	  ]);
 
   const lastGrammarScrollTokenRef = useRef<string | null>(null);
   const grammarHeadingScrollToken = useMemo(() => {
@@ -1721,7 +1390,7 @@ export function Step4DialogueScreen({
 	      setSelectedWord,
 	      setSelectedTranslation,
 	    },
-		    vocab: { setVocabWords, setVocabIndex, setShowVocab, setPendingVocabPlay, setVocabPronunciationByIndex },
+		    vocab: { setVocabWords, setVocabIndex, setShowVocab, setPendingVocabPlay },
 		    findMistake: { setFindMistakeUI },
 		    constructor: { setConstructorUI },
 	    vocabRestoreRefs: { restoredVocabIndexRef, appliedVocabRestoreKeyRef },
@@ -1737,7 +1406,9 @@ export function Step4DialogueScreen({
 	      matchingProgressStorageKey,
 	      findMistakeStorageKey,
 	      constructorStorageKey,
+	      ankiDoneStorageKey,
 	    },
+	    setAnkiDone,
 	    initializeChat,
 	  });
 
@@ -1758,12 +1429,6 @@ export function Step4DialogueScreen({
   const handleCheckVocabulary = useCallback(() => {
     const words = vocabWords;
     if (!words.length) return;
-
-    // Выгружаем модель whisper при переходе к matching заданию
-    if (isNativeIos && offlineAsrSupported) {
-      console.log('[Step4Dialogue] 🧹 CLEANUP: Unloading whisper model before starting matching exercise');
-      void offlineAsrCleanup();
-    }
 
     const pairs = words.map((w: any, idx: number) => ({
       pairId: `pair-${idx}`,
@@ -1797,9 +1462,9 @@ export function Step4DialogueScreen({
     setMatchingEverStarted(true);
     setMatchingInsertIndex(messages.length);
     window.setTimeout(() => matchingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-  }, [messages.length, vocabWords, isNativeIos, offlineAsrSupported]);
+  }, [messages.length, vocabWords]);
 
-	  const effectiveInputMode: InputMode = grammarGate.gated || ankiGateActive ? 'hidden' : inputMode;
+  const effectiveInputMode: InputMode = grammarGate.gated || ankiGateActive ? 'hidden' : inputMode;
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
   const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
 	  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
@@ -1812,6 +1477,7 @@ export function Step4DialogueScreen({
 	    setGoalGateAcknowledged(true);
 	    setGoalGatePending(false);
 	    setIsLoading(true);
+	    let advancedIntoWordsList = false;
 	    try {
 	      const script = (await ensureLessonScript()) as LessonScriptV2;
 	      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
@@ -1827,20 +1493,35 @@ export function Step4DialogueScreen({
 	      }).catch((err) => console.error('[Step4Dialogue] Goal background save error:', err));
 	      // Make the transition feel immediate even if effects run later.
 	      setShowVocab(true);
-	      const advancedIntoWordsList = Boolean(
+	      advancedIntoWordsList = Boolean(
 	        out.messages?.some((msg) => {
 	          if (!msg || msg.role !== 'model') return false;
 	          const parsed = tryParseJsonMessage(msg.text);
 	          return parsed?.type === 'words_list';
 	        })
 	      );
-	      // If we advanced into a words_list message, useMessageDrivenUi will set pendingVocabPlay for us.
+	      // If we advanced into a words_list message, useMessageDrivenUi should set pendingVocabPlay for us.
+	      // But we also set it here as a fallback to ensure it works even if useMessageDrivenUi hasn't processed the message yet.
+	      if (!advancedIntoWordsList && vocabWords.length > 0) {
 	      // Otherwise, if the vocab is already present (e.g. restored history), start the first word once.
-	      if (!advancedIntoWordsList && vocabWords.length > 0) setPendingVocabPlay(true);
+	        setPendingVocabPlay(true);
+	      }
 	    } catch (err) {
 	      console.error('[Step4Dialogue] Failed to advance from goal:', err);
 	    } finally {
 	      setIsLoading(false);
+	      // After isLoading becomes false, set pendingVocabPlay if we advanced into words_list
+	      // This ensures all state updates from useMessageDrivenUi are processed first
+	      if (advancedIntoWordsList) {
+	        // Use setTimeout to ensure React has processed all state updates and useMessageDrivenUi has run
+	        setTimeout(() => {
+	          setPendingVocabPlay((prev) => {
+	            // Only set if not already set by useMessageDrivenUi
+	            if (!prev) return true;
+	            return prev;
+	          });
+	        }, 150);
+	      }
 	    }
 	  }, [
 	    appendEngineMessagesWithDelay,
@@ -1873,33 +1554,27 @@ export function Step4DialogueScreen({
       };
     }
 
-	    // 3. Vocabulary Next Word (manual button only when speech recognition is unavailable)
-		    if (
-          showVocab &&
-          vocabWords.length > 0 &&
-          vocabIndex < vocabWords.length - 1 &&
-          !speechRecognitionSupported
-        ) {
-          return {
-            label: 'Далее',
-            onClick: () => setVocabIndex((prev) => prev + 1),
-            disabled: false,
-          };
-        }
+    // 3. Vocabulary Next Word
+    if (
+      showVocab &&
+      vocabWords.length > 0 &&
+      vocabIndex < vocabWords.length - 1
+    ) {
+      return {
+        label: 'Далее',
+        onClick: () => setVocabIndex((prev) => prev + 1),
+        disabled: false,
+      };
+    }
 
-	    // 4. Vocabulary Check
-		    if (shouldShowVocabCheckButton) {
-		      const currentWord = vocabWords[vocabIndex];
-		      const hasExample = Boolean(String((currentWord as any)?.context || '').trim());
-		      const status = vocabPronunciationByIndex[vocabIndex];
-		      const pronouncedOk = Boolean(status?.wordOk) && (Boolean(status?.exampleOk) || !hasExample);
-		      if (speechRecognitionSupported && !pronouncedOk) return null;
-		      return {
-		        label: 'Проверить',
-		        onClick: handleCheckVocabulary,
-	        disabled: false,
-	      };
-	    }
+    // 4. Vocabulary Check
+    if (shouldShowVocabCheckButton) {
+      return {
+        label: 'Проверить',
+        onClick: handleCheckVocabulary,
+        disabled: false,
+      };
+    }
 
     // 5. Find The Mistake Next
     // Find the latest message that has a selected but not advanced FindMistake state.
@@ -1925,8 +1600,8 @@ export function Step4DialogueScreen({
           return Boolean(
             (parsedFromText &&
               (/Напиши\s*A\s*или\s*B/i.test(text) || /Выбери.*A.*B/i.test(text) || /Найди\s+ошибк/i.test(text))) ||
-              (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(text) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(text)) &&
-                (/Найди\s+ошибк/i.test(text) || /Выбери/i.test(text))))
+            (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(text) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(text)) &&
+              (/Найди\s+ошибк/i.test(text) || /Выбери/i.test(text))))
           );
       })();
 
@@ -1978,19 +1653,19 @@ export function Step4DialogueScreen({
         targetAction = {
           label: 'Далее',
           onClick: async () => {
-             // 1. Mark as advanced in UI
-             setFindMistakeUI((prev) => ({
-                ...prev,
-                [key]: { ...ui, advanced: true }
-             }));
-             
-             // 2. Send answer
-             const stepOverride = msg.currentStepSnapshot ?? currentStep;
-             await handleStudentAnswer('', { 
-                 choice: choiceToSend, 
-                 stepOverride,
-                 silent: true 
-             });
+            // 1. Mark as advanced in UI
+            setFindMistakeUI((prev) => ({
+              ...prev,
+              [key]: { ...ui, advanced: true }
+            }));
+            
+            // 2. Send answer
+            const stepOverride = msg.currentStepSnapshot ?? currentStep;
+            await handleStudentAnswer('', { 
+              choice: choiceToSend, 
+              stepOverride,
+              silent: true 
+            });
           },
           disabled: Boolean(isLoading && ui.advanced),
         };
@@ -2000,177 +1675,30 @@ export function Step4DialogueScreen({
     if (targetAction) return targetAction;
 
     return null;
-	  }, [
-	    showGoalGateCta,
-	    goalGateLabel,
-	    acknowledgeGoalGate,
-	    isLoading,
-	    grammarGate,
-	    persistGrammarGateOpened,
-	    showVocab,
-	    vocabWords,
-	    vocabIndex,
-	    vocabPronunciationByIndex,
-	    speechRecognitionSupported,
-	    shouldShowVocabCheckButton,
-	    handleCheckVocabulary,
-	    messages,
-	    getMessageStableId,
-	    findMistakeUI,
-	    handleStudentAnswer,
-	    lessonScript,
-	    setFindMistakeUI,
-	    stripModuleTag,
-	    tryParseJsonMessage,
-	    currentStep,
-	  ]);
+  }, [
+    showGoalGateCta,
+    goalGateLabel,
+    acknowledgeGoalGate,
+    isLoading,
+    grammarGate,
+    persistGrammarGateOpened,
+    showVocab,
+    vocabWords,
+    vocabIndex,
+    shouldShowVocabCheckButton,
+    handleCheckVocabulary,
+    messages,
+    getMessageStableId,
+    findMistakeUI,
+    handleStudentAnswer,
+    lessonScript,
+    setFindMistakeUI,
+    stripModuleTag,
+    tryParseJsonMessage,
+    currentStep,
+  ]);
 
-	  const vocabPronounceTask = useMemo(() => {
-	    if (!showVocab) return null;
-	    const currentWord = vocabWords[vocabIndex];
-	    if (!currentWord) return null;
-	    const hasExample = Boolean(String((currentWord as any)?.context || '').trim());
-	    const status = vocabPronunciationByIndex[vocabIndex] || { wordOk: false, exampleOk: !hasExample };
-	    if (!status.wordOk) return { kind: 'word' as const, expectedText: String(currentWord.word || ''), label: 'Произнеси слово' };
-	    if (hasExample && !status.exampleOk)
-	      return { kind: 'example' as const, expectedText: String((currentWord as any)?.context || ''), label: 'Произнеси пример' };
-	    return null;
-	  }, [showVocab, vocabIndex, vocabPronunciationByIndex, vocabWords]);
-
-  useEffect(() => {
-    // When the task switches (word -> example), clear the previous "Я услышал..." line.
-    if (!showVocab) return;
-    setVocabHeard('');
-    setVocabCorrect(null);
-    setVocabError(null);
-    vocabLastTranscriptRef.current = '';
-  }, [showVocab, vocabIndex, vocabPronounceTask?.kind]);
-
-  useEffect(() => {
-    if (!showVocab) return;
-    if (!speechRecognitionSupported) return;
-    if (vocabAutoAdvanceTimerRef.current) {
-      window.clearTimeout(vocabAutoAdvanceTimerRef.current);
-      vocabAutoAdvanceTimerRef.current = null;
-    }
-    const currentWord = vocabWords[vocabIndex];
-    if (!currentWord) return;
-    const hasExample = Boolean(String((currentWord as any)?.context || '').trim());
-    const status = vocabPronunciationByIndex[vocabIndex];
-    const pronouncedOk = Boolean(status?.wordOk) && (Boolean(status?.exampleOk) || !hasExample);
-    if (!pronouncedOk) return;
-    if (vocabIndex >= vocabWords.length - 1) return;
-
-    vocabAutoAdvanceTimerRef.current = window.setTimeout(() => {
-      setVocabIndex((prev) => Math.min(prev + 1, vocabWords.length - 1));
-      vocabAutoAdvanceTimerRef.current = null;
-    }, 900);
-  }, [showVocab, speechRecognitionSupported, vocabPronunciationByIndex, vocabIndex, vocabWords, setVocabIndex]);
-
-	  const vocabMicUi =
-	    speechRecognitionSupported && showVocab && vocabWords.length > 0 && vocabPronounceTask ? (
-      <div className="flex flex-col items-center gap-2">
-        {vocabCorrect === false ? (
-          <div className="text-xs font-semibold text-rose-700 mb-1 text-center px-2">
-            {vocabHeard ? 'Не совпало — попробуй ещё раз.' : 'Не услышал — попробуй ещё раз.'}
-          </div>
-        ) : null}
-        {vocabCorrect === true ? (
-          <div className="text-xs font-semibold text-emerald-700 mb-1 text-center px-2">Совпало!</div>
-        ) : null}
-        <button
-          type="button"
-          disabled={isLoading || isPlayingQueue || !vocabMicReady}
-          onClick={() => {
-            // Синхронная проверка и обновление UI сразу
-            if (isLoading || isPlayingQueue || !vocabMicReady) return;
-            
-            const isListeningThis =
-              Boolean(vocabListening) &&
-              vocabListening.index === vocabIndex &&
-              vocabListening.kind === vocabPronounceTask.kind;
-            
-            if (isListeningThis) {
-              // Остановка записи - делаем асинхронно, но не блокируем UI
-              void (async () => {
-                if (isNativeIos && offlineAsrSupported && vocabRecognitionRef.current === 'offline') {
-                  const transcript = String((await offlineAsrStop()) || '').trim();
-                  vocabRecognitionRef.current = null;
-                  vocabLastTranscriptRef.current = transcript;
-                  setVocabHeard(transcript);
-                  const ok =
-                    transcript.length > 0
-                      ? vocabPronounceTask.kind === 'word'
-                        ? isMatchWord(vocabPronounceTask.expectedText, transcript)
-                        : isMatchExample(vocabPronounceTask.expectedText, transcript)
-                      : false;
-                  setVocabCorrect(ok);
-                  if (ok) markVocabPronounced(vocabIndex, vocabPronounceTask.kind);
-                  stopVocabListening();
-                  return;
-                }
-                const heard = String(vocabLastTranscriptRef.current || '').trim();
-                const ok =
-                  heard.length > 0
-                    ? vocabPronounceTask.kind === 'word'
-                      ? isMatchWord(vocabPronounceTask.expectedText, heard)
-                      : isMatchExample(vocabPronounceTask.expectedText, heard)
-                    : false;
-                setVocabCorrect(ok);
-                if (ok) markVocabPronounced(vocabIndex, vocabPronounceTask.kind);
-                stopVocabListening();
-              })();
-              return;
-            }
-            
-            // Проверка разрешений - откладываем, чтобы не блокировать UI
-            if (!(isNativeIos && offlineAsrSupported)) {
-              void (async () => {
-                if (micPermission !== 'granted') {
-                  const ok = await ensureMicPermission();
-                  if (!ok) {
-                    setVocabError('mic_permission_denied');
-                    return;
-                  }
-                }
-                // Запускаем после проверки разрешений
-                startVocabListening({
-                  index: vocabIndex,
-                  kind: vocabPronounceTask.kind,
-                  expectedText: vocabPronounceTask.expectedText,
-                });
-              })();
-            } else {
-              // Для iOS offline ASR запускаем сразу - UI уже обновится в startVocabListening
-              startVocabListening({
-                index: vocabIndex,
-                kind: vocabPronounceTask.kind,
-                expectedText: vocabPronounceTask.expectedText,
-              });
-            }
-          }}
-          className={`relative h-16 w-16 flex items-center justify-center rounded-full transition-all shadow-lg duration-100 ${
-            isLoading || isPlayingQueue || !vocabMicReady
-              ? 'bg-gray-200 text-gray-400 cursor-not-allowed shadow-none'
-              : vocabListening
-                ? 'bg-red-500 text-white shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse active:scale-90 active:opacity-80'
-                : 'bg-brand-primary text-white hover:opacity-90 active:scale-90 active:opacity-80'
-          }`}
-          aria-label={
-            isLoading || isPlayingQueue || !vocabMicReady ? 'Audio playing' : vocabListening ? 'Stop' : 'Start'
-          }
-        >
-          <Mic className={`w-5 h-5 ${vocabListening ? 'animate-pulse' : ''}`} />
-        </button>
-        {vocabError ? (
-          <div className="text-xs text-rose-700">
-            Ошибка микрофона/распознавания: <span className="font-mono">{vocabError}</span>
-          </div>
-        ) : null}
-      </div>
-    ) : null;
-
-	  const lessonProgress = useMemo(() => {
+  const lessonProgress = useMemo(() => {
     const getScriptWordsCount = (script: any | null): number => {
       if (!script) return 0;
       const words = (script as any).words;
@@ -2269,23 +1797,22 @@ export function Step4DialogueScreen({
     vocabWords,
   ]);
 
-		  void onFinish;
-		  const overlayVisible = isInitializing || (isLoading && messages.length === 0);
-		
-		  return (
-		    <>
-		      <div className="flex flex-col h-full bg-white relative w-full">
-		        {overlayVisible && (
-		          <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/85 backdrop-blur-sm">
-		            <div className="flex flex-col items-center gap-3 rounded-2xl border border-black/5 bg-white px-5 py-4 shadow-xl">
-		              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
-		              <div className="text-sm font-medium text-zinc-800">
-		                {resolvedLanguage?.toLowerCase().startsWith("ru") ? "Загружаю урок…" : "Loading lesson…"}
-		              </div>
-		            </div>
-		          </div>
-		        )}
-		        <div ref={layoutContainerRef} className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
+  const overlayVisible = isInitializing || (isLoading && messages.length === 0);
+
+  return (
+    <>
+      <div className="flex flex-col h-full bg-white relative w-full">
+        {overlayVisible && (
+          <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/85 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-black/5 bg-white px-5 py-4 shadow-xl">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
+              <div className="text-sm font-medium text-zinc-800">
+                {resolvedLanguage?.toLowerCase().startsWith("ru") ? "Загружаю урок…" : "Loading lesson…"}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={layoutContainerRef} className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
           <DialogueHeader
             progressPercent={lessonProgress.percent}
             progressLabel={lessonProgress.label}
@@ -2294,7 +1821,7 @@ export function Step4DialogueScreen({
             isLoading={isLoading}
           />
 
-			  <DialogueMessages
+          <DialogueMessages
             scrollContainerRef={scrollContainerRef}
             messagesEndRef={messagesEndRef}
             messageRefs={messageRefs}
@@ -2313,9 +1840,6 @@ export function Step4DialogueScreen({
             vocabWords={vocabWords}
             vocabIndex={vocabIndex}
             setVocabIndex={setVocabIndex}
-            vocabPronunciationByIndex={vocabPronunciationByIndex}
-            setVocabPronunciationByIndex={setVocabPronunciationByIndex}
-            speechRecognitionSupported={speechRecognitionSupported}
             vocabRefs={vocabRefs}
             currentAudioItem={currentAudioItem}
             processAudioQueue={processAudioQueue as any}
@@ -2339,61 +1863,61 @@ export function Step4DialogueScreen({
             matchesComplete={matchesComplete}
             wordOptions={wordOptions}
             translationOptions={translationOptions}
-	            selectedWord={selectedWord}
-	            selectedTranslation={selectedTranslation}
-	            setSelectedWord={setSelectedWord}
-	            setSelectedTranslation={setSelectedTranslation}
-	            tryMatch={tryMatch}
-	            matchingMismatchAttempt={matchingMismatchAttempt}
-	            shouldShowVocabCheckButton={shouldShowVocabCheckButton}
-		            handleCheckVocabulary={handleCheckVocabulary}
-			            isAwaitingModelReply={isAwaitingModelReply}
-			            lessonCompletedPersisted={lessonCompletedPersisted}
-			            onNextLesson={onNextLesson}
-                    nextLessonNumber={nextLessonNumber}
-                    nextLessonIsPremium={nextLessonIsPremium}
-		                  ankiGateActive={ankiGateActive}
-		                  ankiIntroText={ankiIntroText}
-		                  ankiQuizItems={ankiQuizItems}
-		                  onAnkiAnswer={(p) => handleAnkiAnswer({ id: p.id, isCorrect: p.isCorrect })}
-		                  onAnkiComplete={handleAnkiComplete}
-					          />
+            selectedWord={selectedWord}
+            selectedTranslation={selectedTranslation}
+            setSelectedWord={setSelectedWord}
+            setSelectedTranslation={setSelectedTranslation}
+            tryMatch={tryMatch}
+            matchingMismatchAttempt={matchingMismatchAttempt}
+            shouldShowVocabCheckButton={shouldShowVocabCheckButton}
+            handleCheckVocabulary={handleCheckVocabulary}
+            isAwaitingModelReply={isAwaitingModelReply}
+            lessonCompletedPersisted={lessonCompletedPersisted}
+            onNextLesson={onNextLesson}
+            nextLessonNumber={nextLessonNumber}
+            nextLessonIsPremium={nextLessonIsPremium}
+            ankiGateActive={ankiGateActive}
+            ankiIntroText={ankiIntroText}
+            ankiQuizItems={ankiQuizItems}
+            onAnkiAnswer={(p) => handleAnkiAnswer({ id: p.id, isCorrect: p.isCorrect })}
+            onAnkiComplete={handleAnkiComplete}
+          />
 
-		          {overlayVisible || tutorMiniOpen ? null : (
-		            <DialogueInputBar
-		              inputMode={effectiveInputMode}
-		              input={input}
-		              onInputChange={setInput}
-		              onSend={handleSend}
-		              placeholder={copy.placeholder}
-		              isLoading={isLoading}
-		              isRecording={isRecording}
-		              isTranscribing={isTranscribing}
-		              onToggleRecording={onToggleRecording}
-		              hiddenTopContent={ankiGateActive ? null : vocabMicUi}
-		              cta={ankiGateActive ? null : activeCta}
-		              autoFocus={!suppressInputAutofocus}
-		            />
-		          )}
-	        </div>
-	      </div>
+          {overlayVisible || tutorMiniOpen ? null : (
+            <DialogueInputBar
+              inputMode={effectiveInputMode}
+              input={input}
+              onInputChange={setInput}
+              onSend={handleSend}
+              placeholder={copy.placeholder}
+              isLoading={isLoading}
+              isRecording={isRecording}
+              isTranscribing={isTranscribing}
+              onToggleRecording={onToggleRecording}
+              hiddenTopContent={null}
+              cta={ankiGateActive ? null : activeCta}
+              autoFocus={!suppressInputAutofocus}
+            />
+          )}
+        </div>
+      </div>
 
-	      {overlayVisible ? null : (
-	        <TutorMiniChat
-	          open={tutorMiniOpen}
-	          onToggle={toggleTutorMiniChat}
-	          onClose={closeTutorMiniChat}
-	          title={tutorMiniTitle}
-	          placeholder={tutorMiniPlaceholder}
-	          messages={tutorThreadMessages}
-	          input={tutorInput}
-	          setInput={setTutorInput}
-	          onSend={sendTutorQuestion}
-	          isAwaitingReply={isAwaitingTutorReply}
-	          questionsUsed={tutorQuestionsUsed}
-	          questionsLimit={tutorQuestionsLimit}
-	        />
-	      )}
+      {overlayVisible ? null : (
+        <TutorMiniChat
+          open={tutorMiniOpen}
+          onToggle={toggleTutorMiniChat}
+          onClose={closeTutorMiniChat}
+          title={tutorMiniTitle}
+          placeholder={tutorMiniPlaceholder}
+          messages={tutorThreadMessages}
+          input={tutorInput}
+          setInput={setTutorInput}
+          onSend={sendTutorQuestion}
+          isAwaitingReply={isAwaitingTutorReply}
+          questionsUsed={tutorQuestionsUsed}
+          questionsLimit={tutorQuestionsLimit}
+        />
+      )}
 
       <RestartConfirmModal
         open={showRestartConfirm}

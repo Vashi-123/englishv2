@@ -1,7 +1,6 @@
 import React from 'react';
-import { Languages } from 'lucide-react';
+import { Check, Languages } from 'lucide-react';
 import { CardHeading } from './CardHeading';
-import { CompletionBadge } from './CompletionBadge';
 
 type AudioItem = { text: string; lang: string; kind: string };
 
@@ -50,7 +49,15 @@ export function VocabularyListCard({
         >
           Слова ({currentIdx + 1}/{words.length})
         </CardHeading>
-        {completed && <CompletionBadge label="Слова пройдены" />}
+        <span
+          className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+            completed
+              ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+              : 'border-gray-300 bg-white text-gray-300'
+          }`}
+        >
+          {completed ? <Check className="w-4 h-4" /> : null}
+        </span>
       </div>
 
       <div className="space-y-3">
@@ -66,6 +73,7 @@ export function VocabularyListCard({
               onClick={() => onPlayWord(w)}
             >
               <div className="flex flex-col gap-1 mb-2">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Слово</div>
                 <div className="flex items-baseline gap-3">
                   <span
                     className={`text-xl font-bold tracking-tight leading-none ${isWordSpeaking ? 'text-brand-primary' : 'text-gray-900'}`}
@@ -78,6 +86,7 @@ export function VocabularyListCard({
               </div>
 
               <div className="relative">
+                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Пример</div>
                 <p className={`text-[15px] leading-relaxed ${isExampleSpeaking ? 'text-brand-primary' : 'text-gray-800'}`}>
                   {w.context}
                 </p>

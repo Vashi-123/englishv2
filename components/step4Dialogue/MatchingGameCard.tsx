@@ -1,7 +1,6 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Bot } from 'lucide-react';
+import { Bot, Check } from 'lucide-react';
 import { CardHeading } from './CardHeading';
-import { CompletionBadge } from './CompletionBadge';
 
 type Option = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -307,7 +306,15 @@ export function MatchingGameCard({
         >
           Соедини слово с переводом
         </CardHeading>
-        {matchesComplete && <CompletionBadge label="Готово!" />}
+        <span
+          className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+            matchesComplete
+              ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+              : 'border-gray-300 bg-white text-gray-300'
+          }`}
+        >
+          {matchesComplete ? <Check className="w-4 h-4" /> : null}
+        </span>
       </div>
 
         <div ref={overlayRef} className="relative min-w-0">
@@ -354,7 +361,7 @@ export function MatchingGameCard({
             })}
           </svg>
 
-        <div className="grid grid-cols-2 gap-10 relative z-10 min-w-0">
+        <div className="grid grid-cols-2 gap-7 relative z-10 min-w-0">
           {/* Left: translations */}
           <div className="space-y-2 min-w-0">
             {translationOptions.map((t) => {

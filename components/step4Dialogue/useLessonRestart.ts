@@ -33,6 +33,7 @@ export function useLessonRestart({
 
   goalGate,
   storageKeys,
+  setAnkiDone,
   initializeChat,
 }: {
   day?: number;
@@ -65,7 +66,6 @@ export function useLessonRestart({
     setVocabIndex: Dispatch<SetStateAction<number>>;
     setShowVocab: Dispatch<SetStateAction<boolean>>;
     setPendingVocabPlay: Dispatch<SetStateAction<boolean>>;
-    setVocabPronunciationByIndex: Dispatch<SetStateAction<Record<number, { wordOk: boolean; exampleOk: boolean }>>>;
   };
 
   findMistake: {
@@ -98,7 +98,10 @@ export function useLessonRestart({
     matchingProgressStorageKey: string;
     findMistakeStorageKey: string;
     constructorStorageKey: string;
+    ankiDoneStorageKey: string;
   };
+
+  setAnkiDone: Dispatch<SetStateAction<boolean>>;
 
   initializeChat: (force?: boolean) => Promise<void>;
 }) {
@@ -135,7 +138,6 @@ export function useLessonRestart({
       vocab.setVocabIndex(0);
       vocab.setShowVocab(false);
       vocab.setPendingVocabPlay(false);
-      vocab.setVocabPronunciationByIndex({});
 
       findMistake.setFindMistakeUI({});
       constructor.setConstructorUI({});
@@ -145,6 +147,9 @@ export function useLessonRestart({
       vocabRestoreRefs.appliedVocabRestoreKeyRef.current = null;
 
       resetTtsState();
+
+      // Reset anki done state
+      setAnkiDone(false);
 
       setGrammarGateSectionId(null);
       setGrammarGateOpen(true);
@@ -159,6 +164,7 @@ export function useLessonRestart({
           storageKeys.matchingProgressStorageKey,
           storageKeys.findMistakeStorageKey,
           storageKeys.constructorStorageKey,
+          storageKeys.ankiDoneStorageKey,
         ];
         for (const k of keys) {
           localStorage.removeItem(k);
