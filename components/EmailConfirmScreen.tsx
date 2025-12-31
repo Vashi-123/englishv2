@@ -66,8 +66,11 @@ export const EmailConfirmScreen: React.FC = () => {
     
     // Всегда показываем модальное окно для ввода email (для YooKassa нужен email для чека)
     console.log('[EmailConfirm] Opening email modal');
-    setPaymentEmail(email || '');
+    const emailValue = email || '';
+    setPaymentEmail(emailValue);
+    console.log('[EmailConfirm] Setting showEmailModal to true, current value:', showEmailModal);
     setShowEmailModal(true);
+    console.log('[EmailConfirm] showEmailModal set to true');
   };
 
   const createPayment = async (userEmail: string) => {
@@ -258,9 +261,74 @@ export const EmailConfirmScreen: React.FC = () => {
   const listPriceLabel = formatPrice('15000.00', 'RUB');
   const resolvedFreeLessonCount = Number.isFinite(freeLessonCount) ? freeLessonCount : 3;
 
+  // Модальное окно для ввода email перед оплатой
+  const renderEmailModal = () => {
+    console.log('[EmailConfirm] renderEmailModal called, showEmailModal:', showEmailModal);
+    if (!showEmailModal) {
+      console.log('[EmailConfirm] showEmailModal is false, returning null');
+      return null;
+    }
+    
+    console.log('[EmailConfirm] Rendering email modal via createPortal');
+    return createPortal(
+      <div className="fixed inset-0 z-[130] flex items-center justify-center px-6 bg-black/60">
+        <div className="relative w-full max-w-sm rounded-3xl bg-white border border-gray-200 shadow-2xl p-6">
+          <button
+            type="button"
+            onClick={() => setShowEmailModal(false)}
+            className="absolute top-5 right-5 h-8 w-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
+            aria-label="Закрыть"
+          >
+            <X className="w-4 h-4 text-gray-600" />
+          </button>
+          
+          <h2 className="text-xl font-black text-slate-900 mb-2">Введите email для оплаты</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            На этот email придет чек об оплате
+          </p>
+          
+          <input
+            type="email"
+            value={paymentEmail}
+            onChange={(e) => setPaymentEmail(e.target.value)}
+            placeholder="your@email.com"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition mb-4"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleEmailSubmit();
+              }
+            }}
+            autoFocus
+          />
+          
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setShowEmailModal(false)}
+              className="h-11 rounded-xl bg-white border border-gray-200 text-slate-900 font-bold hover:border-brand-primary/40 transition"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={handleEmailSubmit}
+              disabled={!paymentEmail.trim() || !paymentEmail.includes('@')}
+              className="h-11 rounded-xl bg-brand-primary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Продолжить
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
   if (status === 'showPaywall') {
     return (
-      <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900 pt-[var(--app-safe-top)]">
+      <>
+        {renderEmailModal()}
+        <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900 pt-[var(--app-safe-top)]">
         <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
         <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 
@@ -340,66 +408,12 @@ export const EmailConfirmScreen: React.FC = () => {
           </div>
         </div>
       </div>
+      </>
     );
   }
 
-  // Модальное окно для ввода email перед оплатой
-  const renderEmailModal = () => {
-    if (!showEmailModal) return null;
-    
-    return createPortal(
-      <div className="fixed inset-0 z-[130] flex items-center justify-center px-6 bg-black/60">
-        <div className="relative w-full max-w-sm rounded-3xl bg-white border border-gray-200 shadow-2xl p-6">
-          <button
-            type="button"
-            onClick={() => setShowEmailModal(false)}
-            className="absolute top-5 right-5 h-8 w-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
-            aria-label="Закрыть"
-          >
-            <X className="w-4 h-4 text-gray-600" />
-          </button>
-          
-          <h2 className="text-xl font-black text-slate-900 mb-2">Введите email для оплаты</h2>
-          <p className="text-sm text-gray-600 mb-4">
-            На этот email придет чек об оплате
-          </p>
-          
-          <input
-            type="email"
-            value={paymentEmail}
-            onChange={(e) => setPaymentEmail(e.target.value)}
-            placeholder="your@email.com"
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition mb-4"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleEmailSubmit();
-              }
-            }}
-            autoFocus
-          />
-          
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setShowEmailModal(false)}
-              className="h-11 rounded-xl bg-white border border-gray-200 text-slate-900 font-bold hover:border-brand-primary/40 transition"
-            >
-              Отмена
-            </button>
-            <button
-              type="button"
-              onClick={handleEmailSubmit}
-              disabled={!paymentEmail.trim() || !paymentEmail.includes('@')}
-              className="h-11 rounded-xl bg-brand-primary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              Продолжить
-            </button>
-          </div>
-        </div>
-      </div>,
-      document.body
-    );
-  };
+  // Логируем состояние showEmailModal при каждом рендере
+  console.log('[EmailConfirm] Component render, showEmailModal:', showEmailModal, 'status:', status);
 
   return (
     <>
