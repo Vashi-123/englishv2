@@ -109,7 +109,26 @@ export const EmailConfirmScreen: React.FC = () => {
         // Приоритет: сначала пробуем token (для email confirmation), потом code (для PKCE)
         // Если есть token, используем его в первую очередь
         if (token) {
-          // Подтверждаем email через verifyOtp с token
+          // Проверяем, является ли токен PKCE токеном (начинается с pkce_)
+          const isPkceToken = token.startsWith('pkce_');
+          
+          if (isPkceToken) {
+            // Для PKCE токенов email уже подтвержден на сервере Supabase
+            // Но мы не можем создать сессию без verifier
+            // Показываем страницу paywall (email уже подтвержден, можно оплачивать)
+            if (emailParam) {
+              setEmail(emailParam);
+              // Показываем страницу с информацией о регистрации и предложением открыть полный доступ
+              setStatus('showPaywall');
+              return;
+            } else {
+              // Если нет email, но токен PKCE - email подтвержден, показываем paywall
+              setStatus('showPaywall');
+              return;
+            }
+          }
+          
+          // Для обычных токенов используем verifyOtp
           const { data, error } = await supabase.auth.verifyOtp({
             token_hash: token,
             type: type as 'signup' | 'email' | 'recovery' | 'email_change',
@@ -145,21 +164,16 @@ export const EmailConfirmScreen: React.FC = () => {
             if (error) {
               // Если ошибка связана с отсутствием verifier, email может быть уже подтвержден на сервере
               if (error.message?.includes('code verifier')) {
-                // Проверяем, может ли пользователь войти (email уже подтвержден)
-                // Если есть email, пробуем проверить статус через попытку входа
+                // Email уже подтвержден на сервере, но сессию создать не можем
+                // Показываем страницу paywall (email подтвержден, можно оплачивать)
                 if (emailParam) {
-                  // Email уже подтвержден на сервере, но сессию создать не можем
-                  // Показываем сообщение, что нужно войти
-                  setStatus('success');
-                  setMessage('Email успешно подтвержден! Теперь войди в аккаунт, используя email и пароль.');
                   setEmail(emailParam);
-                  // Через 3 секунды редиректим на страницу входа
-                  setTimeout(() => {
-                    window.location.href = '/#auth';
-                  }, 3000);
+                  setStatus('showPaywall');
                   return;
                 } else {
-                  throw new Error('Ссылка подтверждения была открыта в другом браузере или устройстве. Пожалуйста, откройте ссылку в том же браузере, где вы регистрировались, или попробуйте зарегистрироваться заново.');
+                  // Если нет email, но код есть - показываем paywall
+                  setStatus('showPaywall');
+                  return;
                 }
               }
               throw error;
