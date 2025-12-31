@@ -12,6 +12,11 @@
         font-family: 'Inter', sans-serif;
         background-color: #F8FAFC;
         color: #0F172A;
+        opacity: 0;
+        transition: opacity 0.1s;
+      }
+      body.show {
+        opacity: 1;
       }
     </style>
   </head>
@@ -25,6 +30,7 @@
     </div>
     <script>
       // SPA routing: redirect to index.html while preserving the path and query params
+      // Execute immediately, before page renders
       (function() {
         const path = window.location.pathname;
         const search = window.location.search;
@@ -33,6 +39,7 @@
         
         // Don't redirect if already on index.html or root
         if (path === base || path === base + 'index.html' || path.endsWith('/index.html')) {
+          document.body.classList.add('show');
           return;
         }
         
@@ -48,9 +55,16 @@
         const newPath = base + (base.endsWith('/') ? '' : '/') + 'index.html';
         const newUrl = newPath + search + hash;
         
-        // Use replace to avoid adding to history
+        // Use replace to avoid adding to history - do it immediately
         window.location.replace(newUrl);
       })();
+      
+      // Fallback: show content only if redirect didn't happen after 100ms
+      setTimeout(function() {
+        if (document.body) {
+          document.body.classList.add('show');
+        }
+      }, 100);
     </script>
   </body>
 </html>
