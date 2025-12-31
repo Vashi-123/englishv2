@@ -41,6 +41,7 @@ import { useStep4ProgressPersistence } from './useStep4ProgressPersistence';
 import { useTtsQueue } from './useTtsQueue';
 import { useAutoScrollToEnd } from './useAutoScrollToEnd';
 import { useVocabScroll } from './useVocabScroll';
+import { getCacheKeyWithCurrentUser } from '../../services/cacheUtils';
 
 export type Step4DialogueProps = {
   day?: number;
@@ -497,12 +498,13 @@ export function Step4DialogueScreen({
   >(() => {
     try {
       if (typeof window === 'undefined') return {};
+      const baseKey = `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+      const key = getCacheKeyWithCurrentUser(baseKey);
       const legacyKey = `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${resolvedLanguage}`;
-      const key = `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
       const raw = window.localStorage.getItem(key) ?? window.localStorage.getItem(legacyKey);
       if (!raw) return {};
       const parsed = JSON.parse(raw);
-      // If we read from the legacy key, migrate to the new level-scoped key.
+      // If we read from the legacy key, migrate to the new level-scoped key with email.
       try {
         if (!window.localStorage.getItem(key) && window.localStorage.getItem(legacyKey)) {
           window.localStorage.setItem(key, raw);
@@ -522,12 +524,13 @@ export function Step4DialogueScreen({
     () => {
       try {
         if (typeof window === 'undefined') return {};
+        const baseKey = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+        const key = getCacheKeyWithCurrentUser(baseKey);
         const legacyKey = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLanguage}`;
-        const key = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
         const raw = window.localStorage.getItem(key) ?? window.localStorage.getItem(legacyKey);
         if (!raw) return {};
         const parsed = JSON.parse(raw);
-        // If we read from the legacy key, migrate to the new level-scoped key.
+        // If we read from the legacy key, migrate to the new level-scoped key with email.
         try {
           if (!window.localStorage.getItem(key) && window.localStorage.getItem(legacyKey)) {
             window.localStorage.setItem(key, raw);
@@ -549,10 +552,10 @@ export function Step4DialogueScreen({
   const [showVocab, setShowVocab] = useState(false);
   const [pendingVocabPlay, setPendingVocabPlay] = useState(false);
   const [goalGatePending, setGoalGatePending] = useState(false);
-  const goalAckStorageKey = useMemo(
-    () => `step4dialogue:goalAck:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
-    [day, lesson, resolvedLanguage, resolvedLevel]
-  );
+  const goalAckStorageKey = useMemo(() => {
+    const baseKey = `step4dialogue:goalAck:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+    return getCacheKeyWithCurrentUser(baseKey);
+  }, [day, lesson, resolvedLanguage, resolvedLevel]);
   const [goalGateAcknowledged, setGoalGateAcknowledged] = useState<boolean>(() => {
     try {
       if (typeof window === 'undefined') return false;
@@ -727,26 +730,26 @@ export function Step4DialogueScreen({
     return () => window.clearTimeout(timer);
   }, [appendEngineMessagesWithDelay, ensureLessonScript, matchesComplete, showMatching]);
 
-  const grammarGateStorageKey = useMemo(
-    () => `step4dialogue:gatedGrammar:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
-    [day, lesson, resolvedLanguage, resolvedLevel]
-  );
-  const vocabProgressStorageKey = useMemo(
-    () => `step4dialogue:vocabProgress:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
-    [day, lesson, resolvedLanguage, resolvedLevel]
-  );
-  const matchingProgressStorageKey = useMemo(
-    () => `step4dialogue:matchingProgress:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
-    [day, lesson, resolvedLanguage, resolvedLevel]
-  );
-  const findMistakeStorageKey = useMemo(
-    () => `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
-    [day, lesson, resolvedLanguage, resolvedLevel]
-  );
-  const constructorStorageKey = useMemo(
-    () => `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
-    [day, lesson, resolvedLanguage, resolvedLevel]
-  );
+  const grammarGateStorageKey = useMemo(() => {
+    const baseKey = `step4dialogue:gatedGrammar:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+    return getCacheKeyWithCurrentUser(baseKey);
+  }, [day, lesson, resolvedLanguage, resolvedLevel]);
+  const vocabProgressStorageKey = useMemo(() => {
+    const baseKey = `step4dialogue:vocabProgress:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+    return getCacheKeyWithCurrentUser(baseKey);
+  }, [day, lesson, resolvedLanguage, resolvedLevel]);
+  const matchingProgressStorageKey = useMemo(() => {
+    const baseKey = `step4dialogue:matchingProgress:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+    return getCacheKeyWithCurrentUser(baseKey);
+  }, [day, lesson, resolvedLanguage, resolvedLevel]);
+  const findMistakeStorageKey = useMemo(() => {
+    const baseKey = `step4dialogue:findMistakeUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+    return getCacheKeyWithCurrentUser(baseKey);
+  }, [day, lesson, resolvedLanguage, resolvedLevel]);
+  const constructorStorageKey = useMemo(() => {
+    const baseKey = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+    return getCacheKeyWithCurrentUser(baseKey);
+  }, [day, lesson, resolvedLanguage, resolvedLevel]);
 
   const { persistGrammarGateOpened } = useStep4ProgressPersistence({
     day,
@@ -802,10 +805,10 @@ export function Step4DialogueScreen({
 	      stripModuleTag,
 	    });
 
-	  const ankiDoneStorageKey = useMemo(
-	    () => `step4dialogue:ankiDone:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`,
-	    [day, lesson, resolvedLanguage, resolvedLevel]
-	  );
+	  const ankiDoneStorageKey = useMemo(() => {
+	    const baseKey = `step4dialogue:ankiDone:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+	    return getCacheKeyWithCurrentUser(baseKey);
+	  }, [day, lesson, resolvedLanguage, resolvedLevel]);
 	  const [ankiDone, setAnkiDone] = useState<boolean>(() => {
 	    try {
 	      if (typeof window === 'undefined') return false;

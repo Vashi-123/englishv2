@@ -70,7 +70,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 const sleep = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
-const getStorageKey = (day: number, lesson: number, language: string) => `dialogue_messages_v2:${day}:${lesson}:${language}`;
+import { getCacheKeyWithCurrentUser } from '../../services/cacheUtils';
+
+const getStorageKey = (day: number, lesson: number, language: string) => {
+  const baseKey = `dialogue_messages_v2:${day}:${lesson}:${language}`;
+  return getCacheKeyWithCurrentUser(baseKey);
+};
 
 const isPersistedChatMessage = (msg: ChatMessage | null | undefined): msg is ChatMessage => {
   if (!msg) return false;

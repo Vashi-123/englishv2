@@ -1,11 +1,95 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../services/supabaseClient';
-import { CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Crown, GraduationCap } from 'lucide-react';
+import { useFreePlan } from '../hooks/useFreePlan';
+import { useEntitlements } from '../hooks/useEntitlements';
+import { formatFirstLessonsRu } from '../services/ruPlural';
+import {
+  createYooKassaPayment,
+  fetchBillingProduct,
+  getCachedBillingProduct,
+  formatPrice,
+  BILLING_PRODUCT_KEY,
+} from '../services/billingService';
 
 export const EmailConfirmScreen: React.FC = () => {
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'showPaywall'>('loading');
   const [message, setMessage] = useState<string>('Подтверждение email...');
   const [email, setEmail] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+  const { freeLessonCount } = useFreePlan();
+  const { isPremium, loading: entitlementsLoading } = useEntitlements(userId);
+  const [paying, setPaying] = useState(false);
+  const [priceValue, setPriceValue] = useState<string>('1490.00');
+  const [priceCurrency, setPriceCurrency] = useState<string>('RUB');
+  const [priceLoading, setPriceLoading] = useState<boolean>(true);
+
+  // Загружаем цену продукта
+  useEffect(() => {
+    let cancelled = false;
+    const cached = getCachedBillingProduct(BILLING_PRODUCT_KEY);
+    if (cached?.active && cached.priceValue) {
+      setPriceValue(cached.priceValue);
+      setPriceCurrency(cached.priceCurrency || 'RUB');
+      setPriceLoading(false);
+    }
+
+    const load = async () => {
+      try {
+        const product = await fetchBillingProduct(BILLING_PRODUCT_KEY);
+        if (cancelled) return;
+        if (product?.active && product.priceValue) {
+          setPriceValue(product.priceValue);
+          setPriceCurrency(product.priceCurrency || 'RUB');
+        }
+      } catch {
+        // keep fallback price
+      } finally {
+        if (!cancelled) setPriceLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handlePay = async () => {
+    if (paying) return;
+    setPaying(true);
+    try {
+      const returnUrl = window.location.origin + '/?paid=1';
+      const res = await createYooKassaPayment({
+        returnUrl,
+        description: 'Premium доступ к урокам EnglishV2',
+        productKey: BILLING_PRODUCT_KEY,
+      });
+      if (!res || res.ok !== true || !('confirmationUrl' in res)) {
+        const msg = (res && 'error' in res && typeof res.error === 'string') ? res.error : 'Не удалось создать оплату';
+        console.error('[EmailConfirm] create payment failed', msg);
+        return;
+      }
+      if (res.granted) {
+        window.location.href = '/';
+        return;
+      }
+      const url = res.confirmationUrl || '';
+      if (!url) {
+        console.error('[EmailConfirm] no confirmation URL');
+        return;
+      }
+      window.location.href = url;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[EmailConfirm] create payment catch', msg || 'Не удалось создать оплату');
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const handleContinue = () => {
+    window.location.href = '/';
+  };
 
   useEffect(() => {
     const confirmEmail = async () => {
@@ -59,21 +143,19 @@ export const EmailConfirmScreen: React.FC = () => {
         }
 
         if (data?.user) {
-          setStatus('success');
-          setMessage('Email успешно подтвержден!');
           setEmail(data.user.email || emailParam || null);
+          setUserId(data.user.id);
           
           // Для recovery типа (сброс пароля) редиректим на страницу сброса
           if (type === 'recovery') {
             setTimeout(() => {
               window.location.href = '/#reset-password';
             }, 2000);
-          } else {
-            // Для остальных типов - на главную
-            setTimeout(() => {
-              window.location.href = '/';
-            }, 2000);
+            return;
           }
+          
+          // Для signup показываем страницу с информацией о регистрации и предложением открыть полный доступ
+          setStatus('showPaywall');
         } else {
           throw new Error('Не удалось подтвердить email');
         }
@@ -88,6 +170,103 @@ export const EmailConfirmScreen: React.FC = () => {
     confirmEmail();
   }, []);
 
+  const priceLabel = formatPrice(String(priceValue), String(priceCurrency));
+  const listPriceLabel = formatPrice('15000.00', 'RUB');
+  const resolvedFreeLessonCount = Number.isFinite(freeLessonCount) ? freeLessonCount : 3;
+
+  if (status === 'showPaywall') {
+    return (
+      <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900 pt-[var(--app-safe-top)]">
+        <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
+        <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
+
+        <div className="max-w-xl mx-auto px-5 sm:px-8 pt-6 pb-10 min-h-[100dvh] flex flex-col">
+          <div className="relative bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+            {/* Успешная регистрация */}
+            <div className="mb-6 pb-6 border-b border-gray-100">
+              <div className="flex items-center gap-3 mb-3">
+                <CheckCircle className="w-6 h-6 text-emerald-600 flex-shrink-0" />
+                <h1 className="text-2xl font-black text-slate-900">Регистрация прошла успешно!</h1>
+              </div>
+              <p className="text-base text-slate-700 font-semibold">
+                У вас сейчас доступно {formatFirstLessonsRu(resolvedFreeLessonCount)}
+              </p>
+            </div>
+
+            {/* Информация об аккаунте */}
+            <div className="flex items-start justify-between gap-4 mb-6">
+              <div className="min-w-0">
+                <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Аккаунт</div>
+                <div className="mt-1 text-sm font-bold text-slate-900 break-all">{email || '—'}</div>
+                {entitlementsLoading ? (
+                  <div className="mt-2 h-3 w-52 rounded bg-gray-200 animate-pulse" />
+                ) : (
+                  <div className="mt-1 text-xs font-bold text-gray-600">
+                    Доступ: {isPremium ? 'Premium (100 уроков)' : `Free (${formatFirstLessonsRu(resolvedFreeLessonCount)})`}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Предложение открыть полный доступ */}
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <h2 className="text-xl sm:text-3xl font-black tracking-tight">Откройте полный курс A1</h2>
+              <p className="mt-2 text-sm leading-relaxed">
+                <span className="block font-semibold text-slate-700">Проходите уроки в своём темпе</span>
+                <span className="block mt-3 font-semibold text-slate-700">
+                  Подключайте преподавателя точечно — как куратора прогресса и закрепления.
+                </span>
+              </p>
+            </div>
+
+            {/* Цена */}
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <div className="text-base font-extrabold text-brand-primary">Быстрее прогресс за меньшие деньги</div>
+              <div className="mt-3">
+                {priceLoading ? (
+                  <div className="flex items-center gap-2 text-slate-900">
+                    <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-3xl font-black tracking-tight text-slate-900">
+                      {priceLabel}{' '}
+                      <span className="text-base font-extrabold text-gray-700">за 100 уроков</span>
+                    </div>
+                    <div className="mt-1 text-sm font-extrabold text-gray-400 line-through">вместо {listPriceLabel}</div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Кнопки */}
+            <div className="mt-6 grid gap-3">
+              <button
+                type="button"
+                onClick={handlePay}
+                disabled={paying || priceLoading || isPremium || entitlementsLoading}
+                className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                <span className="inline-flex items-center justify-center gap-2">
+                  {paying ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Crown className="w-4 h-4" />}
+                  <span className="whitespace-nowrap">{isPremium ? 'Premium активен' : 'Открыть полный доступ'}</span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={handleContinue}
+                className="h-12 rounded-2xl border border-gray-200 bg-white text-slate-900 font-bold hover:bg-gray-50 transition flex items-center justify-center gap-2"
+              >
+                <GraduationCap className="w-4 h-4" />
+                <span>Продолжить с бесплатными уроками</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-slate-100 px-4">
       <div className="w-full max-w-md">
@@ -97,22 +276,6 @@ export const EmailConfirmScreen: React.FC = () => {
               <Loader2 className="w-16 h-16 mx-auto mb-4 text-brand-primary animate-spin" />
               <h1 className="text-2xl font-black text-slate-900 mb-2">Подтверждение email</h1>
               <p className="text-slate-600">{message}</p>
-            </>
-          )}
-
-          {status === 'success' && (
-            <>
-              <CheckCircle className="w-16 h-16 mx-auto mb-4 text-emerald-600" />
-              <h1 className="text-2xl font-black text-slate-900 mb-2">Email подтвержден!</h1>
-              {email && (
-                <p className="text-sm text-slate-600 mb-4">
-                  Адрес <strong className="text-slate-900">{email}</strong> успешно подтвержден
-                </p>
-              )}
-              <p className="text-slate-600 mb-6">Перенаправление на главную страницу...</p>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div className="bg-brand-primary h-2 rounded-full animate-pulse" style={{ width: '100%' }} />
-              </div>
             </>
           )}
 

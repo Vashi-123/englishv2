@@ -22,6 +22,7 @@ import { FREE_LESSON_COUNT } from './services/billingService';
 import { formatFirstLessonsRu } from './services/ruPlural';
 import { getAllUserWords } from './services/srsService';
 import { parseMarkdown } from './components/step4Dialogue/markdown';
+import { getCacheKeyWithCurrentUser } from './services/cacheUtils';
 import { 
   X, 
   AlertTriangle,
@@ -181,8 +182,10 @@ const ConnectionRequiredScreen = () => {
   const [selectedDayId, setSelectedDayId] = useState<number>(() => {
     try {
       if (typeof window === 'undefined') return 1;
-      if (!userId) return 1;
-      const raw = window.localStorage.getItem(`englishv2:selectedDayId:${userId}:${level}`);
+      if (!userEmail) return 1;
+      const baseKey = `englishv2:selectedDayId:${level}`;
+      const key = getCacheKeyWithCurrentUser(baseKey);
+      const raw = window.localStorage.getItem(key);
       const n = raw != null ? Number(raw) : NaN;
       return Number.isFinite(n) && n > 0 ? n : 1;
     } catch {
@@ -227,8 +230,10 @@ const ConnectionRequiredScreen = () => {
   const [dayCompletedStatus, setDayCompletedStatus] = useState<Record<number, boolean>>(() => {
     try {
       if (typeof window === 'undefined') return {};
-      if (!userId) return {};
-      const raw = window.localStorage.getItem(`englishv2:dayCompletedStatus:${userId}:${level}`);
+      if (!userEmail) return {};
+      const baseKey = `englishv2:dayCompletedStatus:${level}`;
+      const key = getCacheKeyWithCurrentUser(baseKey);
+      const raw = window.localStorage.getItem(key);
       if (!raw) return {};
       const parsed = JSON.parse(raw);
       return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<number, boolean>) : {};
@@ -494,8 +499,8 @@ const ConnectionRequiredScreen = () => {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [closeConfirm, confirmAction]);
 
-  const statusStorageKey = userId ? `englishv2:dayCompletedStatus:${userId}:${level}` : null;
-  const selectedDayStorageKey = userId ? `englishv2:selectedDayId:${userId}:${level}` : null;
+  const statusStorageKey = userEmail ? getCacheKeyWithCurrentUser(`englishv2:dayCompletedStatus:${level}`) : null;
+  const selectedDayStorageKey = userEmail ? getCacheKeyWithCurrentUser(`englishv2:selectedDayId:${level}`) : null;
 
   // If YooKassa returns the user to the app, refresh entitlements once.
   useEffect(() => {
