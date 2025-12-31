@@ -148,28 +148,67 @@ Deno.serve(async (req: Request) => {
   try {
     console.log("[yookassa-create-payment] start", { requestId });
     const token = getBearerToken(req);
-    if (!token) return json(401, { ok: false, error: "Missing Authorization", requestId });
-
     const body = (await req.json()) as ReqBody;
     
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
     let userId: string | null = null;
     let userEmail = "";
     
-    if (authError || !authData?.user?.id) {
-      // Если нет сессии, но есть email в body, используем его
-      if (body?.email) {
-        userEmail = String(body.email).trim();
-      } else {
-        return json(401, { ok: false, error: "Invalid session and no email provided", requestId });
+    // Если есть токен, проверяем сессию
+    if (token) {
+      const { data: authData, error: authError } = await supabase.auth.getUser(token);
+      if (!authError && authData?.user?.id) {
+        userId = authData.user.id;
+        userEmail = (authData.user.email ? String(authData.user.email) : "").trim();
       }
-    } else {
-      userId = authData.user.id;
-      userEmail = (authData.user.email ? String(authData.user.email) : "").trim();
-      // Если email передан в body, используем его (приоритет)
-      if (body?.email) {
-        userEmail = String(body.email).trim();
+    }
+    
+    // Если email передан в body, используем его (приоритет)
+    if (body?.email) {
+      userEmail = String(body.email).trim();
+    }
+    
+    // Если нет userId, но есть email - проверяем, есть ли пользователь с таким email
+    if (!userId && userEmail) {
+      // Ищем пользователя по email через admin API (используем listUsers с фильтром по email)
+      // Получаем список пользователей и ищем по email
+      const { data: usersData, error: listError } = await supabase.auth.admin.listUsers();
+      if (!listError && usersData?.users) {
+        const foundUser = usersData.users.find((u: any) => 
+          u.email && u.email.toLowerCase() === userEmail.toLowerCase()
+        );
+        if (foundUser?.id) {
+          userId = foundUser.id;
+          console.log("[yookassa-create-payment] found existing user", { requestId, userId, email: userEmail });
+        }
       }
+      
+      // Если пользователя нет - создаем его
+      if (!userId) {
+        console.log("[yookassa-create-payment] creating user for email", { requestId, email: userEmail });
+        const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+          email: userEmail,
+          email_confirm: true, // Автоматически подтверждаем email
+          password: crypto.randomUUID(), // Генерируем случайный пароль (пользователь сможет сбросить его)
+        });
+        
+        if (createError) {
+          console.error("[yookassa-create-payment] failed to create user", { requestId, error: createError });
+          return json(500, { ok: false, error: "Failed to create user account", requestId });
+        }
+        
+        if (newUser?.user?.id) {
+          userId = newUser.user.id;
+          console.log("[yookassa-create-payment] user created", { requestId, userId, email: userEmail });
+        }
+      }
+    }
+    
+    if (!userId) {
+      return json(400, { ok: false, error: "User ID is required. Provide email or valid session.", requestId });
+    }
+    
+    if (!userEmail) {
+      return json(400, { ok: false, error: "Email is required", requestId });
     }
     const returnUrl = String(body?.returnUrl || "").trim();
     if (!returnUrl) return json(400, { ok: false, error: "returnUrl is required", requestId });

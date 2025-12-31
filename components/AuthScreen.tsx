@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '../services/supabaseClient';
@@ -14,13 +14,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isPaymentRedirect, setIsPaymentRedirect] = useState(false);
+  
+  // Читаем параметры из URL при монтировании
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const emailParam = urlParams.get('email');
+    const actionParam = urlParams.get('action');
+    
+    if (emailParam) {
+      setEmail(emailParam);
+    }
+    
+    if (actionParam === 'signup') {
+      setMode('signup');
+      // Если есть email и action=signup, значит это редирект с оплаты
+      if (emailParam) {
+        setIsPaymentRedirect(true);
+      }
+    }
+  }, []);
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { copy } = useLanguage();
-  const showOAuth = mode === 'login' || mode === 'signup';
+  const showOAuth = (mode === 'login' || mode === 'signup') && !isPaymentRedirect;
   const minPasswordOk = password.trim().length >= 6;
   const canSubmit =
     !loading &&
@@ -239,6 +259,18 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 space-y-5">
+
+            {/* Сообщение при редиректе с оплаты */}
+            {isPaymentRedirect && mode === 'signup' && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                <p className="text-sm font-semibold text-blue-900">
+                  Для начала зарегистрируйтесь
+                </p>
+                <p className="text-xs text-blue-700 mt-1">
+                  После регистрации вы сможете оплатить полный доступ к курсу
+                </p>
+              </div>
+            )}
 
         {showOAuth && (
           <>

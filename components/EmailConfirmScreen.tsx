@@ -11,6 +11,7 @@ import {
   getCachedBillingProduct,
   formatPrice,
   BILLING_PRODUCT_KEY,
+  quoteBilling,
 } from '../services/billingService';
 
 export const EmailConfirmScreen: React.FC = () => {
@@ -23,17 +24,27 @@ export const EmailConfirmScreen: React.FC = () => {
   const [paying, setPaying] = useState(false);
   const [priceValue, setPriceValue] = useState<string>('1490.00');
   const [priceCurrency, setPriceCurrency] = useState<string>('RUB');
+  const [basePriceValue, setBasePriceValue] = useState<string>('1490.00');
+  const [basePriceCurrency, setBasePriceCurrency] = useState<string>('RUB');
   const [priceLoading, setPriceLoading] = useState<boolean>(true);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [paymentEmail, setPaymentEmail] = useState<string>('');
+  const [promoCode, setPromoCode] = useState('');
+  const [promoLoading, setPromoLoading] = useState<boolean>(false);
+  const [promoMessage, setPromoMessage] = useState<string | null>(null);
+  const [promoOk, setPromoOk] = useState<boolean | null>(null);
 
   // Загружаем цену продукта
   useEffect(() => {
     let cancelled = false;
     const cached = getCachedBillingProduct(BILLING_PRODUCT_KEY);
     if (cached?.active && cached.priceValue) {
-      setPriceValue(cached.priceValue);
-      setPriceCurrency(cached.priceCurrency || 'RUB');
+      setBasePriceValue(cached.priceValue);
+      setBasePriceCurrency(cached.priceCurrency || 'RUB');
+      if (!promoOk) {
+        setPriceValue(cached.priceValue);
+        setPriceCurrency(cached.priceCurrency || 'RUB');
+      }
       setPriceLoading(false);
     }
 
@@ -42,8 +53,12 @@ export const EmailConfirmScreen: React.FC = () => {
         const product = await fetchBillingProduct(BILLING_PRODUCT_KEY);
         if (cancelled) return;
         if (product?.active && product.priceValue) {
-          setPriceValue(product.priceValue);
-          setPriceCurrency(product.priceCurrency || 'RUB');
+          setBasePriceValue(product.priceValue);
+          setBasePriceCurrency(product.priceCurrency || 'RUB');
+          if (!promoOk) {
+            setPriceValue(product.priceValue);
+            setPriceCurrency(product.priceCurrency || 'RUB');
+          }
         }
       } catch {
         // keep fallback price
@@ -55,7 +70,7 @@ export const EmailConfirmScreen: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [promoOk]);
 
   const handlePay = async () => {
     console.log('[EmailConfirm] handlePay called', { paying, email, showEmailModal });
@@ -73,16 +88,57 @@ export const EmailConfirmScreen: React.FC = () => {
     console.log('[EmailConfirm] showEmailModal set to true');
   };
 
+  const onPromoInputChange = (value: string) => {
+    setPromoCode(value.toUpperCase());
+    setPromoMessage(null);
+    setPromoOk(null);
+    setPriceValue(basePriceValue);
+    setPriceCurrency(basePriceCurrency);
+  };
+
+  const handleCheckPromo = async () => {
+    setPromoMessage(null);
+    setPromoOk(null);
+    const code = promoCode.trim();
+    if (!code) {
+      setPromoMessage('Введите промокод');
+      setPromoOk(false);
+      return;
+    }
+    setPromoLoading(true);
+    try {
+      const res = await quoteBilling({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
+      if (!res || res.ok !== true) {
+        const msg = (res && 'error' in res && typeof res.error === 'string') ? res.error : 'Не удалось проверить промокод';
+        setPromoMessage(msg);
+        setPromoOk(false);
+        return;
+      }
+      setPriceValue(String(res.amountValue));
+      setPriceCurrency(String(res.amountCurrency || 'RUB'));
+      setPromoMessage(res.promoApplied ? 'Промокод применён' : 'Промокод не применён');
+      setPromoOk(Boolean(res.promoApplied));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setPromoMessage(msg || 'Не удалось проверить промокод');
+      setPromoOk(false);
+    } finally {
+      setPromoLoading(false);
+    }
+  };
+
   const createPayment = async (userEmail: string) => {
     if (paying) return;
     setPaying(true);
     try {
-      const returnUrl = window.location.origin + '/?paid=1';
+      const returnUrl = window.location.origin + '/app?paid=1';
+      const normalizedPromo = promoCode.trim();
       const res = await createYooKassaPayment({
         returnUrl,
         description: 'Premium доступ к урокам EnglishV2',
         productKey: BILLING_PRODUCT_KEY,
         email: userEmail,
+        promoCode: normalizedPromo || undefined,
       });
       if (!res || res.ok !== true || !('confirmationUrl' in res)) {
         const msg = (res && 'error' in res && typeof res.error === 'string') ? res.error : 'Не удалось создать оплату';
@@ -90,7 +146,7 @@ export const EmailConfirmScreen: React.FC = () => {
         return;
       }
       if (res.granted) {
-        window.location.href = '/';
+        window.location.href = '/app';
         return;
       }
       const url = res.confirmationUrl || '';
@@ -118,7 +174,7 @@ export const EmailConfirmScreen: React.FC = () => {
   };
 
   const handleContinue = () => {
-    window.location.href = '/';
+    window.location.href = '/app';
   };
 
   useEffect(() => {
@@ -284,8 +340,37 @@ export const EmailConfirmScreen: React.FC = () => {
           
           <h2 className="text-xl font-black text-slate-900 mb-2">Введите email для оплаты</h2>
           <p className="text-sm text-gray-600 mb-4">
-            На этот email придет чек об оплате
+            На этот email придет чек об оплате и он будет использован для входа в аккаунт
           </p>
+          
+          {/* Промокод */}
+          <div className="mb-4">
+            <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500 mb-2">Промокод</div>
+            <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
+              <input
+                value={promoCode}
+                onChange={(e) => onPromoInputChange(e.target.value)}
+                disabled={paying || promoLoading}
+                className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900 disabled:opacity-50"
+                placeholder="Введите промокод"
+                autoComplete="off"
+                inputMode="text"
+              />
+              <button
+                type="button"
+                onClick={handleCheckPromo}
+                disabled={promoLoading || paying || priceLoading}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Проверить'}
+              </button>
+            </div>
+            {promoMessage && (
+              <div className={`mt-2 text-xs font-bold ${promoOk ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {promoMessage}
+              </div>
+            )}
+          </div>
           
           <input
             type="email"
@@ -366,7 +451,7 @@ export const EmailConfirmScreen: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    <div className="text-3xl font-black tracking-tight text-slate-900">
+                    <div className={`text-3xl font-black tracking-tight ${promoOk ? 'text-emerald-600' : 'text-slate-900'}`}>
                       {priceLabel}{' '}
                       <span className="text-base font-extrabold text-gray-700">за 100 уроков</span>
                     </div>
@@ -374,6 +459,35 @@ export const EmailConfirmScreen: React.FC = () => {
                   </>
                 )}
               </div>
+            </div>
+
+            {/* Промокод */}
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500 mb-2">Промокод</div>
+              <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
+                <input
+                  value={promoCode}
+                  onChange={(e) => onPromoInputChange(e.target.value)}
+                  disabled={paying || promoLoading}
+                  className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900 disabled:opacity-50"
+                  placeholder="Введите промокод"
+                  autoComplete="off"
+                  inputMode="text"
+                />
+                <button
+                  type="button"
+                  onClick={handleCheckPromo}
+                  disabled={promoLoading || paying || priceLoading}
+                  className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Проверить'}
+                </button>
+              </div>
+              {promoMessage && (
+                <div className={`mt-2 text-xs font-bold ${promoOk ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {promoMessage}
+                </div>
+              )}
             </div>
 
             {/* Кнопки */}
@@ -436,7 +550,7 @@ export const EmailConfirmScreen: React.FC = () => {
               <p className="text-slate-600 mb-6">{message}</p>
               <div className="space-y-3">
                 <button
-                  onClick={() => window.location.href = '/#auth'}
+                  onClick={() => window.location.href = '/login'}
                   className="w-full px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl hover:opacity-90 transition"
                 >
                   Войти в аккаунт
@@ -464,7 +578,7 @@ export const EmailConfirmScreen: React.FC = () => {
                   Вернуться на главную
                 </button>
                 <button
-                  onClick={() => window.location.href = '/#auth'}
+                  onClick={() => window.location.href = '/login'}
                   className="w-full px-6 py-3 border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition"
                 >
                   Попробовать снова

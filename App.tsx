@@ -20,7 +20,7 @@ import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages,
 import { supabase } from './services/supabaseClient';
 import { FREE_LESSON_COUNT } from './services/billingService';
 import { formatFirstLessonsRu } from './services/ruPlural';
-import { getAllUserWords } from './services/srsService';
+import { getAllUserWords, applySrsReview } from './services/srsService';
 import { parseMarkdown } from './components/step4Dialogue/markdown';
 import { getCacheKeyWithCurrentUser } from './services/cacheUtils';
 import { 
@@ -2146,6 +2146,16 @@ const ConnectionRequiredScreen = () => {
                                     const ok = v === correctAnswer;
                                     setReviewWasCorrect(ok);
                                     (e.currentTarget as HTMLButtonElement).blur();
+                                    
+                                    // Сохраняем результат в SRS систему
+                                    const cardId = currentWord.id;
+                                    if (cardId && typeof cardId === 'number') {
+                                      const quality = ok ? 5 : 2;
+                                      applySrsReview({ cardId, quality }).catch((err) => 
+                                        console.error('[App] SRS apply review failed:', err)
+                                      );
+                                    }
+                                    
                                     reviewAdvanceTimerRef.current = window.setTimeout(() => {
                                       goNextReviewWord();
                                     }, ok ? 800 : 1500);
@@ -2380,6 +2390,35 @@ const ConnectionRequiredScreen = () => {
 };
 
 const App = () => {
+  // Сначала объявляем все хуки состояния
+  const isOnline = useOnlineStatus();
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authLoadingSlow, setAuthLoadingSlow] = useState(false);
+  const [showIntro, setShowIntro] = useState(true);
+  const [hasLoggedIn, setHasLoggedIn] = useState(false);
+  const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
+  const lastHandledAuthCodeRef = useRef<string | null>(null);
+  const OAUTH_IN_PROGRESS_KEY = 'englishv2:oauthInProgress';
+
+  // Определяем платформу и размер экрана
+  const isIOS = typeof window !== 'undefined' && Capacitor.getPlatform() === 'ios';
+  const isNativePlatform = typeof window !== 'undefined' && Capacitor.isNativePlatform(); // iOS или Android нативное приложение
+  const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768; // Планшеты и десктоп
+
+  // Определяем текущий путь
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  
+  // Страница входа
+  const isLoginPage = currentPath === '/login' || currentPath === '/login/';
+  
+  // Страница приложения
+  const isAppPage = currentPath === '/app' || currentPath === '/app/';
+  
+  // Главная страница сайта - интро-экраны
+  const isLandingPage = currentPath === '/' || currentPath === '/index.html' || currentPath === '/index.html/';
+
+
   const isCheckRoute =
     typeof window !== 'undefined' &&
     (window.location.pathname === '/check' || window.location.pathname === '/check/');
@@ -2416,16 +2455,6 @@ const App = () => {
     return <EmailConfirmScreen />;
   }
 
-  const isOnline = useOnlineStatus();
-  const [session, setSession] = useState<Session | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authLoadingSlow, setAuthLoadingSlow] = useState(false);
-  const [showIntro, setShowIntro] = useState(true);
-  const [hasLoggedIn, setHasLoggedIn] = useState(false);
-  const [needsPasswordReset, setNeedsPasswordReset] = useState(false);
-  const lastHandledAuthCodeRef = useRef<string | null>(null);
-  const OAUTH_IN_PROGRESS_KEY = 'englishv2:oauthInProgress';
-
   const refreshSession = useCallback(async () => {
     try {
       const { data, error } = await supabase.auth.getSession();
@@ -2439,7 +2468,11 @@ const App = () => {
         } catch {
           // ignore
         }
-        setShowIntro(false);
+        // На больших экранах не скрываем интро, чтобы показывать всегда
+        const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
+        if (!isLargeScreen) {
+          setShowIntro(false);
+        }
       }
     } catch (err) {
       console.error('[Auth] getSession fatal error:', err);
@@ -2473,7 +2506,9 @@ const App = () => {
 		    try {
 		      const storedLogged = localStorage.getItem('has_logged_in') === '1';
 		      setHasLoggedIn(storedLogged);
-		      if (storedLogged) {
+		      // На больших экранах всегда показываем интро, не сохраняем состояние
+		      const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
+		      if (storedLogged && !isLargeScreen) {
 		        setShowIntro(false);
 		      }
 		    } catch {
@@ -2616,20 +2651,60 @@ const App = () => {
           });
 		    }
 
-		    const { data: listener } = supabase.auth.onAuthStateChange((event, newSession) => {
-		      if (event === 'PASSWORD_RECOVERY') setNeedsPasswordReset(true);
-		      setSession(newSession);
-	       if (newSession) {
-         setHasLoggedIn(true);
-         try {
-           localStorage.setItem('has_logged_in', '1');
-         } catch {
-           // ignore
-         }
-         setShowIntro(false);
-       }
-      setAuthLoading(false);
-    });
+           const { data: listener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+             if (event === 'PASSWORD_RECOVERY') setNeedsPasswordReset(true);
+             setSession(newSession);
+             if (newSession) {
+               setHasLoggedIn(true);
+               try {
+                 localStorage.setItem('has_logged_in', '1');
+               } catch {
+                 // ignore
+               }
+               
+               // Проверяем, является ли это новой регистрацией через OAuth
+               // Для email регистрации paywall показывается на странице /auth/confirm
+               // Для OAuth проверяем в базе данных, есть ли у пользователя прогресс
+               // Если прогресса нет - это новая регистрация
+               const user = newSession.user;
+               if (user?.id) {
+                 try {
+                   // Проверяем, есть ли у пользователя прогресс уроков
+                   const { data: progressData } = await supabase
+                     .from('lesson_progress')
+                     .select('id')
+                     .eq('user_id', user.id)
+                     .limit(1);
+                   
+                   const hasProgress = progressData && progressData.length > 0;
+                   
+                   if (!hasProgress) {
+                     // Проверяем, не показывали ли уже paywall для этого пользователя
+                     const paywallShownKey = `paywall_shown_${user.id}`;
+                     const paywallShown = sessionStorage.getItem(paywallShownKey);
+                     
+                     if (!paywallShown) {
+                       // Это новая регистрация через OAuth - редиректим на страницу подтверждения с paywall
+                       const emailParam = user.email ? `&email=${encodeURIComponent(user.email)}` : '';
+                       sessionStorage.setItem(paywallShownKey, '1');
+                       window.location.href = `/auth/confirm?type=signup${emailParam}`;
+                       return; // Не продолжаем обычную логику
+                     }
+                   }
+                 } catch (err) {
+                   // Если ошибка при проверке - продолжаем обычную логику
+                   console.error('[App] Error checking if user is new:', err);
+                 }
+               }
+               
+               // На больших экранах не скрываем интро, чтобы показывать всегда
+               const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
+               if (!isLargeScreen) {
+                 setShowIntro(false);
+               }
+             }
+             setAuthLoading(false);
+           });
 
 	    return () => {
 	      void appUrlOpenSub?.remove();
@@ -2666,6 +2741,51 @@ const App = () => {
     };
   }, [refreshSession]);
 
+  // Редирект на /app без сессии - используем useEffect для гарантированного выполнения
+  useEffect(() => {
+    if (isAppPage && !session && !authLoading) {
+      const url = new URL(window.location.href);
+      const paidParam = url.searchParams.get('paid');
+      
+      // Если пользователь возвращается после оплаты, но нет сессии
+      // Возможно, сессия еще не установлена - даем немного времени на установку
+      if (paidParam === '1') {
+        // Ждем немного и проверяем сессию еще раз
+        setTimeout(async () => {
+          await refreshSession();
+          const { data } = await supabase.auth.getSession();
+          if (data?.session) {
+            // Сессия установлена - остаемся на /app, параметр paid=1 обработается в AppContent
+            return;
+          } else {
+            // Сессии все еще нет - редиректим на логин с параметром paid
+            // После логина пользователь автоматически попадет в приложение
+            window.location.replace('/login?paid=1');
+          }
+        }, 1000);
+      } else {
+        window.location.replace('/login');
+      }
+    }
+  }, [isAppPage, session, authLoading, refreshSession]);
+  
+  // Обработка возврата после оплаты - если есть сессия и параметр paid=1, остаемся в приложении
+  useEffect(() => {
+    if (typeof window === 'undefined' || !session || !isAppPage) return;
+    const url = new URL(window.location.href);
+    const paidParam = url.searchParams.get('paid');
+    
+    if (paidParam === '1') {
+      // Убираем параметр из URL для чистоты (обработка paid=1 происходит в AppContent)
+      url.searchParams.delete('paid');
+      try {
+        window.history.replaceState({}, '', url.toString());
+      } catch {
+        // ignore
+      }
+    }
+  }, [session, isAppPage]);
+
   if (!isOnline) {
     return <ConnectionRequiredScreen />;
   }
@@ -2695,6 +2815,11 @@ const App = () => {
     );
   }
 
+  // Если на странице приложения и нет сессии - показываем пустой экран (редирект в useEffect)
+  if (isAppPage && !session) {
+    return null;
+  }
+
   if (needsPasswordReset) {
     return (
       <ResetPasswordScreen
@@ -2707,35 +2832,115 @@ const App = () => {
     );
   }
 
-  if (!session) {
-    if (showIntro && !hasLoggedIn) {
-      return (
-        <IntroScreen
-          onNext={() => {
-            setShowIntro(false);
-          }}
-        />
-      );
-    }
+  // Используем уже определенные переменные isLoginPage и isAppPage
 
-    // Если уже логинился ранее — сразу форма входа, без интро
+  // Главная страница - интро-экраны, затем форма входа
+  if (isLandingPage && typeof window !== 'undefined') {
+    // Проверяем, есть ли параметры подтверждения email на главной странице
+    const hasAuthParams = window.location.search.includes('token=') || window.location.search.includes('code=');
+    if (!hasAuthParams) {
+      // На главной странице показываем интро-экраны:
+      // - Для нативных платформ (iOS/Android): только один раз (если еще не логинились)
+      // - Для веб-браузера (включая мобильный): всегда показываем
+      // - Для больших экранов (десктоп): всегда показываем
+      const shouldShowIntro = !isNativePlatform || (isNativePlatform && showIntro && !hasLoggedIn);
+      if (shouldShowIntro) {
+        return (
+          <IntroScreen
+            onNext={() => {
+              // На веб-браузере (не нативных платформах) не сохраняем состояние, чтобы показывать всегда
+              // На нативных платформах сохраняем состояние, чтобы показывать только один раз
+              if (isNativePlatform) {
+                setShowIntro(false);
+              }
+            }}
+          />
+        );
+      }
+      // После интро показываем форму входа
+      if (!session) {
+        // Проверяем, есть ли параметр paid=1 (возврат после оплаты)
+        const url = typeof window !== 'undefined' ? new URL(window.location.href) : null;
+        const paidParam = url?.searchParams.get('paid');
+        
+        return (
+          <AuthScreen
+            onAuthSuccess={async () => {
+              setAuthLoading(true);
+              await refreshSession();
+              // После успешного входа редиректим на страницу приложения
+              // Если был параметр paid=1, добавляем его обратно для обработки в AppContent
+              const redirectUrl = paidParam === '1' ? '/app?paid=1' : '/app';
+              window.location.href = redirectUrl;
+            }}
+          />
+        );
+      }
+      // Если есть сессия, редиректим в приложение
+      if (session) {
+        window.location.href = '/app';
+        return null;
+      }
+    }
+  }
+
+  // Если на странице входа и нет сессии - показываем интро, затем форму входа
+  if (isLoginPage && !session) {
+    // Проверяем, есть ли параметр paid=1 (возврат после оплаты)
+    const url = typeof window !== 'undefined' ? new URL(window.location.href) : null;
+    const paidParam = url?.searchParams.get('paid');
+    
+    // На странице входа показываем только форму входа
     return (
       <AuthScreen
         onAuthSuccess={async () => {
           setAuthLoading(true);
           await refreshSession();
+          // После успешного входа редиректим на страницу приложения
+          // Если был параметр paid=1, добавляем его обратно для обработки в AppContent
+          const redirectUrl = paidParam === '1' ? '/app?paid=1' : '/app';
+          window.location.href = redirectUrl;
         }}
       />
     );
   }
 
+
+  // Если есть сессия и мы на странице входа - редиректим в приложение
+  if (isLoginPage && session) {
+    window.location.href = '/app';
+    return null;
+  }
+
+  // Если нет сессии и не на странице входа и не на /app - редиректим на главную
+  if (!session && !isLoginPage && !isAppPage) {
+    window.location.href = '/';
+    return null;
+  }
+
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
-    setShowIntro(false);
+    // На больших экранах не скрываем интро, чтобы показывать всегда
+    const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
+    if (!isLargeScreen) {
+      setShowIntro(false);
+    }
+    window.location.href = '/';
   };
 
-  return <AppContent userId={session.user?.id || undefined} userEmail={session.user?.email || undefined} onSignOut={handleSignOut} />;
+  // Если есть сессия - показываем приложение (только на /app)
+  if (session && isAppPage) {
+    return <AppContent userId={session.user?.id || undefined} userEmail={session.user?.email || undefined} onSignOut={handleSignOut} />;
+  }
+
+  // Если есть сессия, но не на /app - редиректим в приложение
+  if (session && !isAppPage && !isLoginPage) {
+    window.location.href = '/app';
+    return null;
+  }
+
+  return null;
 };
 
 export default App;
