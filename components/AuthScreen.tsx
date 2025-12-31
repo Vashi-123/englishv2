@@ -15,23 +15,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
-  const [otpRequested, setOtpRequested] = useState(false);
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { copy } = useLanguage();
-  const showOAuth = mode === 'login' || (mode === 'signup' && !otpRequested);
+  const showOAuth = mode === 'login' || mode === 'signup';
   const minPasswordOk = password.trim().length >= 6;
   const canSubmit =
     !loading &&
     (mode === 'reset' ||
       (mode === 'login' && Boolean(email) && minPasswordOk) ||
-      (mode === 'signup' && Boolean(email) && (otpRequested ? Boolean(otp) : minPasswordOk)));
+      (mode === 'signup' && Boolean(email) && minPasswordOk));
 
   const rawRedirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
   const redirectTo =
     rawRedirectTo.startsWith('http://') || rawRedirectTo.startsWith('https://') ? rawRedirectTo : undefined;
+  const emailConfirmUrl = redirectTo ? `${redirectTo}/auth/confirm` : `${window.location.origin}/auth/confirm`;
   const isNative = Capacitor.isNativePlatform();
   const isIOS = Capacitor.getPlatform() === 'ios';
   const oauthRedirectTo = isNative ? (import.meta.env.VITE_OAUTH_REDIRECT_TO || 'englishv2://auth') : redirectTo;
@@ -74,7 +74,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
         }
         const { error: resetError } = await supabase.auth.resetPasswordForEmail(
           email,
-          redirectTo ? { redirectTo } : undefined
+          { redirectTo: emailConfirmUrl }
         );
         if (resetError) throw resetError;
         setMessage('Мы отправили письмо для сброса пароля. Откройте ссылку из письма и вернитесь в приложение.');
@@ -95,7 +95,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
         });
         if (signInError) throw signInError;
       } else {
-        // Signup via email OTP (code from email) + сразу просим пароль
+        // Signup via email + password (email confirmation via link)
         if (!email) {
           setError('Заполни email');
           return;
@@ -106,33 +106,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           return;
         }
 
-        if (!otpRequested) {
-          const { error: otpError } = await supabase.auth.signInWithOtp({
-            email,
-            options: {
-              shouldCreateUser: true,
-              ...(redirectTo ? { emailRedirectTo: redirectTo } : {}),
-            },
-          });
-          if (otpError) throw otpError;
-          setOtpRequested(true);
-          setMessage('Мы отправили код на почту. Введи его ниже.');
-          return; // ждём подтверждение кода прежде чем двигаться дальше
-        } else {
-          if (!otp) {
-            setError('Введи код из письма');
-            return;
-          }
-          const { error: verifyError } = await supabase.auth.verifyOtp({
-            email,
-            token: otp,
-            type: 'signup',
-          });
-          if (verifyError) throw verifyError;
-          // Сохраняем пароль сразу после успешного OTP
-          const { error: updateError } = await supabase.auth.updateUser({ password });
-          if (updateError) throw updateError;
-        }
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            emailRedirectTo: emailConfirmUrl,
+          },
+        });
+        if (signUpError) throw signUpError;
+        setMessage('Мы отправили письмо для подтверждения email. Перейди по ссылке из письма.');
       }
 
       if (onAuthSuccess) onAuthSuccess();
@@ -316,7 +298,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                 placeholder={copy.auth.emailPlaceholder}
                 autoComplete="email"
                 required
-                disabled={otpRequested}
               />
             </div>
           </label>
@@ -351,7 +332,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                   setMode('reset');
                   setPassword('');
                   setOtp('');
-                  setOtpRequested(false);
                   setError(null);
                   setMessage(null);
                 }}
@@ -361,23 +341,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             </div>
           )}
 
-          {mode === 'signup' && otpRequested && (
-            <label className="block space-y-2">
-              <div className="text-sm font-semibold text-slate-800">Код из письма</div>
-              <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:border-brand-primary/60 focus-within:ring-2 focus-within:ring-brand-primary/10 transition">
-                <Lock className="w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value)}
-                  className="w-full bg-transparent outline-none text-base sm:text-sm"
-                  placeholder="Введите код"
-                  autoComplete="one-time-code"
-                />
-              </div>
-            </label>
-          )}
 
           {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">{error}</div>}
           {message && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">{message}</div>}
@@ -405,7 +368,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
             ) : (
               <>
                 <UserPlus className="w-4 h-4" />
-                {otpRequested ? 'Подтвердить код' : copy.auth.submitSignup}
+                {copy.auth.submitSignup}
               </>
             )}
 	          </button>
@@ -432,14 +395,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 		                <button
 		                  type="button"
 		                  className="text-brand-primary font-semibold hover:underline"
-		                  onClick={() => {
-		                    setMode((prev) => (prev === 'login' ? 'signup' : 'login'));
-		                    setOtpRequested(false);
-		                    setOtp('');
-		                    setPassword('');
-		                    setError(null);
-		                    setMessage(null);
-		                  }}
+                  onClick={() => {
+                    setMode((prev) => (prev === 'login' ? 'signup' : 'login'));
+                    setOtp('');
+                    setPassword('');
+                    setError(null);
+                    setMessage(null);
+                  }}
 		                >
 		                  {mode === 'login' ? copy.auth.create : copy.auth.signIn}
 		                </button>

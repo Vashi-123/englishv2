@@ -395,15 +395,6 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
                 <span className="whitespace-nowrap">{payButtonLabel}</span>
               </span>
             </button>
-            {isNativeIos && (
-              <button
-                type="button"
-                onClick={openStatusPage}
-                className="h-11 rounded-2xl border border-dashed border-gray-300 text-brand-primary font-bold bg-white hover:bg-gray-50 transition flex items-center justify-center gap-2"
-              >
-                Не работает?
-              </button>
-            )}
           </div>
         </div>
       </div>

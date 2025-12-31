@@ -15,6 +15,7 @@ import { IntroScreen } from './components/IntroScreen';
 import { PaywallScreen } from './components/PaywallScreen';
 import { ResetPasswordScreen } from './components/ResetPasswordScreen';
 import { CheckStatusScreen } from './components/CheckStatusScreen';
+import { EmailConfirmScreen } from './components/EmailConfirmScreen';
 import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from './services/generationService';
 import { supabase } from './services/supabaseClient';
 import { FREE_LESSON_COUNT } from './services/billingService';
@@ -2379,6 +2380,13 @@ const App = () => {
     (window.location.pathname === '/check' || window.location.pathname === '/check/');
   if (isCheckRoute) {
     return <CheckStatusScreen />;
+  }
+
+  const isEmailConfirmRoute =
+    typeof window !== 'undefined' &&
+    (window.location.pathname === '/auth/confirm' || window.location.pathname === '/auth/confirm/');
+  if (isEmailConfirmRoute) {
+    return <EmailConfirmScreen />;
   }
 
   const isOnline = useOnlineStatus();
