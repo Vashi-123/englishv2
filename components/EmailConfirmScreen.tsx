@@ -146,7 +146,7 @@ export const EmailConfirmScreen: React.FC = () => {
         return;
       }
       if (res.granted) {
-        window.location.href = '/app';
+        window.location.replace('/app');
         return;
       }
       const url = res.confirmationUrl || '';
@@ -550,13 +550,13 @@ export const EmailConfirmScreen: React.FC = () => {
               <p className="text-slate-600 mb-6">{message}</p>
               <div className="space-y-3">
                 <button
-                  onClick={() => window.location.href = '/login'}
+                  onClick={() => window.location.replace('/login')}
                   className="w-full px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl hover:opacity-90 transition"
                 >
                   Войти в аккаунт
                 </button>
                 <button
-                  onClick={() => window.location.href = '/'}
+                  onClick={() => window.location.replace('/')}
                   className="w-full px-6 py-3 border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition"
                 >
                   Вернуться на главную
@@ -572,13 +572,13 @@ export const EmailConfirmScreen: React.FC = () => {
               <p className="text-slate-600 mb-6">{message}</p>
               <div className="space-y-3">
                 <button
-                  onClick={() => window.location.href = '/'}
+                  onClick={() => window.location.replace('/')}
                   className="w-full px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl hover:opacity-90 transition"
                 >
                   Вернуться на главную
                 </button>
                 <button
-                  onClick={() => window.location.href = '/login'}
+                  onClick={() => window.location.replace('/login')}
                   className="w-full px-6 py-3 border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition"
                 >
                   Попробовать снова

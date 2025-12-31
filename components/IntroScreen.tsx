@@ -96,16 +96,27 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   }, [isMobile, step]);
 
   const handlePrimary = () => {
+    // На мобильных устройствах показываем следующий шаг
     if (isMobile && step === 0) {
       setStep(1);
       return;
     }
-    // На больших экранах редиректим на страницу входа
-    if (!isMobile) {
+    
+    // На больших экранах или после первого шага на мобильных - редиректим на страницу входа
+    // Используем pushState для навигации без перезагрузки
+    try {
+      window.history.pushState({}, '', '/login');
+      // Принудительно обновляем путь через событие для гарантии
+      window.dispatchEvent(new Event('pathchange'));
+      // Дополнительно обновляем через небольшой таймаут на случай, если событие не сработало
+      setTimeout(() => {
+        window.dispatchEvent(new Event('pathchange'));
+      }, 10);
+    } catch (e) {
+      console.error('[IntroScreen] pushState failed, using location.href:', e);
+      // Fallback на обычный редирект
       window.location.href = '/login';
-      return;
     }
-    onNext();
   };
 
   const ctaLabel = (isMobile && step === 0) ? 'Далее' : 'Начать';
@@ -215,7 +226,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         return;
       }
       if (res.granted) {
-        window.location.href = '/app';
+        window.location.replace('/app');
         return;
       }
       const url = res.confirmationUrl || '';
@@ -475,7 +486,13 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
 
         <div className="flex items-center">
           <button
-            onClick={handlePrimary}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              console.log('[IntroScreen] Button clicked', { isMobile, step });
+              handlePrimary();
+            }}
+            type="button"
             className="ml-auto inline-flex items-center gap-2.5 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-md shadow-brand-primary/25 hover:opacity-90 active:scale-[0.99] transition w-fit"
           >
             <span>{ctaLabel}</span>

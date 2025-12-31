@@ -49,19 +49,27 @@ export default defineConfig(({ mode }) => {
           configureServer(server) {
             return () => {
               server.middlewares.use((req, res, next) => {
-                const url = req.url || '';
+                const url = req.url?.split('?')[0] || ''; // Убираем query параметры для проверки
+                // Явно обрабатываем известные SPA маршруты
+                const spaRoutes = ['/app', '/login', '/auth/confirm', '/check'];
+                const isSpaRoute = spaRoutes.some(route => url === route || url.startsWith(route + '/'));
+                
                 // Если запрос не к файлу (нет расширения) и не к статическим ресурсам
                 // Исключаем Vite HMR, API, статические файлы
                 if (
                   url &&
-                  !url.includes('.') &&
-                  !url.startsWith('/@') &&
-                  !url.startsWith('/node_modules') &&
-                  !url.startsWith('/src') &&
-                  !url.startsWith('/assets') &&
-                  url !== '/' &&
-                  !url.match(/\.(js|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i)
+                  (isSpaRoute || (
+                    !url.includes('.') &&
+                    !url.startsWith('/@') &&
+                    !url.startsWith('/node_modules') &&
+                    !url.startsWith('/src') &&
+                    !url.startsWith('/assets') &&
+                    url !== '/' &&
+                    !url.match(/\.(js|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i) &&
+                    !url.startsWith('/api')
+                  ))
                 ) {
+                  // Для всех SPA маршрутов возвращаем index.html
                   req.url = '/index.html';
                 }
                 next();

@@ -2406,8 +2406,38 @@ const App = () => {
   const isNativePlatform = typeof window !== 'undefined' && Capacitor.isNativePlatform(); // iOS или Android нативное приложение
   const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768; // Планшеты и десктоп
 
-  // Определяем текущий путь
-  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  // Отслеживаем текущий путь через состояние для правильной обработки навигации
+  const [currentPath, setCurrentPath] = useState(
+    typeof window !== 'undefined' ? window.location.pathname : '/'
+  );
+
+  // Обновляем путь при изменении URL
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const updatePath = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    
+    // Обновляем при изменении истории (назад/вперед)
+    window.addEventListener('popstate', updatePath);
+    
+    // Также слушаем кастомное событие для программных изменений пути
+    window.addEventListener('pathchange', updatePath);
+    
+    // Перехватываем pushState для автоматического обновления
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function(...args) {
+      originalPushState.apply(window.history, args);
+      updatePath();
+    };
+    
+    return () => {
+      window.removeEventListener('popstate', updatePath);
+      window.removeEventListener('pathchange', updatePath);
+      window.history.pushState = originalPushState;
+    };
+  }, []);
   
   // Страница входа
   const isLoginPage = currentPath === '/login' || currentPath === '/login/';
@@ -2456,6 +2486,12 @@ const App = () => {
   }
 
   const refreshSession = useCallback(async () => {
+    // Таймаут для принудительного завершения через 10 секунд
+    const timeoutId = typeof window !== 'undefined' ? window.setTimeout(() => {
+      console.warn('[Auth] refreshSession timeout after 10s, forcing completion');
+      setAuthLoading(false);
+    }, 10000) : null;
+
     try {
       const { data, error } = await supabase.auth.getSession();
       if (error) console.error('[Auth] getSession error:', error);
@@ -2477,6 +2513,9 @@ const App = () => {
     } catch (err) {
       console.error('[Auth] getSession fatal error:', err);
     } finally {
+      if (timeoutId && typeof window !== 'undefined') {
+        window.clearTimeout(timeoutId);
+      }
       setAuthLoading(false);
     }
   }, []);
@@ -2499,7 +2538,15 @@ const App = () => {
       return;
     }
     const t = window.setTimeout(() => setAuthLoadingSlow(true), 8000);
-    return () => window.clearTimeout(t);
+    // Таймаут для принудительного завершения загрузки через 30 секунд
+    const forceTimeout = window.setTimeout(() => {
+      console.warn('[Auth] Force stopping auth loading after 30s timeout');
+      setAuthLoading(false);
+    }, 30000);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(forceTimeout);
+    };
   }, [authLoading]);
 
 	  useEffect(() => {
@@ -2575,7 +2622,10 @@ const App = () => {
         };
 
 		    const bootstrap = async () => {
-		      if (typeof window === 'undefined') return;
+		      if (typeof window === 'undefined') {
+		        setAuthLoading(false);
+		        return;
+		      }
 		      try {
 		        const url = new URL(window.location.href);
 		        const code = url.searchParams.get('code');
@@ -2605,7 +2655,12 @@ const App = () => {
 	      } catch (err) {
 	        console.error('[Auth] bootstrap from URL fatal error:', err);
 		      } finally {
-		        await refreshSession();
+		        try {
+		          await refreshSession();
+		        } catch (err) {
+		          console.error('[Auth] refreshSession error in bootstrap:', err);
+		          setAuthLoading(false);
+		        }
 		      }
 		    };
 
@@ -2790,6 +2845,39 @@ const App = () => {
     return <ConnectionRequiredScreen />;
   }
 
+  // Если на странице входа - показываем форму входа даже во время загрузки
+  // Это позволяет пользователю видеть форму входа сразу, а не экран загрузки
+  if (isLoginPage && !session) {
+    // Проверяем, есть ли параметр paid=1 (возврат после оплаты)
+    const url = typeof window !== 'undefined' ? new URL(window.location.href) : null;
+    const paidParam = url?.searchParams.get('paid');
+    
+    // На странице входа показываем только форму входа
+    return (
+      <AuthScreen
+        onAuthSuccess={async () => {
+          setAuthLoading(true);
+          await refreshSession();
+          // После успешного входа редиректим на страницу приложения
+          // Если был параметр paid=1, добавляем его обратно для обработки в AppContent
+          const redirectUrl = paidParam === '1' ? '/app?paid=1' : '/app';
+          // Используем pushState для изменения URL без перезагрузки
+          // setCurrentPath обновится автоматически через useEffect
+          window.history.pushState({}, '', redirectUrl);
+          setCurrentPath(redirectUrl.split('?')[0]);
+        }}
+      />
+    );
+  }
+
+  // Если есть сессия и мы на странице входа - редиректим в приложение
+  if (isLoginPage && session) {
+    // Используем pushState для изменения URL без перезагрузки
+    window.history.pushState({}, '', '/app');
+    setCurrentPath('/app');
+    return null;
+  }
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-[var(--app-safe-top)]">
@@ -2804,7 +2892,16 @@ const App = () => {
               <button
                 type="button"
                 className="text-xs font-semibold text-brand-primary hover:underline"
-                onClick={() => window.location.reload()}
+                onClick={() => {
+                  // Вместо reload используем replace на главную страницу
+                  // чтобы избежать проблем с сервером, который отдает код
+                  const currentPath = window.location.pathname;
+                  if (currentPath === '/app' || currentPath.startsWith('/app/')) {
+                    window.location.replace('/');
+                  } else {
+                    window.location.replace(window.location.origin);
+                  }
+                }}
               >
                 Обновить страницу
               </button>
@@ -2871,45 +2968,21 @@ const App = () => {
               // После успешного входа редиректим на страницу приложения
               // Если был параметр paid=1, добавляем его обратно для обработки в AppContent
               const redirectUrl = paidParam === '1' ? '/app?paid=1' : '/app';
-              window.location.href = redirectUrl;
+              // Используем pushState для изменения URL без перезагрузки
+              window.history.pushState({}, '', redirectUrl);
+              setCurrentPath('/app');
             }}
           />
         );
       }
       // Если есть сессия, редиректим в приложение
       if (session) {
-        window.location.href = '/app';
+        // Используем pushState для изменения URL без перезагрузки
+        window.history.pushState({}, '', '/app');
+        setCurrentPath('/app');
         return null;
       }
     }
-  }
-
-  // Если на странице входа и нет сессии - показываем интро, затем форму входа
-  if (isLoginPage && !session) {
-    // Проверяем, есть ли параметр paid=1 (возврат после оплаты)
-    const url = typeof window !== 'undefined' ? new URL(window.location.href) : null;
-    const paidParam = url?.searchParams.get('paid');
-    
-    // На странице входа показываем только форму входа
-    return (
-      <AuthScreen
-        onAuthSuccess={async () => {
-          setAuthLoading(true);
-          await refreshSession();
-          // После успешного входа редиректим на страницу приложения
-          // Если был параметр paid=1, добавляем его обратно для обработки в AppContent
-          const redirectUrl = paidParam === '1' ? '/app?paid=1' : '/app';
-          window.location.href = redirectUrl;
-        }}
-      />
-    );
-  }
-
-
-  // Если есть сессия и мы на странице входа - редиректим в приложение
-  if (isLoginPage && session) {
-    window.location.href = '/app';
-    return null;
   }
 
   // Если нет сессии и не на странице входа и не на /app - редиректим на главную
@@ -2936,7 +3009,9 @@ const App = () => {
 
   // Если есть сессия, но не на /app - редиректим в приложение
   if (session && !isAppPage && !isLoginPage) {
-    window.location.href = '/app';
+    // Используем pushState для изменения URL без перезагрузки
+    window.history.pushState({}, '', '/app');
+    setCurrentPath('/app');
     return null;
   }
 
