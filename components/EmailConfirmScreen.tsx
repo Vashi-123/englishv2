@@ -58,9 +58,14 @@ export const EmailConfirmScreen: React.FC = () => {
   }, []);
 
   const handlePay = async () => {
-    if (paying) return;
+    console.log('[EmailConfirm] handlePay called', { paying, email, showEmailModal });
+    if (paying) {
+      console.log('[EmailConfirm] Already paying, returning');
+      return;
+    }
     
     // Всегда показываем модальное окно для ввода email (для YooKassa нужен email для чека)
+    console.log('[EmailConfirm] Opening email modal');
     setPaymentEmail(email || '');
     setShowEmailModal(true);
   };
@@ -308,8 +313,7 @@ export const EmailConfirmScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handlePay}
-                disabled={paying || priceLoading}
-                className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition flex items-center justify-center gap-2"
               >
                 <span className="inline-flex items-center justify-center gap-2">
                   {paying ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Crown className="w-4 h-4" />}
