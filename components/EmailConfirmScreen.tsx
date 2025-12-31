@@ -143,10 +143,24 @@ export const EmailConfirmScreen: React.FC = () => {
           try {
             const { data, error } = await supabase.auth.exchangeCodeForSession(code);
             if (error) {
-              // Если ошибка связана с отсутствием verifier, это нормально для email confirmation
-              // Показываем понятное сообщение
+              // Если ошибка связана с отсутствием verifier, email может быть уже подтвержден на сервере
               if (error.message?.includes('code verifier')) {
-                throw new Error('Ссылка подтверждения была открыта в другом браузере или устройстве. Пожалуйста, откройте ссылку в том же браузере, где вы регистрировались, или попробуйте зарегистрироваться заново.');
+                // Проверяем, может ли пользователь войти (email уже подтвержден)
+                // Если есть email, пробуем проверить статус через попытку входа
+                if (emailParam) {
+                  // Email уже подтвержден на сервере, но сессию создать не можем
+                  // Показываем сообщение, что нужно войти
+                  setStatus('success');
+                  setMessage('Email успешно подтвержден! Теперь войди в аккаунт, используя email и пароль.');
+                  setEmail(emailParam);
+                  // Через 3 секунды редиректим на страницу входа
+                  setTimeout(() => {
+                    window.location.href = '/#auth';
+                  }, 3000);
+                  return;
+                } else {
+                  throw new Error('Ссылка подтверждения была открыта в другом браузере или устройстве. Пожалуйста, откройте ссылку в том же браузере, где вы регистрировались, или попробуйте зарегистрироваться заново.');
+                }
               }
               throw error;
             }
@@ -305,6 +319,28 @@ export const EmailConfirmScreen: React.FC = () => {
               <Loader2 className="w-16 h-16 mx-auto mb-4 text-brand-primary animate-spin" />
               <h1 className="text-2xl font-black text-slate-900 mb-2">Подтверждение email</h1>
               <p className="text-slate-600">{message}</p>
+            </>
+          )}
+
+          {status === 'success' && (
+            <>
+              <CheckCircle className="w-16 h-16 mx-auto mb-4 text-emerald-600" />
+              <h1 className="text-2xl font-black text-slate-900 mb-2">Email подтвержден!</h1>
+              <p className="text-slate-600 mb-6">{message}</p>
+              <div className="space-y-3">
+                <button
+                  onClick={() => window.location.href = '/#auth'}
+                  className="w-full px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl hover:opacity-90 transition"
+                >
+                  Войти в аккаунт
+                </button>
+                <button
+                  onClick={() => window.location.href = '/'}
+                  className="w-full px-6 py-3 border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition"
+                >
+                  Вернуться на главную
+                </button>
+              </div>
             </>
           )}
 
