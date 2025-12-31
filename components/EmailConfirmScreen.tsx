@@ -60,15 +60,9 @@ export const EmailConfirmScreen: React.FC = () => {
   const handlePay = async () => {
     if (paying) return;
     
-    // Если нет email, показываем модальное окно для ввода
-    if (!email) {
-      setPaymentEmail('');
-      setShowEmailModal(true);
-      return;
-    }
-    
-    // Если email есть, сразу создаем платеж
-    await createPayment(email);
+    // Всегда показываем модальное окно для ввода email (для YooKassa нужен email для чека)
+    setPaymentEmail(email || '');
+    setShowEmailModal(true);
   };
 
   const createPayment = async (userEmail: string) => {
@@ -279,7 +273,7 @@ export const EmailConfirmScreen: React.FC = () => {
             </div>
 
             {/* Предложение открыть полный доступ */}
-            <div className="mt-6 pt-5 border-t border-gray-100">
+            <div className="mt-6">
               <h2 className="text-xl sm:text-3xl font-black tracking-tight">Откройте полный курс A1</h2>
               <p className="mt-2 text-sm leading-relaxed">
                 <span className="block font-semibold text-slate-700">Проходите уроки в своём темпе</span>
@@ -322,6 +316,14 @@ export const EmailConfirmScreen: React.FC = () => {
                   <span className="whitespace-nowrap">{isPremium ? 'Premium активен' : 'Открыть полный доступ'}</span>
                 </span>
               </button>
+              
+              {/* Разделитель */}
+              <div className="flex items-center gap-3 my-1">
+                <div className="flex-1 h-px bg-gray-200"></div>
+                <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">или</span>
+                <div className="flex-1 h-px bg-gray-200"></div>
+              </div>
+              
               <button
                 type="button"
                 onClick={handleContinue}
