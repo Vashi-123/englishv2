@@ -174,7 +174,7 @@ export const EmailConfirmScreen: React.FC = () => {
   };
 
   const handleContinue = () => {
-    window.location.href = '/app';
+    window.location.replace('/app');
   };
 
   useEffect(() => {

@@ -29,9 +29,46 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        // SPA fallback: все маршруты должны возвращать index.html
+        fs: {
+          strict: false,
+        },
+      },
+      // Для production build - настройка для SPA роутинга
+      build: {
+        rollupOptions: {
+          input: {
+            main: path.resolve(__dirname, 'index.html'),
+          },
+        },
       },
       plugins: [
         react(),
+        {
+          name: 'spa-fallback',
+          configureServer(server) {
+            return () => {
+              server.middlewares.use((req, res, next) => {
+                const url = req.url || '';
+                // Если запрос не к файлу (нет расширения) и не к статическим ресурсам
+                // Исключаем Vite HMR, API, статические файлы
+                if (
+                  url &&
+                  !url.includes('.') &&
+                  !url.startsWith('/@') &&
+                  !url.startsWith('/node_modules') &&
+                  !url.startsWith('/src') &&
+                  !url.startsWith('/assets') &&
+                  url !== '/' &&
+                  !url.match(/\.(js|css|json|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i)
+                ) {
+                  req.url = '/index.html';
+                }
+                next();
+              });
+            };
+          },
+        },
         {
           name: 'copy-check-html',
           closeBundle() {
