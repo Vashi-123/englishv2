@@ -97,31 +97,53 @@ export const EmailConfirmScreen: React.FC = () => {
         const url = new URL(window.location.href);
         
         // Получаем параметры из URL
-        const token = url.searchParams.get('token');
-        const code = url.searchParams.get('code');
-        const type = url.searchParams.get('type') || 'signup'; // signup, email, recovery, etc.
-        const emailParam = url.searchParams.get('email');
+        const token = url.searchParams.get('token') || url.hash.match(/[#&]token=([^&]+)/)?.[1] || null;
+        const code = url.searchParams.get('code') || url.hash.match(/[#&]code=([^&]+)/)?.[1] || null;
+        const type = url.searchParams.get('type') || url.hash.match(/[#&]type=([^&]+)/)?.[1] || 'signup'; // signup, email, recovery, etc.
+        const emailParam = url.searchParams.get('email') || url.hash.match(/[#&]email=([^&]+)/)?.[1] || null;
         
         if (emailParam) {
           setEmail(emailParam);
         }
 
         // Для PKCE flow используем code
+        // Но если verifier не найден (переход из другого браузера), пробуем использовать token
         if (code) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-          
-          if (data?.user) {
-            setStatus('success');
-            setMessage('Email успешно подтвержден!');
-            setEmail(data.user.email || emailParam || null);
-            setTimeout(() => {
-              window.location.href = '/';
-            }, 2000);
-          } else {
-            throw new Error('Не удалось подтвердить email');
+          try {
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) {
+              // Если ошибка связана с отсутствием verifier, пробуем использовать token если он есть
+              if (error.message?.includes('code verifier') && token) {
+                console.log('[EmailConfirm] PKCE verifier not found, trying token instead');
+                // Продолжим обработку с token ниже
+              } else {
+                throw error;
+              }
+            } else if (data?.user) {
+              setEmail(data.user.email || emailParam || null);
+              setUserId(data.user.id);
+              
+              // Для recovery типа (сброс пароля) редиректим на страницу сброса
+              if (type === 'recovery') {
+                setTimeout(() => {
+                  window.location.href = '/#reset-password';
+                }, 2000);
+                return;
+              }
+              
+              // Для signup показываем страницу с информацией о регистрации и предложением открыть полный доступ
+              setStatus('showPaywall');
+              return;
+            }
+          } catch (err: any) {
+            // Если PKCE не сработал и есть token, пробуем использовать token
+            if (err?.message?.includes('code verifier') && token) {
+              console.log('[EmailConfirm] PKCE failed, falling back to token');
+              // Продолжим обработку с token ниже
+            } else {
+              throw err;
+            }
           }
-          return;
         }
 
         // Для OTP используем token
@@ -163,7 +185,16 @@ export const EmailConfirmScreen: React.FC = () => {
       } catch (err: any) {
         console.error('[EmailConfirm] Error:', err);
         setStatus('error');
-        const errorMessage = err?.message || 'Не удалось подтвердить email. Ссылка могла истечь или уже использована.';
+        
+        // Более понятные сообщения об ошибках
+        let errorMessage = 'Не удалось подтвердить email. Ссылка могла истечь или уже использована.';
+        
+        if (err?.message?.includes('code verifier')) {
+          errorMessage = 'Ссылка подтверждения была открыта в другом браузере или устройстве. Пожалуйста, откройте ссылку в том же браузере, где вы регистрировались, или скопируйте ссылку полностью и откройте её заново.';
+        } else if (err?.message) {
+          errorMessage = err.message;
+        }
+        
         setMessage(errorMessage);
       }
     };
