@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../services/supabaseClient';
-import { CheckCircle, XCircle, Loader2, Crown, GraduationCap } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Crown, GraduationCap, X } from 'lucide-react';
 import { useFreePlan } from '../hooks/useFreePlan';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { formatFirstLessonsRu } from '../services/ruPlural';
@@ -23,6 +24,8 @@ export const EmailConfirmScreen: React.FC = () => {
   const [priceValue, setPriceValue] = useState<string>('1490.00');
   const [priceCurrency, setPriceCurrency] = useState<string>('RUB');
   const [priceLoading, setPriceLoading] = useState<boolean>(true);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [paymentEmail, setPaymentEmail] = useState<string>('');
 
   // Загружаем цену продукта
   useEffect(() => {
@@ -56,6 +59,20 @@ export const EmailConfirmScreen: React.FC = () => {
 
   const handlePay = async () => {
     if (paying) return;
+    
+    // Если нет email, показываем модальное окно для ввода
+    if (!email) {
+      setPaymentEmail('');
+      setShowEmailModal(true);
+      return;
+    }
+    
+    // Если email есть, сразу создаем платеж
+    await createPayment(email);
+  };
+
+  const createPayment = async (userEmail: string) => {
+    if (paying) return;
     setPaying(true);
     try {
       const returnUrl = window.location.origin + '/?paid=1';
@@ -63,6 +80,7 @@ export const EmailConfirmScreen: React.FC = () => {
         returnUrl,
         description: 'Premium доступ к урокам EnglishV2',
         productKey: BILLING_PRODUCT_KEY,
+        email: userEmail,
       });
       if (!res || res.ok !== true || !('confirmationUrl' in res)) {
         const msg = (res && 'error' in res && typeof res.error === 'string') ? res.error : 'Не удалось создать оплату';
@@ -85,6 +103,16 @@ export const EmailConfirmScreen: React.FC = () => {
     } finally {
       setPaying(false);
     }
+  };
+
+  const handleEmailSubmit = () => {
+    const trimmedEmail = paymentEmail.trim();
+    if (!trimmedEmail || !trimmedEmail.includes('@')) {
+      return;
+    }
+    setShowEmailModal(false);
+    setEmail(trimmedEmail);
+    createPayment(trimmedEmail);
   };
 
   const handleContinue = () => {
@@ -250,21 +278,6 @@ export const EmailConfirmScreen: React.FC = () => {
               </p>
             </div>
 
-            {/* Информация об аккаунте */}
-            <div className="flex items-start justify-between gap-4 mb-6">
-              <div className="min-w-0">
-                <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Аккаунт</div>
-                <div className="mt-1 text-sm font-bold text-slate-900 break-all">{email || '—'}</div>
-                {entitlementsLoading ? (
-                  <div className="mt-2 h-3 w-52 rounded bg-gray-200 animate-pulse" />
-                ) : (
-                  <div className="mt-1 text-xs font-bold text-gray-600">
-                    Доступ: {isPremium ? 'Premium (100 уроков)' : `Free (${formatFirstLessonsRu(resolvedFreeLessonCount)})`}
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Предложение открыть полный доступ */}
             <div className="mt-6 pt-5 border-t border-gray-100">
               <h2 className="text-xl sm:text-3xl font-black tracking-tight">Откройте полный курс A1</h2>
@@ -324,7 +337,67 @@ export const EmailConfirmScreen: React.FC = () => {
     );
   }
 
+  // Модальное окно для ввода email перед оплатой
+  const renderEmailModal = () => {
+    if (!showEmailModal) return null;
+    
+    return createPortal(
+      <div className="fixed inset-0 z-[130] flex items-center justify-center px-6 bg-black/60">
+        <div className="relative w-full max-w-sm rounded-3xl bg-white border border-gray-200 shadow-2xl p-6">
+          <button
+            type="button"
+            onClick={() => setShowEmailModal(false)}
+            className="absolute top-5 right-5 h-8 w-8 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center transition"
+            aria-label="Закрыть"
+          >
+            <X className="w-4 h-4 text-gray-600" />
+          </button>
+          
+          <h2 className="text-xl font-black text-slate-900 mb-2">Введите email для оплаты</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            На этот email придет чек об оплате
+          </p>
+          
+          <input
+            type="email"
+            value={paymentEmail}
+            onChange={(e) => setPaymentEmail(e.target.value)}
+            placeholder="your@email.com"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition mb-4"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleEmailSubmit();
+              }
+            }}
+            autoFocus
+          />
+          
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setShowEmailModal(false)}
+              className="h-11 rounded-xl bg-white border border-gray-200 text-slate-900 font-bold hover:border-brand-primary/40 transition"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={handleEmailSubmit}
+              disabled={!paymentEmail.trim() || !paymentEmail.includes('@')}
+              className="h-11 rounded-xl bg-brand-primary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Продолжить
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
   return (
+    <>
+      {renderEmailModal()}
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-white to-slate-100 px-4">
       <div className="w-full max-w-md">
         <div className="bg-white border border-gray-100 shadow-xl rounded-3xl p-8 text-center">
@@ -382,6 +455,7 @@ export const EmailConfirmScreen: React.FC = () => {
         </div>
       </div>
     </div>
+    </>
   );
 };
 

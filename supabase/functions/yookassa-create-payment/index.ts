@@ -32,6 +32,7 @@ type ReqBody = {
   description?: string;
   promoCode?: string;
   productKey?: string;
+  email?: string;
 };
 
 const json = (status: number, body: unknown) =>
@@ -149,13 +150,27 @@ Deno.serve(async (req: Request) => {
     const token = getBearerToken(req);
     if (!token) return json(401, { ok: false, error: "Missing Authorization", requestId });
 
-    const { data: authData, error: authError } = await supabase.auth.getUser(token);
-    if (authError) return json(401, { ok: false, error: "Invalid session", requestId });
-    const userId = authData?.user?.id;
-    if (!userId) return json(401, { ok: false, error: "Invalid session", requestId });
-    const userEmail = (authData?.user?.email ? String(authData.user.email) : "").trim();
-
     const body = (await req.json()) as ReqBody;
+    
+    const { data: authData, error: authError } = await supabase.auth.getUser(token);
+    let userId: string | null = null;
+    let userEmail = "";
+    
+    if (authError || !authData?.user?.id) {
+      // Если нет сессии, но есть email в body, используем его
+      if (body?.email) {
+        userEmail = String(body.email).trim();
+      } else {
+        return json(401, { ok: false, error: "Invalid session and no email provided", requestId });
+      }
+    } else {
+      userId = authData.user.id;
+      userEmail = (authData.user.email ? String(authData.user.email) : "").trim();
+      // Если email передан в body, используем его (приоритет)
+      if (body?.email) {
+        userEmail = String(body.email).trim();
+      }
+    }
     const returnUrl = String(body?.returnUrl || "").trim();
     if (!returnUrl) return json(400, { ok: false, error: "returnUrl is required", requestId });
 
@@ -180,7 +195,9 @@ Deno.serve(async (req: Request) => {
 
     // If promo makes it free, grant immediately without YooKassa.
     if (priced.granted && Number(priced.amountValue) === 0) {
-      await supabase.from("user_entitlements").upsert({ user_id: userId, is_premium: true, premium_until: null }, { onConflict: "user_id" });
+      if (userId) {
+        await supabase.from("user_entitlements").upsert({ user_id: userId, is_premium: true, premium_until: null }, { onConflict: "user_id" });
+      }
       await supabase.from("payments").insert({
         user_id: userId,
         provider: "yookassa",
@@ -205,7 +222,7 @@ Deno.serve(async (req: Request) => {
     const { data: inserted, error: insertError } = await supabase
       .from("payments")
       .insert({
-        user_id: userId,
+        user_id: userId || null,
         provider: "yookassa",
         idempotence_key: idempotenceKey,
         status: "creating",
@@ -266,7 +283,7 @@ Deno.serve(async (req: Request) => {
         description,
         ...(userEmail ? { customer: { email: userEmail } } : {}),
         ...(receipt ? { receipt } : {}),
-        metadata: { user_id: userId, entitlement: "premium", payment_row_id: inserted.id, promo_code: priced.appliedPromo || null, product_key: productKey },
+        metadata: { user_id: userId || null, email: userEmail || null, entitlement: "premium", payment_row_id: inserted.id, promo_code: priced.appliedPromo || null, product_key: productKey },
       }),
     });
     console.log("[yookassa-create-payment] yookassa payload", {

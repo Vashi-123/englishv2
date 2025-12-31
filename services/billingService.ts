@@ -116,13 +116,14 @@ export const primeBillingProductCache = async (key: string = BILLING_PRODUCT_KEY
   return cached;
 };
 
-export const createYooKassaPayment = async (params: { returnUrl: string; description?: string; promoCode?: string; productKey?: string }) => {
+export const createYooKassaPayment = async (params: { returnUrl: string; description?: string; promoCode?: string; productKey?: string; email?: string }) => {
   const { data, error } = await supabase.functions.invoke("yookassa-create-payment", {
     body: {
       returnUrl: params.returnUrl,
       description: params.description,
       promoCode: params.promoCode,
       productKey: params.productKey,
+      email: params.email,
     },
   });
   if (error) throw error;
