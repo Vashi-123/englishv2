@@ -308,8 +308,8 @@ export const EmailConfirmScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handlePay}
-                disabled={paying || priceLoading || isPremium || entitlementsLoading}
-                className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
+                disabled={paying || priceLoading}
+                className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 <span className="inline-flex items-center justify-center gap-2">
                   {paying ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : <Crown className="w-4 h-4" />}
