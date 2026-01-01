@@ -44,8 +44,17 @@ export default defineConfig(({ mode }) => {
             manualChunks: (id) => {
               // Разделяем vendor библиотеки
               if (id.includes('node_modules')) {
-                // React и React Router отдельно
-                if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+                // React и React DOM должны быть в одном chunk для правильной работы forwardRef
+                // Это критично для React 19 и code splitting
+                // Используем более точную проверку для React
+                if (
+                  id.includes('/react/') || 
+                  id.includes('/react-dom/') || 
+                  id.includes('/react-router/') ||
+                  id.includes('\\react\\') ||
+                  id.includes('\\react-dom\\') ||
+                  id.includes('\\react-router\\')
+                ) {
                   return 'vendor-react';
                 }
                 // Supabase отдельно
@@ -76,10 +85,19 @@ export default defineConfig(({ mode }) => {
           },
         },
         chunkSizeWarningLimit: 600, // Увеличиваем лимит для больших чанков
+        // Убеждаемся, что React правильно обрабатывается при code splitting
+        commonjsOptions: {
+          include: [/node_modules/],
+          transformMixedEsModules: true,
+        },
       },
       plugins: [
         react({
           jsxRuntime: 'automatic',
+          // Убеждаемся, что React импортируется правильно во всех чанках
+          babel: {
+            plugins: [],
+          },
         }),
         {
           name: 'spa-fallback',
