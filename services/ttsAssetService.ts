@@ -396,28 +396,52 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
       const hit = await cache.match(cacheReq);
       if (hit) {
         const blob = ensureMp3BlobType(await hit.blob());
-        if (!loggedReadyHashes.has(hash)) {
-          loggedReadyHashes.add(hash);
-          // This is useful on iOS to confirm assets are available offline.
-          // eslint-disable-next-line no-console
-          console.log('[TTS] Ready (cached mp3):', { hash, voice, text: text.slice(0, 80) });
+        if (blob && blob.size > 0) {
+          if (!loggedReadyHashes.has(hash)) {
+            loggedReadyHashes.add(hash);
+            // This is useful on iOS to confirm assets are available offline.
+            // eslint-disable-next-line no-console
+            console.log('[TTS] Ready (cached mp3):', { hash, voice, text: text.slice(0, 80), size: blob.size, type: blob.type });
+          }
+          // Проверяем валидность blob перед созданием URL
+          try {
+            const blobUrl = URL.createObjectURL(blob);
+            // Проверяем, что URL создан успешно
+            if (blobUrl && blobUrl.startsWith('blob:')) {
+              return blobUrl;
+            }
+          } catch (e) {
+            console.warn('[TTS] Failed to create blob URL from cache:', { hash, error: e instanceof Error ? e.message : String(e) });
+          }
+        } else {
+          console.warn('[TTS] Invalid blob from cache:', { hash, size: blob?.size, type: blob?.type });
         }
-        return URL.createObjectURL(blob);
       }
-    } catch {
-      // ignore
+    } catch (e) {
+      console.warn('[TTS] Cache match error:', { hash, error: e instanceof Error ? e.message : String(e) });
     }
   } else {
     // iOS (capacitor://) and other non-http(s): use IndexedDB.
     const hitBlob = await idbGetMp3(hash);
     if (hitBlob && hitBlob.size > 0) {
       const blob = ensureMp3BlobType(hitBlob);
-      if (!loggedReadyHashes.has(hash)) {
-        loggedReadyHashes.add(hash);
-        // eslint-disable-next-line no-console
-        console.log('[TTS] Ready (idb mp3):', { hash, voice, text: text.slice(0, 80) });
+      if (blob && blob.size > 0) {
+        if (!loggedReadyHashes.has(hash)) {
+          loggedReadyHashes.add(hash);
+          // eslint-disable-next-line no-console
+          console.log('[TTS] Ready (idb mp3):', { hash, voice, text: text.slice(0, 80), size: blob.size, type: blob.type });
+        }
+        try {
+          const blobUrl = URL.createObjectURL(blob);
+          if (blobUrl && blobUrl.startsWith('blob:')) {
+            return blobUrl;
+          }
+        } catch (e) {
+          console.warn('[TTS] Failed to create blob URL from idb:', { hash, error: e instanceof Error ? e.message : String(e) });
+        }
+      } else {
+        console.warn('[TTS] Invalid blob from idb:', { hash, size: blob?.size, type: blob?.type });
       }
-      return URL.createObjectURL(blob);
     }
   }
 
@@ -476,10 +500,26 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
     if (!loggedReadyHashes.has(hash)) {
       loggedReadyHashes.add(hash);
       // eslint-disable-next-line no-console
-      console.log('[TTS] Downloaded and ready:', { hash, voice, text: text.slice(0, 80) });
+      console.log('[TTS] Downloaded and ready:', { hash, voice, text: text.slice(0, 80), size: blob.size, type: blob.type });
     }
 
-    return URL.createObjectURL(blob);
+    // Проверяем валидность blob перед созданием URL
+    if (!blob || blob.size === 0) {
+      console.warn('[TTS] Invalid blob after download:', { hash, size: blob?.size, type: blob?.type });
+      return null;
+    }
+
+    try {
+      const blobUrl = URL.createObjectURL(blob);
+      if (blobUrl && blobUrl.startsWith('blob:')) {
+        return blobUrl;
+      }
+      console.warn('[TTS] Invalid blob URL created:', { hash, url: blobUrl });
+      return null;
+    } catch (e) {
+      console.warn('[TTS] Failed to create blob URL:', { hash, error: e instanceof Error ? e.message : String(e) });
+      return null;
+    }
   } catch (e) {
     if (!loggedFetchFailHashes.has(hash)) {
       loggedFetchFailHashes.add(hash);

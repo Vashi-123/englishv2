@@ -154,7 +154,7 @@ export function useTtsQueue() {
       expectedHash: expectedHash || undefined,
       text: normalizedText.slice(0, 120),
     });
-    const url = await getTtsAudioPlaybackUrl({ text: item.text, lang: 'en-US', voice: configuredVoice });
+    let url = await getTtsAudioPlaybackUrl({ text: item.text, lang: 'en-US', voice: configuredVoice });
     if (!url) {
       const key = `${item.kind}:${expectedHash || normalizedText}`;
       if (!loggedPlaybackIssuesRef.current.has(key)) {
@@ -184,6 +184,12 @@ export function useTtsQueue() {
           }
         }
       }
+      return false;
+    }
+    
+    // Проверяем, что URL валиден
+    if (!url || (url.startsWith('blob:') && url.length < 10)) {
+      console.warn('[TTS] Invalid URL:', { url, kind: item.kind, text: normalizedText });
       return false;
     }
     if (runIdRef.current !== runId) return false;
