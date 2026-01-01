@@ -43,6 +43,8 @@ const ResetPasswordScreen = lazyWithErrorHandling(() => import('./components/Res
 const CheckStatusScreen = lazyWithErrorHandling(() => import('./components/CheckStatusScreen').then(m => ({ default: m.CheckStatusScreen })));
 const EmailConfirmScreen = lazyWithErrorHandling(() => import('./components/EmailConfirmScreen').then(m => ({ default: m.EmailConfirmScreen })));
 const AppContent = lazyWithErrorHandling(() => import('./components/AppContent').then(m => ({ default: m.AppContent })));
+const PartnerAuthScreen = lazyWithErrorHandling(() => import('./components/partners/PartnerAuthScreen').then(m => ({ default: m.PartnerAuthScreen })));
+const PartnerDashboard = lazyWithErrorHandling(() => import('./components/partners/PartnerDashboard').then(m => ({ default: m.PartnerDashboard })));
 
 // Компонент загрузки
 const LoadingScreen = () => (
@@ -235,6 +237,37 @@ const EmailConfirmPage: React.FC = () => {
   return <EmailConfirmScreen />;
 };
 
+// Компонент для партнерского портала
+const PartnerPage: React.FC = () => {
+  const { session, refreshSession } = useAuth();
+  const navigate = useNavigate();
+
+  // Если есть сессия - показываем dashboard
+  if (session?.user?.id && session?.user?.email) {
+    const handleSignOut = async () => {
+      await supabase.auth.signOut();
+      navigate('/partners', { replace: true });
+    };
+
+    return (
+      <PartnerDashboard
+        userEmail={session.user.email}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
+
+  // Если нет сессии - показываем экран входа
+  return (
+    <PartnerAuthScreen
+      onAuthSuccess={async () => {
+        await refreshSession();
+        navigate('/partners', { replace: true });
+      }}
+    />
+  );
+};
+
 // Компонент для обработки возврата после оплаты
 const PaidRedirectHandler: React.FC = () => {
   const { session } = useAuth();
@@ -276,6 +309,7 @@ const AppRouter: React.FC = () => {
             <Route path="/app" element={<AppPage />} />
             <Route path="/auth/confirm" element={<EmailConfirmPage />} />
             <Route path="/check" element={<CheckStatusScreen />} />
+            <Route path="/partners" element={<PartnerPage />} />
 
             {/* 404 - редирект на главную */}
             <Route path="*" element={<Navigate to="/" replace />} />
