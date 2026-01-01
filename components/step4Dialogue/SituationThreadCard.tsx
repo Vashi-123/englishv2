@@ -19,7 +19,7 @@ type Props = {
   onContinue?: () => void;
   isLoading?: boolean;
   currentAudioItem?: AudioQueueItem | null;
-  processAudioQueue?: (queue: Array<{ text: string; lang: string; kind: string }>) => void;
+  processAudioQueue?: (queue: Array<{ text: string; lang: string; kind: string }>, messageId?: string) => void;
   items: Item[];
   renderMarkdown: (text: string) => React.ReactNode;
 };

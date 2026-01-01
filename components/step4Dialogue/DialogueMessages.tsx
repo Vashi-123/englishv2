@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
 import { MatchingGameCard } from './MatchingGameCard';
@@ -10,6 +10,7 @@ import { AnkiQuizCard } from './AnkiQuizCard';
 import { Bot, Crown } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useIsIOS } from '../../utils/platform';
 
 type MatchingOption = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -123,7 +124,7 @@ export function DialogueMessages({
 	  setVocabIndex: Dispatch<SetStateAction<number>>;
 	  vocabRefs: MutableRefObject<Map<number, HTMLDivElement>>;
 	  currentAudioItem: any;
-  processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>) => void;
+  processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>, messageId?: string) => void;
   playVocabAudio: (items: Array<{ text: string; lang: string; kind?: string }>, messageId?: string) => void;
 
   lessonScript: any | null;
@@ -203,19 +204,63 @@ export function DialogueMessages({
     return -1;
   })();
 
-  // ОПТИМИЗАЦИЯ: Определение мобильного устройства для адаптивной оптимизации
+  // ОПТИМИЗАЦИЯ: Определение мобильного устройства и iOS для адаптивной оптимизации
   const isMobile = useIsMobile();
+  const isIOSDevice = useIsIOS();
   
-  // ОПТИМИЗАЦИЯ: Виртуализация для длинных списков сообщений
-  // На мобильных включается раньше (при >30 сообщений), на десктопе при >50
-  const virtualizationThreshold = isMobile ? 30 : 50;
+  // ОПТИМИЗАЦИЯ iOS: Точная оценка высоты сообщения в зависимости от типа
+  const estimateSize = useMemo(() => {
+    return (index: number) => {
+      const msg = visibleMessages[index];
+      if (!msg) return 120;
+      
+      // Учитываем тип сообщения для более точной оценки
+      const text = msg.text || '';
+      if (msg.role === 'model') {
+        // Situation карточки самые большие
+        if (text.includes('"type":"situation"') || text.includes('"type": "situation"') || 
+            (text.includes('situation') && text.startsWith('{'))) {
+          return 400;
+        }
+        // Vocabulary карточки
+        if (text.includes('"type":"words_list"') || text.includes('"type": "words_list"')) {
+          return 300;
+        }
+        // Constructor карточки
+        if (text.includes('constructor') || /<w>/.test(text)) {
+          return 250;
+        }
+        // Find the mistake карточки
+        if (text.includes('"type":"find_the_mistake"') || /A\)|B\)/.test(text)) {
+          return 200;
+        }
+        // Section карточки
+        if (text.includes('"type":"section"') || text.includes('"type": "section"')) {
+          return 180;
+        }
+      }
+      // Стандартная высота для обычных сообщений
+      return 120;
+    };
+  }, [visibleMessages]);
+  
+  // ОПТИМИЗАЦИЯ iOS: Виртуализация включается раньше на iOS для лучшей производительности
+  // iOS: 10 сообщений, мобильные: 15, десктоп: 30
+  const virtualizationThreshold = isIOSDevice ? 10 : isMobile ? 15 : 30;
   const shouldVirtualize = visibleMessages.length > virtualizationThreshold;
+  
   const virtualizer = useVirtualizer({
     count: visibleMessages.length,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => 120, // примерная высота сообщения с отступами
-    overscan: isMobile ? 3 : 5, // меньше overscan на мобильных для экономии памяти
+    estimateSize,
+    overscan: isIOSDevice ? 1 : isMobile ? 2 : 5, // Минимальный overscan на iOS для экономии памяти
     enabled: shouldVirtualize,
+    // iOS оптимизация: динамическое измерение высоты для точности
+    measureElement: isIOSDevice ? (el) => {
+      if (!el) return 120;
+      const rect = el.getBoundingClientRect();
+      return rect.height || 120;
+    } : undefined,
   });
 
   // Создаем массив виртуальных элементов для рендеринга

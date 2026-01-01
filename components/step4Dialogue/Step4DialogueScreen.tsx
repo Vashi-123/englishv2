@@ -12,6 +12,7 @@ import {
   upsertLessonProgress,
 } from '../../services/generationService';
 import { useLanguage } from '../../hooks/useLanguage';
+import { useIsIOS } from '../../utils/platform';
 import { getOrCreateLocalUser } from '../../services/userService';
 import { applySrsReview, getSrsReviewBatch, upsertSrsCardsFromVocab } from '../../services/srsService';
 import { parseMarkdown } from '../../utils/markdownOptimized';
@@ -120,23 +121,52 @@ export function Step4DialogueScreen({
   const [suppressInputAutofocus, setSuppressInputAutofocus] = useState(false);
 
   const didSignalReadyRef = useRef(false);
-  useEffect(() => {
-    if (didSignalReadyRef.current) return;
-    const isOverlayVisible = isInitializing || (isLoading && messages.length === 0);
-    if (!isOverlayVisible && messages.length > 0) {
-      didSignalReadyRef.current = true;
-      onReady?.();
-    }
-  }, [isInitializing, isLoading, messages.length, onReady]);
-
   const { currentAudioItem, isPlayingQueue, processAudioQueue, resetTtsState, cancel: cancelTts } = useTtsQueue();
   const [vocabMicReady, setVocabMicReady] = useState(false);
   const vocabAudioActiveRef = useRef(false);
   const vocabAudioFallbackTimerRef = useRef<number | null>(null);
   const isPlayingQueueRef = useRef(false);
+  
+  // ОПТИМИЗАЦИЯ iOS: Группировка связанных ref-обновлений для уменьшения ре-рендеров
   useEffect(() => {
     isPlayingQueueRef.current = isPlayingQueue;
-  }, [isPlayingQueue]);
+    isInitializingRef.current = isInitializing;
+  }, [isPlayingQueue, isInitializing]);
+  
+  // ОПТИМИЗАЦИЯ iOS: Группировка логики готовности и скролла
+  useEffect(() => {
+    // Логика готовности
+    if (!didSignalReadyRef.current) {
+      const isOverlayVisible = isInitializing || (isLoading && messages.length === 0);
+      if (!isOverlayVisible && messages.length > 0) {
+        didSignalReadyRef.current = true;
+        onReady?.();
+      }
+    }
+    
+    // Логика начального скролла
+    const key = `${day || 1}_${lesson || 1}_${resolvedLevel}_${resolvedLanguage}`;
+    if (didInitialScrollKeyRef.current !== key) {
+      didInitialScrollKeyRef.current = null;
+    }
+    if (isInitializing) {
+      didInitialScrollKeyRef.current = null;
+      return;
+    }
+    if (didInitialScrollKeyRef.current === key) return;
+
+    didInitialScrollKeyRef.current = key;
+    const container = scrollContainerRef.current;
+    const end = messagesEndRef.current;
+    window.requestAnimationFrame(() => {
+      if (container) {
+        const targetTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        container.scrollTo({ top: targetTop, behavior: 'auto' });
+      } else {
+        end?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      }
+    });
+  }, [isInitializing, isLoading, messages.length, onReady, day, lesson, resolvedLanguage, resolvedLevel]);
   const clearVocabAudioFallback = useCallback(() => {
     if (vocabAudioFallbackTimerRef.current) {
       window.clearTimeout(vocabAudioFallbackTimerRef.current);
@@ -186,39 +216,15 @@ export function Step4DialogueScreen({
   const goalSeenRef = useRef<boolean>(false);
   const hasRecordedLessonCompleteRef = useRef<boolean>(false);
   const isInitializingRef = useRef<boolean>(true);
-  useEffect(() => {
-    isInitializingRef.current = isInitializing;
-  }, [isInitializing]);
-
   const didInitialScrollKeyRef = useRef<string | null>(null);
-  useEffect(() => {
-    const key = `${day || 1}_${lesson || 1}_${resolvedLevel}_${resolvedLanguage}`;
-    if (didInitialScrollKeyRef.current !== key) {
-      didInitialScrollKeyRef.current = null;
-    }
-    if (isInitializing) {
-      didInitialScrollKeyRef.current = null;
-      return;
-    }
-    if (didInitialScrollKeyRef.current === key) return;
-
-    didInitialScrollKeyRef.current = key;
-    const container = scrollContainerRef.current;
-    const end = messagesEndRef.current;
-    window.requestAnimationFrame(() => {
-      if (container) {
-        const targetTop = Math.max(0, container.scrollHeight - container.clientHeight);
-        container.scrollTo({ top: targetTop, behavior: 'auto' });
-      } else {
-        end?.scrollIntoView({ behavior: 'auto', block: 'end' });
-      }
-    });
-  }, [day, isInitializing, lesson, resolvedLanguage, resolvedLevel]);
 
   // Persist chat messages to a lightweight session cache so leaving/re-entering the lesson is instant.
-  // ОПТИМИЗАЦИЯ: Увеличиваем debounce до 300ms для уменьшения частоты записей
+  // ОПТИМИЗАЦИЯ iOS: Увеличиваем debounce до 300ms для уменьшения частоты записей
   const cacheTimerRef = useRef<number | null>(null);
+  
+  // ОПТИМИЗАЦИЯ iOS: Группировка кеширования сообщений и очистки markdown кеша
   useEffect(() => {
+    // Кеширование сообщений
     if (!day || !lesson) return;
     if (isInitializing) return;
     if (cacheTimerRef.current != null) {
@@ -229,6 +235,10 @@ export function Step4DialogueScreen({
       cacheChatMessages(day || 1, lesson || 1, resolvedLevel, messages);
       cacheTimerRef.current = null;
     }, 300); // Увеличено с 120ms до 300ms для оптимизации
+    
+    // Очистка markdown кеша при смене урока
+    markdownCacheRef.current.clear();
+    
     return () => {
       if (cacheTimerRef.current != null) {
         window.clearTimeout(cacheTimerRef.current);
@@ -1472,15 +1482,69 @@ export function Step4DialogueScreen({
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
   const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
   
+  // ОПТИМИЗАЦИЯ iOS: Определение iOS для адаптивной оптимизации парсинга
+  const isIOSDevice = useIsIOS();
+  
   // ОПТИМИЗАЦИЯ: Кеширование результатов парсинга markdown для избежания повторных вычислений
   const markdownCacheRef = useRef(new Map<string, React.ReactNode>());
+  const markdownPendingRef = useRef(new Set<string>());
+  const [, forceUpdate] = useState(0);
+  
   const renderMarkdown = useCallback((text: string) => {
     if (!text) return '';
+    
     // Используем кеш для одинаковых текстов
     if (markdownCacheRef.current.has(text)) {
       return markdownCacheRef.current.get(text)!;
     }
+    
+    // ОПТИМИЗАЦИЯ iOS: Для длинных текстов на iOS используем асинхронный парсинг
+    // чтобы не блокировать UI поток (WKWebView имеет строгие лимиты на выполнение JS)
+    if (isIOSDevice && text.length > 300) {
+      // Проверяем, не парсим ли уже этот текст
+      if (markdownPendingRef.current.has(text)) {
+        // Возвращаем placeholder пока парсится
+        return <span className="text-gray-400 animate-pulse">Загрузка...</span>;
+      }
+      
+      // Помечаем как парсящийся
+      markdownPendingRef.current.add(text);
+      
+      // Создаем placeholder
+      const placeholder = <span className="text-gray-400">Загрузка...</span>;
+      markdownCacheRef.current.set(text, placeholder);
+      
+      // Парсим асинхронно через requestIdleCallback или setTimeout
+      const parseAsync = () => {
+        try {
+          const parsed = parseMarkdown(text);
+          markdownCacheRef.current.set(text, parsed);
+          markdownPendingRef.current.delete(text);
+          // Триггерим ре-рендер для обновления
+          forceUpdate(prev => prev + 1);
+        } catch (error) {
+          console.error('[Markdown] Parse error:', error);
+          markdownPendingRef.current.delete(text);
+          // Возвращаем текст как есть при ошибке
+          const fallback = <span>{text}</span>;
+          markdownCacheRef.current.set(text, fallback);
+          forceUpdate(prev => prev + 1);
+        }
+      };
+      
+      // Используем requestIdleCallback если доступен, иначе setTimeout
+      if (typeof requestIdleCallback !== 'undefined') {
+        requestIdleCallback(parseAsync, { timeout: 100 });
+      } else {
+        setTimeout(parseAsync, 0);
+      }
+      
+      return placeholder;
+    }
+    
+    // Синхронный парсинг для коротких текстов или не-iOS
     const parsed = parseMarkdown(text);
+    
     // Ограничиваем размер кеша (максимум 100 элементов)
     if (markdownCacheRef.current.size >= 100) {
       const firstKey = markdownCacheRef.current.keys().next().value;
@@ -1488,12 +1552,8 @@ export function Step4DialogueScreen({
     }
     markdownCacheRef.current.set(text, parsed);
     return parsed;
-  }, []);
+  }, [isIOSDevice]);
   
-  // Очищаем кеш при смене урока
-  useEffect(() => {
-    markdownCacheRef.current.clear();
-  }, [day, lesson, level]);
 	  const acknowledgeGoalGate = useCallback(async () => {
 	    try {
 	      window.localStorage.setItem(goalAckStorageKey, '1');
@@ -1868,7 +1928,7 @@ export function Step4DialogueScreen({
             setVocabIndex={setVocabIndex}
             vocabRefs={vocabRefs}
             currentAudioItem={currentAudioItem}
-            processAudioQueue={processAudioQueue as any}
+            processAudioQueue={processAudioQueue}
             playVocabAudio={enqueueVocabAudio}
             lessonScript={lessonScript}
             currentStep={currentStep}
