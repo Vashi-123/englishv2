@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React from 'react';
 import { Bot, Check } from 'lucide-react';
 import { CardHeading } from './CardHeading';
 
@@ -15,24 +15,20 @@ type Props = {
   onSelectTranslation: (id: string) => void;
 };
 
-export const MatchingGame = forwardRef<HTMLDivElement, Props>(function MatchingGame(
-  {
-    show,
-    wordOptions,
-    translationOptions,
-    selectedWord,
-    selectedTranslation,
-    matchesComplete,
-    onSelectWord,
-    onSelectTranslation,
-  },
-  ref
-) {
+export const MatchingGame: React.FC<Props> = ({
+  show,
+  wordOptions,
+  translationOptions,
+  selectedWord,
+  selectedTranslation,
+  matchesComplete,
+  onSelectWord,
+  onSelectTranslation,
+}) => {
   if (!show) return null;
 
   return (
     <div
-      ref={ref}
       className="bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto mt-4"
     >
       <div className="flex items-center justify-between">
@@ -101,4 +97,4 @@ export const MatchingGame = forwardRef<HTMLDivElement, Props>(function MatchingG
       </div>
     </div>
   );
-});
+};
