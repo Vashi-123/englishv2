@@ -207,22 +207,71 @@ export function useTtsQueue() {
 
       // Ждем загрузки аудио перед воспроизведением
       const loadPromise = new Promise<void>((resolve, reject) => {
-        const onCanPlay = () => {
+        let resolved = false;
+        const cleanup = () => {
           audio.removeEventListener('canplaythrough', onCanPlay);
+          audio.removeEventListener('loadeddata', onLoadedData);
           audio.removeEventListener('error', onLoadError);
+        };
+        const onCanPlay = () => {
+          if (resolved) return;
+          resolved = true;
+          cleanup();
+          console.log('[TTS] Audio canplaythrough event');
           resolve();
         };
+        const onLoadedData = () => {
+          if (resolved) return;
+          // Если canplaythrough не сработал, используем loadeddata как fallback
+          if (audio.readyState >= 2) {
+            resolved = true;
+            cleanup();
+            console.log('[TTS] Audio loadeddata event, readyState:', audio.readyState);
+            resolve();
+          }
+        };
         const onLoadError = () => {
-          audio.removeEventListener('canplaythrough', onCanPlay);
-          audio.removeEventListener('error', onLoadError);
+          if (resolved) return;
+          resolved = true;
+          cleanup();
+          console.warn('[TTS] Audio load error event');
           reject(new Error('Failed to load audio'));
         };
+        
+        // Проверяем readyState сразу - может быть уже загружено
+        if (audio.readyState >= 3) {
+          console.log('[TTS] Audio already loaded, readyState:', audio.readyState);
+          resolve();
+          return;
+        }
+        
         audio.addEventListener('canplaythrough', onCanPlay, { once: true });
+        audio.addEventListener('loadeddata', onLoadedData, { once: true });
         audio.addEventListener('error', onLoadError, { once: true });
+        
+        // Таймаут на случай, если события не сработают
+        const timeout = setTimeout(() => {
+          if (resolved) return;
+          resolved = true;
+          cleanup();
+          if (audio.readyState >= 2) {
+            console.log('[TTS] Audio load timeout, but readyState is OK:', audio.readyState);
+            resolve();
+          } else {
+            console.warn('[TTS] Audio load timeout, readyState:', audio.readyState);
+            reject(new Error('Audio load timeout'));
+          }
+        }, 5000);
+        
         try {
           audio.load();
         } catch (e) {
+          clearTimeout(timeout);
+          if (resolved) return;
+          resolved = true;
+          cleanup();
           // Если load() не работает, пробуем воспроизвести без ожидания
+          console.warn('[TTS] audio.load() failed, trying without wait:', e);
           setTimeout(() => resolve(), 100);
         }
       });
@@ -276,21 +325,38 @@ export function useTtsQueue() {
 
       // Ждем загрузки перед воспроизведением
       try {
+        console.log('[TTS] Waiting for audio load, readyState:', audio.readyState);
         await loadPromise;
+        console.log('[TTS] Audio loaded successfully, readyState:', audio.readyState, 'src:', audio.currentSrc);
       } catch (e) {
         const loadError = String(e?.message || e);
-        console.warn('[TTS] Audio load failed:', { kind: item.kind, error: loadError, url });
+        console.warn('[TTS] Audio load failed:', { kind: item.kind, error: loadError, url, readyState: audio.readyState });
         if (cleanupListeners) cleanupListeners();
         return false;
       }
 
       // eslint-disable-next-line no-console
-      console.log('[TTS] audio.play():', { kind: item.kind, expectedHash: expectedHash || undefined });
+      console.log('[TTS] audio.play():', { kind: item.kind, expectedHash: expectedHash || undefined, readyState: audio.readyState });
       try {
-        await audio.play();
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          await playPromise;
+          console.log('[TTS] audio.play() succeeded');
+        } else {
+          console.log('[TTS] audio.play() returned undefined (may be already playing)');
+        }
       } catch (playError: any) {
         const playErrorMsg = String(playError?.message || playError);
-        console.warn('[TTS] audio.play() failed:', { kind: item.kind, error: playErrorMsg, url });
+        const playErrorName = playError?.name || 'Unknown';
+        console.warn('[TTS] audio.play() failed:', { 
+          kind: item.kind, 
+          error: playErrorMsg, 
+          name: playErrorName,
+          url,
+          readyState: audio.readyState,
+          paused: audio.paused,
+          ended: audio.ended
+        });
         if (cleanupListeners) cleanupListeners();
         return false;
       }
