@@ -32,8 +32,12 @@ export function useTtsQueue() {
       try {
         await a.play();
         unlocked = true;
-      } catch {
-        // ignore
+        // eslint-disable-next-line no-console
+        console.log('[TTS] unlockHtmlAudio: unlocked successfully', { reason });
+      } catch (e: any) {
+        const errMsg = String(e?.message || e);
+        // eslint-disable-next-line no-console
+        console.warn('[TTS] unlockHtmlAudio: play failed', { reason, error: errMsg });
       }
       try {
         a.pause();
@@ -201,35 +205,35 @@ export function useTtsQueue() {
       audio.preload = 'auto'; // Предзагрузка для уменьшения задержек
       audioRef.current = audio;
 
-      // ОПТИМИЗАЦИЯ: Асинхронная загрузка для предотвращения блокировки UI
-      try {
-        // Используем requestIdleCallback для загрузки если доступен
-        if ('requestIdleCallback' in window && typeof (window as any).requestIdleCallback === 'function') {
-          (window as any).requestIdleCallback(() => {
-            try {
-              audio.load();
-            } catch {
-              // ignore
-            }
-          }, { timeout: 100 });
-        } else {
-          // Fallback: загрузка в следующем тике
-          setTimeout(() => {
-            try {
-              audio.load();
-            } catch {
-              // ignore
-            }
-          }, 0);
+      // Ждем загрузки аудио перед воспроизведением
+      const loadPromise = new Promise<void>((resolve, reject) => {
+        const onCanPlay = () => {
+          audio.removeEventListener('canplaythrough', onCanPlay);
+          audio.removeEventListener('error', onLoadError);
+          resolve();
+        };
+        const onLoadError = () => {
+          audio.removeEventListener('canplaythrough', onCanPlay);
+          audio.removeEventListener('error', onLoadError);
+          reject(new Error('Failed to load audio'));
+        };
+        audio.addEventListener('canplaythrough', onCanPlay, { once: true });
+        audio.addEventListener('error', onLoadError, { once: true });
+        try {
+          audio.load();
+        } catch (e) {
+          // Если load() не работает, пробуем воспроизвести без ожидания
+          setTimeout(() => resolve(), 100);
         }
-      } catch {
-        // ignore
-      }
+      });
 
+      let cleanupListeners: (() => void) | null = null;
       const done = new Promise<'ended' | 'error'>((resolve) => {
         const cleanup = () => {
-          audio.removeEventListener('ended', onEnd);
-          audio.removeEventListener('error', onErr);
+          if (cleanupListeners) {
+            cleanupListeners();
+            cleanupListeners = null;
+          }
         };
         const onEnd = () => {
           cleanup();
@@ -262,13 +266,34 @@ export function useTtsQueue() {
           cleanup();
           resolve('error');
         };
+        cleanupListeners = () => {
+          audio.removeEventListener('ended', onEnd);
+          audio.removeEventListener('error', onErr);
+        };
         audio.addEventListener('ended', onEnd, { once: true });
         audio.addEventListener('error', onErr, { once: true });
       });
 
+      // Ждем загрузки перед воспроизведением
+      try {
+        await loadPromise;
+      } catch (e) {
+        const loadError = String(e?.message || e);
+        console.warn('[TTS] Audio load failed:', { kind: item.kind, error: loadError, url });
+        if (cleanupListeners) cleanupListeners();
+        return false;
+      }
+
       // eslint-disable-next-line no-console
       console.log('[TTS] audio.play():', { kind: item.kind, expectedHash: expectedHash || undefined });
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (playError: any) {
+        const playErrorMsg = String(playError?.message || playError);
+        console.warn('[TTS] audio.play() failed:', { kind: item.kind, error: playErrorMsg, url });
+        if (cleanupListeners) cleanupListeners();
+        return false;
+      }
 
       const result = await done;
       return result === 'ended';
