@@ -16,14 +16,14 @@ type Props = {
 };
 
 export const MatchingGame: React.FC<Props> = ({
-  show,
-  wordOptions,
-  translationOptions,
-  selectedWord,
-  selectedTranslation,
-  matchesComplete,
-  onSelectWord,
-  onSelectTranslation,
+    show,
+    wordOptions,
+    translationOptions,
+    selectedWord,
+    selectedTranslation,
+    matchesComplete,
+    onSelectWord,
+    onSelectTranslation,
 }) => {
   if (!show) return null;
 

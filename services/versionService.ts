@@ -43,8 +43,11 @@ export async function getLatestVersionInfo(): Promise<VersionInfo | null> {
       .single();
 
     if (error) {
-      // Если таблицы нет, пробуем вариант 2: JSON endpoint
-      console.warn('[Version] Supabase table not found, trying JSON endpoint:', error);
+      // Если таблицы нет или пуста (PGRST116), пробуем вариант 2: JSON endpoint
+      // Не логируем как warning, если это ожидаемое поведение (таблица пуста)
+      if (error.code !== 'PGRST116') {
+        console.warn('[Version] Supabase table error, trying JSON endpoint:', error.code);
+      }
       return await getLatestVersionFromJson();
     }
 
@@ -56,7 +59,10 @@ export async function getLatestVersionInfo(): Promise<VersionInfo | null> {
       message: data.message,
     };
   } catch (error) {
-    console.error('[Version] Failed to get version info:', error);
+    // Только логируем реальные ошибки, не ожидаемые случаи
+    if (error instanceof Error && !error.message.includes('PGRST116')) {
+      console.error('[Version] Failed to get version info:', error);
+    }
     return await getLatestVersionFromJson();
   }
 }

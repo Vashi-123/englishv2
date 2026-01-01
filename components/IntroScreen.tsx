@@ -400,7 +400,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
               <button
                 type="button"
                 onClick={() => setShowPriceModal(true)}
-                className="px-4 py-2 rounded-xl bg-transparent border border-brand-primary text-brand-primary font-semibold hover:bg-brand-primary/10 transition text-sm"
+                className="px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg sm:rounded-xl bg-transparent border border-brand-primary text-brand-primary font-semibold hover:bg-brand-primary/10 transition text-xs sm:text-sm"
               >
                 Цена
               </button>

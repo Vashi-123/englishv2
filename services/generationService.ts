@@ -1280,12 +1280,14 @@ export const subscribeChatProgress = async (
 
 /**
  * Очистить сообщения и прогресс для конкретного урока
+ * Важно: сохраняет флаг completed_at, чтобы не блокировать следующие уроки при перезапуске
  */
 export const resetLessonDialogue = async (day: number, lesson: number, level: string = 'A1'): Promise<void> => {
   try {
     const userId = await requireAuthUserId();
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
 
+    // Удаляем сообщения чата
     const delMessages = await supabase
       .from('chat_messages')
       .delete()
@@ -1295,13 +1297,42 @@ export const resetLessonDialogue = async (day: number, lesson: number, level: st
       console.error('[resetLessonDialogue] Error deleting chat_messages:', delMessages.error);
     }
 
-    const delProgress = await supabase
+    // Проверяем, был ли урок завершен
+    const { data: existingProgress } = await supabase
       .from('lesson_progress')
-      .delete()
+      .select('completed_at')
       .eq('user_id', userId)
-      .eq('lesson_id', lessonId);
-    if ((delProgress as any)?.error) {
-      console.error('[resetLessonDialogue] Error deleting lesson_progress:', (delProgress as any).error);
+      .eq('lesson_id', lessonId)
+      .maybeSingle();
+
+    const wasCompleted = !!existingProgress?.completed_at;
+
+    // Если урок был завершен, сохраняем completed_at и только очищаем current_step_snapshot
+    // Это позволяет перезапускать урок без блокировки следующих уроков
+    if (wasCompleted) {
+      const { error: updateError } = await supabase
+        .from('lesson_progress')
+        .update({
+          current_step_snapshot: null,
+          updated_at: new Date().toISOString(),
+          // completed_at остается без изменений
+        })
+        .eq('user_id', userId)
+        .eq('lesson_id', lessonId);
+      
+      if (updateError) {
+        console.error('[resetLessonDialogue] Error updating lesson_progress:', updateError);
+      }
+    } else {
+      // Если урок не был завершен, удаляем запись полностью
+      const delProgress = await supabase
+        .from('lesson_progress')
+        .delete()
+        .eq('user_id', userId)
+        .eq('lesson_id', lessonId);
+      if ((delProgress as any)?.error) {
+        console.error('[resetLessonDialogue] Error deleting lesson_progress:', (delProgress as any).error);
+      }
     }
 
     clearChatMessagesCache(day, lesson, level);

@@ -40,10 +40,20 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     fetch: async (input, init) => {
       try {
-        return await fetch(input, init);
+        const response = await fetch(input, init);
+        
+        // Проверяем на ошибки CORS или access control
+        if (!response.ok && response.status === 0) {
+          console.warn('[Supabase] Network error or CORS issue:', String(input));
+        }
+        
+        return response;
       } catch (err) {
-        // eslint-disable-next-line no-console
-        console.error('[Supabase] fetch failed:', String(input), err);
+        // Не логируем как ошибку, если это ожидаемое поведение (offline, CORS)
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        if (!errorMessage.includes('Load failed') && !errorMessage.includes('Failed to fetch')) {
+          console.error('[Supabase] fetch failed:', String(input), err);
+        }
         throw err;
       }
     },
