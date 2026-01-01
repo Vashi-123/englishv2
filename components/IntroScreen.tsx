@@ -244,8 +244,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     if (!showPriceModal) return null;
 
     return createPortal(
-      <div className="fixed inset-0 z-[120] flex items-start sm:items-center px-0 sm:px-4 sm:px-6 bg-black/60 overflow-y-auto">
-        <div className="relative w-full h-full sm:h-auto sm:max-w-lg sm:rounded-3xl bg-white border-0 sm:border border-gray-200 shadow-2xl sm:shadow-2xl p-6 sm:p-8 sm:my-8 pt-[calc(var(--app-safe-top,24px)+24px)] sm:pt-6">
+      <div className="fixed inset-0 z-[120] flex items-center justify-center px-0 sm:px-4 sm:px-6 bg-black/60 overflow-y-auto">
+        <div className="relative w-full h-full sm:h-auto sm:max-w-lg sm:rounded-3xl bg-white border-0 sm:border border-gray-200 shadow-2xl sm:shadow-2xl p-6 sm:p-8 pt-[calc(var(--app-safe-top,24px)+24px)] sm:pt-6 sm:my-8">
           <button
             type="button"
             onClick={() => {
