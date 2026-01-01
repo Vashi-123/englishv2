@@ -6,7 +6,6 @@
     <title>GoPractice</title>
     <link rel="icon" type="image/x-icon" href="%BASE_URL%favicon.ico?v=2" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.11/dist/tailwind.min.css">
     <style>
       :root {
         --app-safe-top: calc(env(safe-area-inset-top) + 24px);
@@ -144,9 +143,10 @@
   <script type="importmap">
 {
   "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.1",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
-    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "react": "https://esm.sh/react@19.2.1",
+    "react-dom": "https://esm.sh/react-dom@19.2.1",
+    "react-dom/": "https://esm.sh/react-dom@19.2.1/",
+    "react/": "https://esm.sh/react@19.2.1/",
     "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
     "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0"
   }
