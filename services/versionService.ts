@@ -1,0 +1,153 @@
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
+import { supabase } from './supabaseClient';
+
+// Версия приложения из package.json (будет заменена при сборке через Vite define)
+export const APP_VERSION = import.meta.env.VITE_APP_VERSION || '0.0.0';
+
+interface VersionInfo {
+  version: string;
+  minVersion?: string;
+  forceUpdate?: boolean;
+  updateUrl?: string;
+  message?: string;
+}
+
+/**
+ * Получает текущую версию приложения
+ */
+export async function getCurrentVersion(): Promise<string> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const info = await App.getInfo();
+      return info.version;
+    } catch (error) {
+      console.error('[Version] Failed to get native app version:', error);
+      return APP_VERSION;
+    }
+  }
+  return APP_VERSION;
+}
+
+/**
+ * Получает информацию о последней версии с сервера
+ */
+export async function getLatestVersionInfo(): Promise<VersionInfo | null> {
+  try {
+    // Вариант 1: Использовать Supabase таблицу
+    const { data, error } = await supabase
+      .from('app_versions')
+      .select('version, min_version, force_update, update_url, message')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      // Если таблицы нет, пробуем вариант 2: JSON endpoint
+      console.warn('[Version] Supabase table not found, trying JSON endpoint:', error);
+      return await getLatestVersionFromJson();
+    }
+
+    return {
+      version: data.version,
+      minVersion: data.min_version,
+      forceUpdate: data.force_update,
+      updateUrl: data.update_url,
+      message: data.message,
+    };
+  } catch (error) {
+    console.error('[Version] Failed to get version info:', error);
+    return await getLatestVersionFromJson();
+  }
+}
+
+/**
+ * Получает информацию о версии из JSON файла (fallback)
+ */
+async function getLatestVersionFromJson(): Promise<VersionInfo | null> {
+  try {
+    const baseUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+    const response = await fetch(`${baseUrl}/version.json`, {
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return {
+      version: data.version,
+      minVersion: data.minVersion,
+      forceUpdate: data.forceUpdate,
+      updateUrl: data.updateUrl,
+      message: data.message,
+    };
+  } catch (error) {
+    console.error('[Version] Failed to fetch version.json:', error);
+    return null;
+  }
+}
+
+/**
+ * Сравнивает версии (semver)
+ * Возвращает: -1 если current < latest, 0 если равны, 1 если current > latest
+ */
+export function compareVersions(current: string, latest: string): number {
+  const currentParts = current.split('.').map(Number);
+  const latestParts = latest.split('.').map(Number);
+
+  for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
+    const currentPart = currentParts[i] || 0;
+    const latestPart = latestParts[i] || 0;
+
+    if (currentPart < latestPart) return -1;
+    if (currentPart > latestPart) return 1;
+  }
+
+  return 0;
+}
+
+/**
+ * Проверяет, нужна ли обновление
+ */
+export async function checkForUpdate(): Promise<{
+  needsUpdate: boolean;
+  isForceUpdate: boolean;
+  versionInfo: VersionInfo | null;
+}> {
+  try {
+    const currentVersion = await getCurrentVersion();
+    const latestInfo = await getLatestVersionInfo();
+
+    if (!latestInfo) {
+      return {
+        needsUpdate: false,
+        isForceUpdate: false,
+        versionInfo: null,
+      };
+    }
+
+    const comparison = compareVersions(currentVersion, latestInfo.version);
+    const needsUpdate = comparison < 0;
+
+    // Всегда принудительное обновление при обнаружении новой версии
+    const isForceUpdate = needsUpdate || 
+      latestInfo.forceUpdate ||
+      (latestInfo.minVersion && compareVersions(currentVersion, latestInfo.minVersion) < 0);
+
+    return {
+      needsUpdate,
+      isForceUpdate,
+      versionInfo: latestInfo,
+    };
+  } catch (error) {
+    console.error('[Version] Failed to check for update:', error);
+    return {
+      needsUpdate: false,
+      isForceUpdate: false,
+      versionInfo: null,
+    };
+  }
+}
+

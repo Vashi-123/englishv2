@@ -78,7 +78,9 @@ export default defineConfig(({ mode }) => {
         chunkSizeWarningLimit: 600, // Увеличиваем лимит для больших чанков
       },
       plugins: [
-        react(),
+        react({
+          jsxRuntime: 'automatic',
+        }),
         {
           name: 'spa-fallback',
           configureServer(server) {
@@ -190,7 +192,10 @@ export default defineConfig(({ mode }) => {
       ],
       define: {
         'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'import.meta.env.VITE_APP_VERSION': JSON.stringify(
+          JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf-8')).version
+        ),
       },
       resolve: {
         alias: {

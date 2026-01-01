@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { Bot, Check } from 'lucide-react';
 import { CardHeading } from './CardHeading';
 
@@ -15,7 +15,7 @@ type Props = {
   onSelectTranslation: (id: string) => void;
 };
 
-export const MatchingGame = React.forwardRef<HTMLDivElement, Props>(function MatchingGame(
+export const MatchingGame = forwardRef<HTMLDivElement, Props>(function MatchingGame(
   {
     show,
     wordOptions,

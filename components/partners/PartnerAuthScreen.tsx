@@ -135,7 +135,7 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-transparent outline-none text-base sm:text-sm"
+                      className="w-full bg-transparent outline-none text-base"
                       placeholder="your@email.com"
                       autoComplete="email"
                       required
@@ -153,7 +153,7 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="w-full bg-transparent outline-none text-base sm:text-sm"
+                      className="w-full bg-transparent outline-none text-base"
                       placeholder={mode === 'signup' ? 'Минимум 6 символов' : 'Введите пароль'}
                       minLength={6}
                       autoComplete={mode === 'login' ? 'current-password' : 'new-password'}

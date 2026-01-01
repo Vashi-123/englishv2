@@ -2913,7 +2913,7 @@ const checkLessonComplete = (text: string): boolean => {
                 onChange={(e) => setInput(e.target.value)}
                 placeholder={copy.placeholder}
                 lang="en"
-                className="flex-1 bg-gray-100 border-none rounded-full px-6 py-4 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium"
+                className="flex-1 bg-gray-100 border-none rounded-full px-6 py-4 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium text-base"
                 disabled={isLoading}
             />
             <button

@@ -327,7 +327,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full bg-transparent outline-none text-base sm:text-sm"
+                className="w-full bg-transparent outline-none text-base"
                 placeholder={copy.auth.emailPlaceholder}
                 autoComplete="email"
                 required
@@ -346,7 +346,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-transparent outline-none text-base sm:text-sm"
+                  className="w-full bg-transparent outline-none text-base"
                   placeholder={mode === 'signup' ? 'Минимум 6 символов' : copy.auth.passwordPlaceholder}
                   minLength={6}
                   autoComplete={mode === 'login' ? 'current-password' : 'new-password'}

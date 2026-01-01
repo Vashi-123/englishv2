@@ -59,7 +59,7 @@ export const ResetPasswordScreen: React.FC<Props> = ({ onDone }) => {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full bg-transparent outline-none text-sm"
+                    className="w-full bg-transparent outline-none text-base"
                     placeholder="Минимум 6 символов"
                     minLength={6}
                     autoComplete="new-password"
@@ -76,7 +76,7 @@ export const ResetPasswordScreen: React.FC<Props> = ({ onDone }) => {
                     type="password"
                     value={password2}
                     onChange={(e) => setPassword2(e.target.value)}
-                    className="w-full bg-transparent outline-none text-sm"
+                    className="w-full bg-transparent outline-none text-base"
                     placeholder="Повтори пароль"
                     minLength={6}
                     autoComplete="new-password"

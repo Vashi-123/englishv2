@@ -103,7 +103,7 @@ export function DialogueInputBar({
               placeholder={placeholder}
               rows={1}
               lang="en"
-              className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto"
+              className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto text-base"
               disabled={isLoading}
             />
             <button

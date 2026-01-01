@@ -1,9 +1,11 @@
-import React, { useEffect, lazy, Suspense } from 'react';
+import React, { useEffect, lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './contexts/AuthProvider';
 import { useOnlineStatus } from './hooks/useOnlineStatus';
+import { useVersionCheck } from './hooks/useVersionCheck';
+import { UpdateModal } from './components/modals/UpdateModal';
 import { supabase } from './services/supabaseClient';
 
 // Lazy loading для больших компонентов с обработкой ошибок
@@ -289,6 +291,28 @@ const PaidRedirectHandler: React.FC = () => {
   return null;
 };
 
+// Компонент для проверки версии
+const VersionChecker: React.FC = () => {
+  const { needsUpdate, isForceUpdate, versionInfo, isChecking } = useVersionCheck();
+  const [isModalVisible, setIsModalVisible] = useState(false);
+
+  useEffect(() => {
+    if (needsUpdate && !isChecking) {
+      setIsModalVisible(true);
+    }
+  }, [needsUpdate, isChecking]);
+
+  return (
+    <UpdateModal
+      isOpen={needsUpdate}
+      isVisible={isModalVisible}
+      isForceUpdate={isForceUpdate}
+      updateUrl={versionInfo?.updateUrl}
+      message={versionInfo?.message}
+    />
+  );
+};
+
 // Основной роутер
 const AppRouter: React.FC = () => {
   const { needsPasswordReset } = useAuth();
@@ -301,6 +325,7 @@ const AppRouter: React.FC = () => {
 
   return (
     <>
+      <VersionChecker />
       <OfflineGuard>
         <Suspense fallback={<LoadingScreen />}>
           <Routes>

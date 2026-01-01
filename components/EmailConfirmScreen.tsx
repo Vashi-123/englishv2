@@ -401,7 +401,7 @@ export const EmailConfirmScreen: React.FC = () => {
                 value={promoCode}
                 onChange={(e) => onPromoInputChange(e.target.value)}
                 disabled={paying || promoLoading}
-                className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900 disabled:opacity-50"
+                className="w-full bg-transparent outline-none text-base font-semibold text-slate-900 disabled:opacity-50"
                 placeholder="Введите промокод"
                 autoComplete="off"
                 inputMode="text"
@@ -427,7 +427,7 @@ export const EmailConfirmScreen: React.FC = () => {
             value={paymentEmail}
             onChange={(e) => setPaymentEmail(e.target.value)}
             placeholder="your@email.com"
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition mb-4"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-brand-primary focus:ring-2 focus:ring-brand-primary/20 outline-none transition mb-4 text-base"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 handleEmailSubmit();
