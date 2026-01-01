@@ -117,10 +117,9 @@ const LandingPage: React.FC = () => {
     return <Navigate to="/auth/confirm" replace />;
   }
 
-  // Если есть сессия - редиректим на /app (где покажется приложение)
-  if (session) {
-    return <Navigate to="/app" replace />;
-  }
+  // УБРАНО: автоматический редирект на /app при наличии сессии
+  // Теперь на / всегда показывается главная страница (интро или форма входа)
+  // Пользователь может вручную перейти на /app если авторизован
 
   // Показываем интро-экраны
   const shouldShowIntro = !isNativePlatform || (isNativePlatform && showIntro && !hasLoggedIn);
