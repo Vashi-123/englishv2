@@ -1,6 +1,23 @@
 // Детальное логирование для отладки
 console.log('[index.tsx] Starting application initialization');
+console.log('[index.tsx] Current pathname:', typeof window !== 'undefined' ? window.location.pathname : 'N/A');
 console.log('[index.tsx] Import map available:', typeof document !== 'undefined' && document.querySelector('script[type="importmap"]') !== null);
+
+// Восстанавливаем путь из sessionStorage после редиректа с 404.html (до загрузки React)
+if (typeof window !== 'undefined') {
+  try {
+    const savedPath = sessionStorage.getItem('spa_redirect_path');
+    if (savedPath && window.location.pathname === '/index.html') {
+      console.log('[index.tsx] Restoring path from sessionStorage:', savedPath);
+      sessionStorage.removeItem('spa_redirect_path');
+      const url = new URL(savedPath, window.location.origin);
+      window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+      console.log('[index.tsx] Path restored to:', window.location.pathname);
+    }
+  } catch (e) {
+    console.warn('[index.tsx] Failed to restore path:', e);
+  }
+}
 
 console.log('[index.tsx] Step 1: Importing React...');
 import React from 'react';
@@ -38,17 +55,17 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 console.log('[index.tsx] ErrorBoundary imported successfully');
 
 try {
-  const rootElement = document.getElementById('root');
-  if (!rootElement) {
-    throw new Error("Could not find root element to mount to");
-  }
-  
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
   console.log('[index.tsx] Step 5: Creating root...');
-  const root = ReactDOM.createRoot(rootElement);
+const root = ReactDOM.createRoot(rootElement);
   console.log('[index.tsx] Root created');
   
   console.log('[index.tsx] Step 6: Rendering application...');
-  root.render(
+root.render(
     React.createElement(React.StrictMode, null,
       React.createElement(ErrorBoundary, null,
         React.createElement(App)
