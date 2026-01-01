@@ -431,13 +431,17 @@ export function useTtsQueue() {
         // ignore
       }
 
-      if (messageId && playedMessageIdsRef.current.has(messageId)) return;
+      if (messageId && playedMessageIdsRef.current.has(messageId)) {
+        console.log('[TTS] processAudioQueue: messageId already played, skipping:', messageId);
+        return;
+      }
 
       // Mark messageId as played BEFORE starting playback to prevent double playback
       // if processAudioQueue is called multiple times quickly
       if (messageId) {
         playedMessageIdsRef.current.add(messageId);
         setPlayedMessageIds((prev) => new Set(prev).add(messageId));
+        console.log('[TTS] processAudioQueue: marking messageId as played:', messageId);
       }
 
       // If something is already playing (e.g. vocab auto-play), interrupt it so the next queue isn't dropped.

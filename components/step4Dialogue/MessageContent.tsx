@@ -72,7 +72,7 @@ type Props = {
   grammarExerciseCompleted?: boolean;
 };
 
-export function MessageContent({
+function MessageContentComponent({
   msg,
   idx,
   isLastModelMessage,
@@ -211,9 +211,11 @@ export function MessageContent({
   // Use useMemo to stabilize the messageId to prevent unnecessary effect runs
   const stableMessageId = useMemo(() => autoPlaySituationAiMessageId, [autoPlaySituationAiMessageId]);
   const stableAiText = useMemo(() => autoPlaySituationAiText, [autoPlaySituationAiText]);
+  const stableShouldAutoPlay = useMemo(() => shouldAutoPlaySituationAi, [shouldAutoPlaySituationAi]);
 
   useEffect(() => {
-    if (!shouldAutoPlaySituationAi) return;
+    // Проверяем все условия перед воспроизведением
+    if (!stableShouldAutoPlay) return;
     if (!stableAiText) return;
     if (!stableMessageId) return;
     
@@ -221,15 +223,17 @@ export function MessageContent({
     // This prevents double playback even if React StrictMode runs effects twice
     // or if the component is mounted multiple times
     if (globalAutoPlayedSituationAiRef.has(stableMessageId)) {
+      console.log('[TTS] Situation AI already played, skipping:', stableMessageId);
       return;
     }
     
     // Mark as played BEFORE calling processAudioQueue to prevent race conditions
     // This ensures that even if the effect runs twice (StrictMode), only one playback happens
     globalAutoPlayedSituationAiRef.add(stableMessageId);
+    console.log('[TTS] Auto-playing situation AI:', { messageId: stableMessageId, text: stableAiText.slice(0, 50) });
 
     processAudioQueue([{ text: stableAiText, lang: 'en', kind: 'situation_ai' }], stableMessageId);
-  }, [stableMessageId, stableAiText, processAudioQueue, shouldAutoPlaySituationAi]);
+  }, [stableMessageId, stableAiText, stableShouldAutoPlay, processAudioQueue]);
 
   if (parsed && (parsed.type === 'goal' || parsed.type === 'words_list')) {
     if (parsed.type === 'goal') {
@@ -807,3 +811,64 @@ export function MessageContent({
 
   return renderMarkdown(displayText);
 }
+
+// ОПТИМИЗАЦИЯ iOS: Мемоизация компонента с оптимизированным сравнением
+// Предотвращает лишние ре-рендеры на WKWebView
+export const MessageContent = React.memo(MessageContentComponent, (prev, next) => {
+  // Критичные пропсы для сравнения
+  if (prev.msg.id !== next.msg.id) return false;
+  if (prev.msg.text !== next.msg.text) return false;
+  if (prev.msg.role !== next.msg.role) return false;
+  if (prev.msg.translation !== next.msg.translation) return false;
+  if (prev.idx !== next.idx) return false;
+  if (prev.msgStableId !== next.msgStableId) return false;
+  
+  // Состояние UI
+  if (prev.translationVisible !== next.translationVisible) return false;
+  if (prev.isLoading !== next.isLoading) return false;
+  if (prev.isAwaitingModelReply !== next.isAwaitingModelReply) return false;
+  if (prev.showVocab !== next.showVocab) return false;
+  if (prev.vocabIndex !== next.vocabIndex) return false;
+  
+  // Сравнение объектов через JSON для критичных
+  if (prev.msg.currentStepSnapshot !== next.msg.currentStepSnapshot) {
+    const prevSnap = prev.msg.currentStepSnapshot;
+    const nextSnap = next.msg.currentStepSnapshot;
+    if (prevSnap && nextSnap) {
+      try {
+        if (JSON.stringify(prevSnap) !== JSON.stringify(nextSnap)) return false;
+      } catch {
+        return false;
+      }
+    } else if (prevSnap !== nextSnap) {
+      return false;
+    }
+  }
+  
+  // Сравнение parsed только если изменился тип
+  if (prev.parsed?.type !== next.parsed?.type) return false;
+  
+  // Сравнение UI состояний для интерактивных элементов
+  const prevFindMistakeKeys = Object.keys(prev.findMistakeUI);
+  const nextFindMistakeKeys = Object.keys(next.findMistakeUI);
+  if (prevFindMistakeKeys.length !== nextFindMistakeKeys.length) return false;
+  for (const key of prevFindMistakeKeys) {
+    if (prev.findMistakeUI[key]?.selected !== next.findMistakeUI[key]?.selected) return false;
+    if (prev.findMistakeUI[key]?.correct !== next.findMistakeUI[key]?.correct) return false;
+  }
+  
+  const prevConstructorKeys = Object.keys(prev.constructorUI);
+  const nextConstructorKeys = Object.keys(next.constructorUI);
+  if (prevConstructorKeys.length !== nextConstructorKeys.length) return false;
+  for (const key of prevConstructorKeys) {
+    const prevCtor = prev.constructorUI[key];
+    const nextCtor = next.constructorUI[key];
+    if (prevCtor?.completed !== nextCtor?.completed) return false;
+    if (prevCtor?.pickedWordIndices?.length !== nextCtor?.pickedWordIndices?.length) return false;
+  }
+  
+  // Функции и refs не сравниваем (они стабильны через useCallback/useRef)
+  // Остальные пропсы считаем стабильными если основные совпадают
+  
+  return true; // Компоненты равны, ре-рендер не нужен
+});
