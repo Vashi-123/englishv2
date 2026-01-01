@@ -41,49 +41,9 @@ export default defineConfig(({ mode }) => {
             main: path.resolve(__dirname, 'index.html'),
           },
           output: {
-            manualChunks: (id) => {
-              // КРИТИЧНО: React и React DOM должны быть в основном bundle
-              // чтобы избежать проблем с forwardRef при code splitting
-              // Проверяем React ПЕРВЫМ и возвращаем undefined - не создавать отдельный chunk
-              if (id.includes('node_modules')) {
-                if (
-                  id.includes('/react/') || 
-                  id.includes('/react-dom/') || 
-                  id.includes('\\react\\') ||
-                  id.includes('\\react-dom\\')
-                ) {
-                  // Возвращаем undefined - React будет в основном bundle
-                  return undefined;
-                }
-                // React Router можно разделить отдельно
-                if (id.includes('/react-router/') || id.includes('\\react-router\\')) {
-                  return 'vendor-react-router';
-                }
-                // Supabase отдельно
-                if (id.includes('@supabase')) {
-                  return 'vendor-supabase';
-                }
-                // Capacitor отдельно
-                if (id.includes('@capacitor')) {
-                  return 'vendor-capacitor';
-                }
-                // Остальные vendor библиотеки
-                return 'vendor';
-              }
-              // Разделяем компоненты
-              if (id.includes('/components/step4Dialogue/')) {
-                return 'step4-dialogue';
-              }
-              if (id.includes('/components/dashboard/')) {
-                return 'dashboard';
-              }
-              if (id.includes('/components/modals/')) {
-                return 'modals';
-              }
-              if (id.includes('/components/exercise/')) {
-                return 'exercise';
-              }
-            },
+            // ВРЕМЕННО: Отключаем code splitting полностью для диагностики
+            // Это поможет понять, в чем проблема
+            manualChunks: undefined,
           },
         },
         chunkSizeWarningLimit: 600, // Увеличиваем лимит для больших чанков
