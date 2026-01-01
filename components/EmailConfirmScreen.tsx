@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../services/supabaseClient';
 import { CheckCircle, XCircle, Loader2, Crown, GraduationCap, X } from 'lucide-react';
 import { useFreePlan } from '../hooks/useFreePlan';
@@ -15,6 +16,8 @@ import {
 } from '../services/billingService';
 
 export const EmailConfirmScreen: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [status, setStatus] = useState<'loading' | 'success' | 'error' | 'showPaywall'>('loading');
   const [message, setMessage] = useState<string>('Подтверждение email...');
   const [email, setEmail] = useState<string | null>(null);
@@ -131,7 +134,7 @@ export const EmailConfirmScreen: React.FC = () => {
     if (paying) return;
     setPaying(true);
     try {
-      const returnUrl = window.location.origin + '/app?paid=1';
+      const returnUrl = window.location.origin + '/app?paid=1'; // Для внешнего редиректа на YooKassa
       const normalizedPromo = promoCode.trim();
       const res = await createYooKassaPayment({
         returnUrl,
@@ -168,19 +171,43 @@ export const EmailConfirmScreen: React.FC = () => {
     if (!trimmedEmail || !trimmedEmail.includes('@')) {
       return;
     }
+    markPaywallShown();
     setShowEmailModal(false);
     setEmail(trimmedEmail);
     createPayment(trimmedEmail);
   };
 
-  const handleContinue = () => {
-    window.location.replace('/app');
+  const markPaywallShown = () => {
+    try {
+      const key = userId ? `email_confirm_paywall_shown_${userId}` : email ? `email_confirm_paywall_shown_${email}` : null;
+      if (key) {
+        localStorage.setItem(key, '1');
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const isPaywallShown = (): boolean => {
+    try {
+      const key = userId ? `email_confirm_paywall_shown_${userId}` : email ? `email_confirm_paywall_shown_${email}` : null;
+      if (!key) return false;
+      return localStorage.getItem(key) === '1';
+    } catch {
+      return false;
+    }
+  };
+
+  const handleContinue = async () => {
+    markPaywallShown();
+    // Редиректим в /app (ProtectedRoute проверит сессию)
+    navigate('/app', { replace: true });
   };
 
   useEffect(() => {
     const confirmEmail = async () => {
       try {
-        const url = new URL(window.location.href);
+        const url = new URL(window.location.origin + location.pathname + location.search + location.hash);
         
         // Получаем параметры из URL
         const token = url.searchParams.get('token') || url.hash.match(/[#&]token=([^&]+)/)?.[1] || null;
@@ -228,10 +255,16 @@ export const EmailConfirmScreen: React.FC = () => {
             setEmail(data.user.email || emailParam || null);
             setUserId(data.user.id);
             
+            // Если есть сессия, убеждаемся что она сохранена
+            if (data.session) {
+              // Сессия уже установлена через verifyOtp, но убеждаемся что она сохранена
+              await supabase.auth.setSession(data.session);
+            }
+            
             // Для recovery типа (сброс пароля) редиректим на страницу сброса
             if (type === 'recovery') {
               setTimeout(() => {
-                window.location.href = '/#reset-password';
+                navigate('/#reset-password', { replace: true });
               }, 2000);
               return;
             }
@@ -269,10 +302,16 @@ export const EmailConfirmScreen: React.FC = () => {
               setEmail(data.user.email || emailParam || null);
               setUserId(data.user.id);
               
+              // Если есть сессия, убеждаемся что она сохранена
+              if (data.session) {
+                // Сессия уже установлена через exchangeCodeForSession, но убеждаемся что она сохранена
+                await supabase.auth.setSession(data.session);
+              }
+              
               // Для recovery типа (сброс пароля) редиректим на страницу сброса
               if (type === 'recovery') {
                 setTimeout(() => {
-                  window.location.href = '/#reset-password';
+                  navigate('/#reset-password', { replace: true });
                 }, 2000);
                 return;
               }
@@ -281,7 +320,7 @@ export const EmailConfirmScreen: React.FC = () => {
               setStatus('showPaywall');
               return;
             }
-          } catch (err: any) {
+          } catch (err) {
             throw err;
           }
         }
@@ -293,17 +332,18 @@ export const EmailConfirmScreen: React.FC = () => {
           return;
         }
 
-      } catch (err: any) {
-        console.error('[EmailConfirm] Error:', err);
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error('[EmailConfirm] Error:', error.message);
         setStatus('error');
         
         // Более понятные сообщения об ошибках
         let errorMessage = 'Не удалось подтвердить email. Ссылка могла истечь или уже использована.';
         
-        if (err?.message?.includes('code verifier')) {
+        if (error.message.includes('code verifier')) {
           errorMessage = 'Ссылка подтверждения была открыта в другом браузере или устройстве. Пожалуйста, откройте ссылку в том же браузере, где вы регистрировались, или скопируйте ссылку полностью и откройте её заново.';
-        } else if (err?.message) {
-          errorMessage = err.message;
+        } else if (error.message) {
+          errorMessage = error.message;
         }
         
         setMessage(errorMessage);
@@ -312,6 +352,16 @@ export const EmailConfirmScreen: React.FC = () => {
 
     confirmEmail();
   }, []);
+
+  // Проверяем, был ли уже показан экран paywall, и если да - редиректим в /app
+  useEffect(() => {
+    if (status === 'showPaywall' && (userId || email)) {
+      if (isPaywallShown()) {
+        // Экран уже был показан - редиректим в /app
+        navigate('/app', { replace: true });
+      }
+    }
+  }, [status, userId, email]);
 
   const priceLabel = formatPrice(String(priceValue), String(priceCurrency));
   const listPriceLabel = formatPrice('15000.00', 'RUB');
@@ -383,7 +433,6 @@ export const EmailConfirmScreen: React.FC = () => {
                 handleEmailSubmit();
               }
             }}
-            autoFocus
           />
           
           <div className="grid grid-cols-2 gap-3">
@@ -550,13 +599,13 @@ export const EmailConfirmScreen: React.FC = () => {
               <p className="text-slate-600 mb-6">{message}</p>
               <div className="space-y-3">
                 <button
-                  onClick={() => window.location.replace('/login')}
+                  onClick={() => navigate('/app', { replace: true })}
                   className="w-full px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl hover:opacity-90 transition"
                 >
                   Войти в аккаунт
                 </button>
                 <button
-                  onClick={() => window.location.replace('/')}
+                  onClick={() => navigate('/', { replace: true })}
                   className="w-full px-6 py-3 border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition"
                 >
                   Вернуться на главную
@@ -572,13 +621,13 @@ export const EmailConfirmScreen: React.FC = () => {
               <p className="text-slate-600 mb-6">{message}</p>
               <div className="space-y-3">
                 <button
-                  onClick={() => window.location.replace('/')}
+                  onClick={() => navigate('/', { replace: true })}
                   className="w-full px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl hover:opacity-90 transition"
                 >
                   Вернуться на главную
                 </button>
                 <button
-                  onClick={() => window.location.replace('/login')}
+                  onClick={() => navigate('/app', { replace: true })}
                   className="w-full px-6 py-3 border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition"
                 >
                   Попробовать снова

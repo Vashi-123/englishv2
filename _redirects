@@ -1,0 +1,6 @@
+# Surge.sh / Cloudflare Pages redirects
+# This file should be copied to dist/ after build
+
+# SPA fallback - all routes should return index.html
+/*    /index.html   200
+

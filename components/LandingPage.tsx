@@ -3,11 +3,11 @@ import { LogIn, Crown, ArrowRight, BookOpen, GraduationCap, Sparkles } from 'luc
 
 export const LandingPage: React.FC = () => {
   const handleLogin = () => {
-    window.location.replace('/login');
+    window.location.replace('/app');
   };
 
   const handlePayment = () => {
-    window.location.replace('/login?action=payment');
+    window.location.replace('/app?action=payment');
   };
 
   return (

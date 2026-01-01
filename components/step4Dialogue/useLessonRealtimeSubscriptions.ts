@@ -99,10 +99,25 @@ export function useLessonRealtimeSubscriptions({
 
   useEffect(() => {
     let unsubMessages: (() => void) | null = null;
-	    let unsubProgress: (() => void) | null = null;
+    let unsubProgress: (() => void) | null = null;
+    let isMounted = true;
 
     const initRealtime = async () => {
+      // ОПТИМИЗАЦИЯ: Очищаем предыдущую подписку перед созданием новой
+      if (unsubMessages) {
+        unsubMessages();
+        unsubMessages = null;
+      }
+      if (unsubProgress) {
+        unsubProgress();
+        unsubProgress = null;
+      }
+
+      if (!isMounted) return;
+
       unsubMessages = await subscribeChatMessages(day || 1, lesson || 1, (msg) => {
+        if (!isMounted) return;
+        
         setMessages((prev) => {
           if (msg.id) {
             const idx = prev.findIndex((m) => m.id === msg.id);
@@ -148,15 +163,22 @@ export function useLessonRealtimeSubscriptions({
         });
       }, level || 'A1');
 
-	      // chat_progress removed: completion state is derived from chat_messages (<lesson_complete> tag).
-	      unsubProgress = null;
-	    };
+      // chat_progress removed: completion state is derived from chat_messages (<lesson_complete> tag).
+      unsubProgress = null;
+    };
 
     initRealtime();
 
-	    return () => {
-	      if (unsubMessages) unsubMessages();
-	      if (unsubProgress) unsubProgress();
-	    };
-	  }, [day, lesson, level, setLessonCompletedPersisted, setMessages, hasRecordedLessonCompleteRef]);
+    return () => {
+      isMounted = false;
+      if (unsubMessages) {
+        unsubMessages();
+        unsubMessages = null;
+      }
+      if (unsubProgress) {
+        unsubProgress();
+        unsubProgress = null;
+      }
+    };
+  }, [day, lesson, level, setLessonCompletedPersisted, setMessages, hasRecordedLessonCompleteRef]);
 	}

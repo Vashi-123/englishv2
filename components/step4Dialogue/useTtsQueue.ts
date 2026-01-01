@@ -194,14 +194,34 @@ export function useTtsQueue() {
         audioRef.current = null;
       }
 
+      // ОПТИМИЗАЦИЯ: Создание и настройка аудио элемента
       const audio = new Audio(url);
       (audio as any).playsInline = true;
       (audio as any).webkitPlaysInline = true;
-      audio.preload = 'auto';
+      audio.preload = 'auto'; // Предзагрузка для уменьшения задержек
       audioRef.current = audio;
 
+      // ОПТИМИЗАЦИЯ: Асинхронная загрузка для предотвращения блокировки UI
       try {
-        audio.load();
+        // Используем requestIdleCallback для загрузки если доступен
+        if ('requestIdleCallback' in window && typeof (window as any).requestIdleCallback === 'function') {
+          (window as any).requestIdleCallback(() => {
+            try {
+              audio.load();
+            } catch {
+              // ignore
+            }
+          }, { timeout: 100 });
+        } else {
+          // Fallback: загрузка в следующем тике
+          setTimeout(() => {
+            try {
+              audio.load();
+            } catch {
+              // ignore
+            }
+          }, 0);
+        }
       } catch {
         // ignore
       }

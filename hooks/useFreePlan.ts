@@ -37,8 +37,8 @@ export function useFreePlan() {
         .maybeSingle();
       if (fetchError) throw fetchError;
 
-      const active = Boolean((data as any)?.active);
-      const n = Number((data as any)?.lesson_access_limit);
+      const active = Boolean(data?.active);
+      const n = Number(data?.lesson_access_limit);
       const resolved =
         active && Number.isFinite(n) && n >= 0 ? n : DEFAULT_FREE_LESSON_COUNT;
 

@@ -15,7 +15,6 @@ type Props = {
   onToggleRecording: () => void;
   cta?: { label: string; onClick: () => void; disabled?: boolean } | null;
   hiddenTopContent?: React.ReactNode;
-  autoFocus?: boolean;
 };
 
 export function DialogueInputBar({
@@ -30,7 +29,6 @@ export function DialogueInputBar({
   onToggleRecording,
   cta,
   hiddenTopContent,
-  autoFocus = true,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -104,9 +102,9 @@ export function DialogueInputBar({
               onChange={(e) => onInputChange(e.target.value)}
               placeholder={placeholder}
               rows={1}
+              lang="en"
               className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto"
               disabled={isLoading}
-              autoFocus={autoFocus}
             />
             <button
               type="button"

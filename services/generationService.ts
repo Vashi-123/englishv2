@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { VocabResponse, GrammarResponse, GrammarRow, CorrectionResponse, ChatMessage, DialogueStep } from "../types";
 import { supabase } from "./supabaseClient";
+import type { ApiVocabularyItem, ApiContext, ApiLessonProgress, ApiChatMessage } from "../types/api";
+import type { VocabularyRow } from "../types/vocabulary";
 import { getLocalUserId, getOrCreateLocalUser, requireAuthUserId } from "./userService";
 import { clearAllTtsCache, clearTtsCacheForLessonCacheKey, prefetchTtsForLessonScript } from './ttsAssetService';
 
@@ -80,7 +82,7 @@ const generateVocabularyViaGroq = async (
     }
 
     // Transform Groq response to VocabularyItem format
-    const vocabulary = data.map((item: any) => ({
+    const vocabulary = data.map((item: ApiVocabularyItem) => ({
       word: item.word,
       definition: item.translation || "",
       translation: item.translation || "",
@@ -113,7 +115,7 @@ const getWordsForLesson = async (lesson: number, theme?: string, wordIds?: numbe
         console.error("[ERROR] Failed to fetch words by ids:", error);
       } else if (data && data.length > 0) {
         console.log("[DEBUG] Found words by ids:", data.length);
-        return data.map((row: any) => row.word);
+        return data.map((row: VocabularyRow) => row.word);
       }
     }
 
@@ -131,7 +133,7 @@ const getWordsForLesson = async (lesson: number, theme?: string, wordIds?: numbe
 
     if (vocabData && vocabData.length > 0) {
       console.log("[DEBUG] Found", vocabData.length, "A1 words");
-      return vocabData.map((row: any) => row.word);
+      return vocabData.map((row: ApiVocabularyItem) => row.word);
     }
 
     console.warn("[WARN] No words found in vocabulary table");
@@ -494,7 +496,7 @@ export const validateDialogueAnswerV2 = async (params: {
   };
 };
 
-export const generateGeminiResponse = async (prompt: string, context?: any) => {
+export const generateGeminiResponse = async (prompt: string, context?: ApiContext) => {
   const { data, error } = await supabase.functions.invoke("gemini-chat", {
     body: { prompt, context },
   });
@@ -561,7 +563,7 @@ type LessonProgressRow = {
   lesson_id: string;
   user_id: string | null;
   level: string | null;
-  current_step_snapshot: any | null;
+  current_step_snapshot: DialogueStep | null;
   completed_at: string | null;
   updated_at: string | null;
 };
@@ -580,7 +582,7 @@ export const loadLessonInitData = async (
 ): Promise<{
   lessonId: string;
   script: string | null;
-  progress: { currentStepSnapshot: any | null; completed: boolean } | null;
+  progress: ApiLessonProgress | null;
   messages: ChatMessage[];
 }> => {
   try {
@@ -634,7 +636,7 @@ export const loadLessonInitData = async (
 
     // Process messages
     const messages: ChatMessage[] = Array.isArray(data.messages)
-      ? (data.messages as any[])
+      ? (data.messages as ApiChatMessage[])
           .filter((msg) => !isTutorSnapshot(msg.currentStepSnapshot))
           .map((msg) => ({
             id: msg.id,
@@ -668,7 +670,7 @@ export const loadLessonProgress = async (
   day: number,
   lesson: number,
   level: string = 'A1'
-): Promise<{ currentStepSnapshot: any | null; completed: boolean } | null> => {
+): Promise<ApiLessonProgress | null> => {
   try {
     const ident = await getIdentityFilter();
     const lessonId = await getLessonIdForDayLesson(day, lesson, level);
@@ -683,7 +685,7 @@ export const loadLessonProgress = async (
 
     if (error) return null;
 
-    const row = data as any;
+    const row = data as LessonProgressRow;
     return {
       currentStepSnapshot: row?.current_step_snapshot ?? null,
       completed: !!row?.completed_at,

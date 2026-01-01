@@ -87,11 +87,11 @@ export const fetchBillingProduct = async (key: string = BILLING_PRODUCT_KEY): Pr
   if (error) throw error;
   if (!data) return null;
   return {
-    key: String((data as any).key),
-    title: String((data as any).title || ""),
-    priceValue: String((data as any).price_value),
-    priceCurrency: String((data as any).price_currency || "RUB"),
-    active: Boolean((data as any).active),
+    key: String(data.key),
+    title: String(data.title || ""),
+    priceValue: String(data.price_value),
+    priceCurrency: String(data.price_currency || "RUB"),
+    active: Boolean(data.active),
   };
 };
 

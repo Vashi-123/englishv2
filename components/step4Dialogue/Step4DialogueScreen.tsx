@@ -14,7 +14,7 @@ import {
 import { useLanguage } from '../../hooks/useLanguage';
 import { getOrCreateLocalUser } from '../../services/userService';
 import { applySrsReview, getSrsReviewBatch, upsertSrsCardsFromVocab } from '../../services/srsService';
-import { parseMarkdown } from './markdown';
+import { parseMarkdown } from '../../utils/markdownOptimized';
 import {
   determineInputMode,
   extractStructuredSections,
@@ -47,7 +47,7 @@ export type Step4DialogueProps = {
   day?: number;
   lesson?: number;
   level?: string;
-  initialLessonProgress?: any | null;
+  initialLessonProgress?: unknown | null;
   onFinish: () => void;
   onNextLesson?: () => void;
   onBack?: () => void;
@@ -103,8 +103,8 @@ export function Step4DialogueScreen({
   const [isAwaitingModelReply, setIsAwaitingModelReply] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
-  const [lessonScript, setLessonScript] = useState<any | null>(null);
-  const [currentStep, setCurrentStep] = useState<any | null>(null);
+  const [lessonScript, setLessonScript] = useState<LessonScriptV2 | null>(null);
+  const [currentStep, setCurrentStep] = useState<DialogueStep | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [lessonCompletedPersisted, setLessonCompletedPersisted] = useState(false);
 
@@ -216,6 +216,7 @@ export function Step4DialogueScreen({
   }, [day, isInitializing, lesson, resolvedLanguage, resolvedLevel]);
 
   // Persist chat messages to a lightweight session cache so leaving/re-entering the lesson is instant.
+  // ОПТИМИЗАЦИЯ: Увеличиваем debounce до 300ms для уменьшения частоты записей
   const cacheTimerRef = useRef<number | null>(null);
   useEffect(() => {
     if (!day || !lesson) return;
@@ -227,7 +228,7 @@ export function Step4DialogueScreen({
     cacheTimerRef.current = window.setTimeout(() => {
       cacheChatMessages(day || 1, lesson || 1, resolvedLevel, messages);
       cacheTimerRef.current = null;
-    }, 120);
+    }, 300); // Увеличено с 120ms до 300ms для оптимизации
     return () => {
       if (cacheTimerRef.current != null) {
         window.clearTimeout(cacheTimerRef.current);
@@ -260,7 +261,7 @@ export function Step4DialogueScreen({
 	    };
 	  }, [ensureLessonContext]);
 
-  const ensureLessonScript = useCallback(async (): Promise<any> => {
+  const ensureLessonScript = useCallback(async (): Promise<LessonScriptV2> => {
     if (lessonScript) return lessonScript;
     if (!day || !lesson) throw new Error('lessonScript is required');
     const resolvedLevel = level || 'A1';
@@ -547,7 +548,7 @@ export function Step4DialogueScreen({
   );
   const constructorHydratedRef = useRef<boolean>(false);
 
-  const [vocabWords, setVocabWords] = useState<any[]>([]);
+  const [vocabWords, setVocabWords] = useState<Array<{ word: string; translation: string; lastSeenAt?: number }>>([]);
   const [vocabIndex, setVocabIndex] = useState(0);
   const [showVocab, setShowVocab] = useState(false);
   const [pendingVocabPlay, setPendingVocabPlay] = useState(false);
@@ -1470,7 +1471,29 @@ export function Step4DialogueScreen({
   const effectiveInputMode: InputMode = grammarGate.gated || ankiGateActive ? 'hidden' : inputMode;
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
   const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
-	  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
+  
+  // ОПТИМИЗАЦИЯ: Кеширование результатов парсинга markdown для избежания повторных вычислений
+  const markdownCacheRef = useRef(new Map<string, React.ReactNode>());
+  const renderMarkdown = useCallback((text: string) => {
+    if (!text) return '';
+    // Используем кеш для одинаковых текстов
+    if (markdownCacheRef.current.has(text)) {
+      return markdownCacheRef.current.get(text)!;
+    }
+    const parsed = parseMarkdown(text);
+    // Ограничиваем размер кеша (максимум 100 элементов)
+    if (markdownCacheRef.current.size >= 100) {
+      const firstKey = markdownCacheRef.current.keys().next().value;
+      markdownCacheRef.current.delete(firstKey);
+    }
+    markdownCacheRef.current.set(text, parsed);
+    return parsed;
+  }, []);
+  
+  // Очищаем кеш при смене урока
+  useEffect(() => {
+    markdownCacheRef.current.clear();
+  }, [day, lesson, level]);
 	  const acknowledgeGoalGate = useCallback(async () => {
 	    try {
 	      window.localStorage.setItem(goalAckStorageKey, '1');
@@ -1899,7 +1922,6 @@ export function Step4DialogueScreen({
               onToggleRecording={onToggleRecording}
               hiddenTopContent={null}
               cta={ankiGateActive ? null : activeCta}
-              autoFocus={!suppressInputAutofocus}
             />
           )}
         </div>

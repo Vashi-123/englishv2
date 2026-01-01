@@ -106,6 +106,8 @@ export function useDialogueDerivedMessages({
     return { separatorTitlesBefore: titles, consumedSeparatorIndices: consumed };
   }, [stripModuleTag, tryParseJsonMessage, visibleMessages]);
 
+  // ОПТИМИЗАЦИЯ: Оптимизированная версия с O(n) сложностью вместо O(n²)
+  // Вместо вложенных циклов используем один проход с отслеживанием текущей группы
   const situationGrouping = useMemo<SituationGrouping>(() => {
     const startByIndex: Record<number, number> = {};
     const groupByStart: Record<number, { start: number; end: number; scenarioIndex: number | null }> = {};
@@ -132,31 +134,84 @@ export function useDialogueDerivedMessages({
       return looksLikeSituationPlain(m.text);
     };
 
+    // ОПТИМИЗАЦИЯ: Один проход O(n) вместо O(n²)
+    let currentGroupStart: number | null = null;
+    let currentGroupEnd: number | null = null;
+    let currentGroupScenario: number | null = null;
+
     for (let i = 0; i < visibleMessages.length; i++) {
       const msg = visibleMessages[i];
-      if (!isSituationModel(msg)) continue;
-
-      let scenarioIndex: number | null = typeof msg.currentStepSnapshot?.index === 'number' ? msg.currentStepSnapshot.index : null;
-      let end = i;
-
-      for (let j = i + 1; j < visibleMessages.length; j++) {
-        const next = visibleMessages[j];
-
-        if (next.role === 'model') {
-          if (!isSituationModel(next)) break;
-
-          const nextIndex = typeof next.currentStepSnapshot?.index === 'number' ? next.currentStepSnapshot.index : null;
-          if (scenarioIndex != null && nextIndex != null && nextIndex !== scenarioIndex) break;
-          if (scenarioIndex == null && nextIndex != null) scenarioIndex = nextIndex;
+      
+      if (!isSituationModel(msg)) {
+        // Если встретили не-situation сообщение, завершаем текущую группу
+        if (currentGroupStart !== null && currentGroupEnd !== null) {
+          groupByStart[currentGroupStart] = {
+            start: currentGroupStart,
+            end: currentGroupEnd,
+            scenarioIndex: currentGroupScenario,
+          };
+          for (let k = currentGroupStart; k <= currentGroupEnd; k++) {
+            startByIndex[k] = currentGroupStart;
+          }
+          currentGroupStart = null;
+          currentGroupEnd = null;
+          currentGroupScenario = null;
         }
-
-        end = j;
+        continue;
       }
 
-      if (end > i) {
-        groupByStart[i] = { start: i, end, scenarioIndex };
-        for (let k = i; k <= end; k++) startByIndex[k] = i;
-        i = end;
+      // Это situation сообщение
+      const scenarioIndex = typeof msg.currentStepSnapshot?.index === 'number' 
+        ? msg.currentStepSnapshot.index 
+        : null;
+
+      if (currentGroupStart === null) {
+        // Начинаем новую группу
+        currentGroupStart = i;
+        currentGroupEnd = i;
+        currentGroupScenario = scenarioIndex;
+      } else if (
+        // Продолжаем группу если:
+        // 1. scenarioIndex совпадает (или оба null)
+        (currentGroupScenario === scenarioIndex || 
+         (currentGroupScenario === null && scenarioIndex === null) ||
+         (currentGroupScenario !== null && scenarioIndex !== null && currentGroupScenario === scenarioIndex)) &&
+        // 2. Нет других model сообщений между предыдущим и текущим
+        currentGroupEnd !== null &&
+        !visibleMessages.slice(currentGroupEnd + 1, i).some(m => m.role === 'model' && !isSituationModel(m))
+      ) {
+        // Продолжаем текущую группу
+        currentGroupEnd = i;
+        if (currentGroupScenario === null && scenarioIndex !== null) {
+          currentGroupScenario = scenarioIndex;
+        }
+      } else {
+        // Завершаем предыдущую группу и начинаем новую
+        if (currentGroupEnd !== null) {
+          groupByStart[currentGroupStart] = {
+            start: currentGroupStart,
+            end: currentGroupEnd,
+            scenarioIndex: currentGroupScenario,
+          };
+          for (let k = currentGroupStart; k <= currentGroupEnd; k++) {
+            startByIndex[k] = currentGroupStart;
+          }
+        }
+        currentGroupStart = i;
+        currentGroupEnd = i;
+        currentGroupScenario = scenarioIndex;
+      }
+    }
+
+    // Завершаем последнюю группу если есть
+    if (currentGroupStart !== null && currentGroupEnd !== null) {
+      groupByStart[currentGroupStart] = {
+        start: currentGroupStart,
+        end: currentGroupEnd,
+        scenarioIndex: currentGroupScenario,
+      };
+      for (let k = currentGroupStart; k <= currentGroupEnd; k++) {
+        startByIndex[k] = currentGroupStart;
       }
     }
 

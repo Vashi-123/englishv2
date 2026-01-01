@@ -37,7 +37,7 @@ export function useAppSettings() {
         .maybeSingle();
       if (fetchError) throw fetchError;
 
-      const n = Number((data as any)?.value_int);
+      const n = Number(data?.value_int);
       const resolved = Number.isFinite(n) && n >= 0 ? n : DEFAULT_FREE_LESSON_COUNT;
 
       if (!mountedRef.current) return;

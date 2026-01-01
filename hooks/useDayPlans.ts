@@ -2,15 +2,16 @@ import { useRef, useState, useEffect, useMemo } from 'react';
 import { DayPlan } from '../types';
 import { supabase } from '../services/supabaseClient';
 import { clearLessonScriptCacheFor } from '../services/generationService';
+import type { ApiDayPlan } from '../types/api';
 
 // План берём из lesson_scripts (level = 'A1'), подписываемся на realtime.
 export const useDayPlans = (level: string = 'A1') => {
   const cacheKey = `englishv2:dayPlans:${level}`;
   const sanitizePlans = (value: unknown): DayPlan[] => {
     if (!Array.isArray(value)) return [];
-    return (value as any[])
+    return (value as ApiDayPlan[])
       .filter((row) => row && typeof row === 'object')
-      .map((row: any) => ({
+      .map((row: ApiDayPlan) => ({
         day: Number(row.day),
         lesson: Number(row.lesson),
         lessonId: typeof row.lessonId === 'string' ? row.lessonId : (typeof row.lesson_id === 'string' ? row.lesson_id : undefined),

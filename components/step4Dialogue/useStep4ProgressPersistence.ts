@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { isStep4DebugEnabled } from './debugFlags';
+import { setItemObjectAsync } from '../../utils/asyncStorage';
 
 type MatchingOption = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -261,7 +262,8 @@ export function useStep4ProgressPersistence({
           keys: keys.slice(0, 20),
         });
       }
-      localStorage.setItem(findMistakeStorageKey, JSON.stringify(findMistakeUI));
+      // ОПТИМИЗАЦИЯ: Асинхронная запись в localStorage для предотвращения блокировки UI
+      void setItemObjectAsync(findMistakeStorageKey, findMistakeUI);
     } catch {
       // ignore
     }
@@ -270,7 +272,8 @@ export function useStep4ProgressPersistence({
   useEffect(() => {
     try {
       if (!constructorHydratedRef.current) return;
-      localStorage.setItem(constructorStorageKey, JSON.stringify(constructorUI));
+      // ОПТИМИЗАЦИЯ: Асинхронная запись в localStorage
+      void setItemObjectAsync(constructorStorageKey, constructorUI);
     } catch {
       // ignore
     }
@@ -279,12 +282,10 @@ export function useStep4ProgressPersistence({
   useEffect(() => {
     if (!vocabWordsLength) return;
     try {
-      localStorage.setItem(
-        vocabProgressStorageKey,
-        JSON.stringify({
-          vocabIndex,
-        })
-      );
+      // ОПТИМИЗАЦИЯ: Асинхронная запись в localStorage
+      void setItemObjectAsync(vocabProgressStorageKey, {
+        vocabIndex,
+      });
     } catch {
       // ignore
     }
@@ -294,20 +295,18 @@ export function useStep4ProgressPersistence({
     try {
       if (!matchingHydratedRef.current) return;
       if (!matchingEverStarted && !matchingPersisted) return;
-      localStorage.setItem(
-        matchingProgressStorageKey,
-        JSON.stringify({
-          matchingPersisted,
-          matchingEverStarted,
-          showMatching,
-          matchesComplete,
-          matchingInsertIndex,
-          wordOptions,
-          translationOptions,
-          selectedWord,
-          selectedTranslation,
-        })
-      );
+      // ОПТИМИЗАЦИЯ: Асинхронная запись в localStorage
+      void setItemObjectAsync(matchingProgressStorageKey, {
+        matchingPersisted,
+        matchingEverStarted,
+        showMatching,
+        matchesComplete,
+        matchingInsertIndex,
+        wordOptions,
+        translationOptions,
+        selectedWord,
+        selectedTranslation,
+      });
     } catch {
       // ignore
     }
@@ -332,7 +331,8 @@ export function useStep4ProgressPersistence({
         const ids = Array.isArray(idOrIds) ? idOrIds : [idOrIds];
         ids.filter(Boolean).forEach((id) => next.add(id));
         gatedGrammarSectionIdsRef.current = next;
-        localStorage.setItem(grammarGateStorageKey, JSON.stringify(Array.from(next)));
+        // ОПТИМИЗАЦИЯ: Асинхронная запись в localStorage
+        void setItemObjectAsync(grammarGateStorageKey, Array.from(next));
         setGrammarGateRevision((v) => v + 1);
       } catch {
         // ignore

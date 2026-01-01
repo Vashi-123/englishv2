@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../services/supabaseClient';
 import { DayPlan } from '../types';
 import { CourseModule } from '../types';
+import type { ApiCourseModule, ApiDayPlan, ApiGrammarCard } from '../types/api';
 
 export interface DashboardData {
   availableLevels: string[];
@@ -59,7 +60,7 @@ export const useDashboardData = (
       // Map the response to our interface
       const mapped: DashboardData = {
         availableLevels: rpcData.availableLevels || [],
-        courseModules: (rpcData.courseModules || []).map((m: any) => ({
+        courseModules: (rpcData.courseModules || []).map((m: ApiCourseModule) => ({
           id: m.id,
           level: m.level,
           lang: m.lang,
@@ -74,7 +75,7 @@ export const useDashboardData = (
           statusAfter: m.statusAfter,
           summary: m.summary,
         })),
-        dayPlans: (rpcData.dayPlans || []).map((p: any) => ({
+        dayPlans: (rpcData.dayPlans || []).map((p: ApiDayPlan) => ({
           day: p.day,
           lesson: p.lesson,
           lessonId: p.lessonId,
@@ -92,7 +93,7 @@ export const useDashboardData = (
           lessonAccessLimit: 3,
         },
         entitlements: rpcData.entitlements,
-        grammarCards: (rpcData.grammarCards || []).map((g: any) => ({
+        grammarCards: (rpcData.grammarCards || []).map((g: ApiGrammarCard) => ({
           day: g.day,
           lesson: g.lesson,
           theme: g.theme,

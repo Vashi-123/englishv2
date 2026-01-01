@@ -123,6 +123,7 @@ export function TutorMiniChat({
 	              onChange={(e) => setInput(e.target.value)}
 	              disabled={isAwaitingReply}
 	              placeholder={placeholder}
+	              lang="en"
 	              className="flex-1 h-11 rounded-xl bg-gray-100 px-4 text-[16px] font-medium text-gray-900 outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:opacity-60"
 	              onKeyDown={(e) => {
 	                if (e.key === 'Enter') {

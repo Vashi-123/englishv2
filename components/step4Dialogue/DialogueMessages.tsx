@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
 import { MatchingGameCard } from './MatchingGameCard';
@@ -8,6 +8,8 @@ import { AchievementCard } from './AchievementCard';
 import { tryParseJsonMessage } from './messageParsing';
 import { AnkiQuizCard } from './AnkiQuizCard';
 import { Bot, Crown } from 'lucide-react';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 type MatchingOption = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -200,9 +202,33 @@ export function DialogueMessages({
     }
     return -1;
   })();
+
+  // ОПТИМИЗАЦИЯ: Определение мобильного устройства для адаптивной оптимизации
+  const isMobile = useIsMobile();
+  
+  // ОПТИМИЗАЦИЯ: Виртуализация для длинных списков сообщений
+  // На мобильных включается раньше (при >30 сообщений), на десктопе при >50
+  const virtualizationThreshold = isMobile ? 30 : 50;
+  const shouldVirtualize = visibleMessages.length > virtualizationThreshold;
+  const virtualizer = useVirtualizer({
+    count: visibleMessages.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => 120, // примерная высота сообщения с отступами
+    overscan: isMobile ? 3 : 5, // меньше overscan на мобильных для экономии памяти
+    enabled: shouldVirtualize,
+  });
+
+  // Создаем массив виртуальных элементов для рендеринга
+  const virtualItems = useMemo(() => {
+    if (!shouldVirtualize) {
+      return null;
+    }
+    return virtualizer.getVirtualItems();
+  }, [shouldVirtualize, virtualizer]);
+
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pt-12 pb-32 bg-white w-full">
-      <div className="space-y-6">
+      <div className={shouldVirtualize ? '' : 'space-y-6'} style={shouldVirtualize ? { height: `${virtualizer.getTotalSize()}px`, position: 'relative' } : undefined}>
         {visibleMessages.length === 0 && isLoading && (
           <div className="min-h-[45vh] flex items-center justify-center">
             <div className="px-5 py-4 rounded-2xl bg-gray-50 border border-gray-200 shadow-sm">
@@ -216,7 +242,13 @@ export function DialogueMessages({
           </div>
         )}
 
-        {visibleMessages.map((msg, idx) => {
+        {(shouldVirtualize && virtualItems ? virtualItems : visibleMessages.map((_, idx) => ({ index: idx }))).map((virtualItemOrIdx) => {
+          const idx = 'index' in virtualItemOrIdx ? virtualItemOrIdx.index : virtualItemOrIdx;
+          const msg = visibleMessages[idx];
+          if (!msg) return null;
+
+          const virtualItem = shouldVirtualize && 'start' in virtualItemOrIdx ? virtualItemOrIdx : null;
+          
           const groupStart = situationGrouping.startByIndex[idx];
           if (typeof groupStart === 'number' && groupStart !== idx) return null;
           const situationGroup =
@@ -417,7 +449,22 @@ export function DialogueMessages({
           const isFullCard = isSituationCard || isVocabulary || isTaskCard || Boolean(isSeparatorOnly || showSeparator);
 
           return (
-            <div key={msgStableId} className={isFullCard ? '' : 'px-6'}>
+            <div
+              key={msgStableId}
+              className={isFullCard ? '' : 'px-6'}
+              style={
+                shouldVirtualize && virtualItem
+                  ? {
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${virtualItem.size}px`,
+                      transform: `translateY(${virtualItem.start}px)`,
+                    }
+                  : undefined
+              }
+            >
               <MessageRow
                 msg={msg}
                 idx={idx}

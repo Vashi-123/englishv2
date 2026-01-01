@@ -34,13 +34,48 @@ export default defineConfig(({ mode }) => {
           strict: false,
         },
       },
-      // Для production build - настройка для SPA роутинга
+      // Для production build - настройка для SPA роутинга и code splitting
       build: {
         rollupOptions: {
           input: {
             main: path.resolve(__dirname, 'index.html'),
           },
+          output: {
+            manualChunks: (id) => {
+              // Разделяем vendor библиотеки
+              if (id.includes('node_modules')) {
+                // React и React Router отдельно
+                if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
+                  return 'vendor-react';
+                }
+                // Supabase отдельно
+                if (id.includes('@supabase')) {
+                  return 'vendor-supabase';
+                }
+                // Capacitor отдельно
+                if (id.includes('@capacitor')) {
+                  return 'vendor-capacitor';
+                }
+                // Остальные vendor библиотеки
+                return 'vendor';
+              }
+              // Разделяем компоненты
+              if (id.includes('/components/step4Dialogue/')) {
+                return 'step4-dialogue';
+              }
+              if (id.includes('/components/dashboard/')) {
+                return 'dashboard';
+              }
+              if (id.includes('/components/modals/')) {
+                return 'modals';
+              }
+              if (id.includes('/components/exercise/')) {
+                return 'exercise';
+              }
+            },
+          },
         },
+        chunkSizeWarningLimit: 600, // Увеличиваем лимит для больших чанков
       },
       plugins: [
         react(),
@@ -51,7 +86,7 @@ export default defineConfig(({ mode }) => {
               server.middlewares.use((req, res, next) => {
                 const url = req.url?.split('?')[0] || ''; // Убираем query параметры для проверки
                 // Явно обрабатываем известные SPA маршруты
-                const spaRoutes = ['/app', '/login', '/auth/confirm', '/check'];
+                const spaRoutes = ['/app', '/auth/confirm', '/check'];
                 const isSpaRoute = spaRoutes.some(route => url === route || url.startsWith(route + '/'));
                 
                 // Если запрос не к файлу (нет расширения) и не к статическим ресурсам
@@ -128,6 +163,27 @@ export default defineConfig(({ mode }) => {
               writeFileSync(dest404, content404, 'utf-8');
             } catch (err) {
               console.warn('[vite] Failed to copy 404.html:', err);
+            }
+
+            // Copy server configuration files to dist/ for static hosting
+            const configFiles = [
+              { src: '_redirects', dest: '_redirects' }, // Surge.sh / Cloudflare Pages
+              { src: '.htaccess', dest: '.htaccess' }, // Apache
+            ];
+
+            for (const file of configFiles) {
+              try {
+                const srcPath = path.resolve(__dirname, file.src);
+                const destPath = path.resolve(__dirname, 'dist', file.dest);
+                if (existsSync(srcPath)) {
+                  let content = readFileSync(srcPath, 'utf-8');
+                  // Replace %BASE_URL% if present
+                  content = content.replace(/%BASE_URL%/g, base);
+                  writeFileSync(destPath, content, 'utf-8');
+                }
+              } catch (err) {
+                console.warn(`[vite] Failed to copy ${file.src}:`, err);
+              }
             }
           }
         }

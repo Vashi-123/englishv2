@@ -72,16 +72,18 @@ export function useChatInitialization({
           setIsLoading(false);
         }
 
-        // Load all initial data in one RPC call
-        const initData = await loadLessonInitData(day || 1, lesson || 1, level || 'A1', {
-          includeScript: !lessonScript, // Only load script if not already loaded
-          includeMessages: true,
-        });
-
-        // Cache lessonId in ensureLessonContext refs (for compatibility with existing code)
-        if (ensureLessonContextRef.current) {
-          await ensureLessonContextRef.current();
-        }
+        // ОПТИМИЗАЦИЯ: Параллельная загрузка данных
+        // loadLessonInitData уже загружает все в одном RPC, но ensureLessonContext можно выполнить параллельно
+        const [initData] = await Promise.all([
+          loadLessonInitData(day || 1, lesson || 1, level || 'A1', {
+            includeScript: !lessonScript, // Only load script if not already loaded
+            includeMessages: true,
+          }),
+          // ensureLessonContext выполняется параллельно, но не блокирует загрузку данных
+          ensureLessonContextRef.current?.().catch((err) => {
+            console.warn('[Step4Dialogue] ensureLessonContext failed (non-blocking):', err);
+          }),
+        ]);
 
         // Set progress completion status
         if (initData.progress?.completed) {

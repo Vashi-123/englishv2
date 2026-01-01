@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { Sparkles, ArrowRight, Crown, Loader2, X } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
@@ -19,6 +20,7 @@ type IntroScreenProps = {
 };
 
 export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
+  const navigate = useNavigate();
   const [step, setStep] = useState<0 | 1>(0);
   const [isMobile, setIsMobile] = useState(false);
   const { copy } = useLanguage();
@@ -103,20 +105,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     }
     
     // На больших экранах или после первого шага на мобильных - редиректим на страницу входа
-    // Используем pushState для навигации без перезагрузки
-    try {
-      window.history.pushState({}, '', '/login');
-      // Принудительно обновляем путь через событие для гарантии
-      window.dispatchEvent(new Event('pathchange'));
-      // Дополнительно обновляем через небольшой таймаут на случай, если событие не сработало
-      setTimeout(() => {
-        window.dispatchEvent(new Event('pathchange'));
-      }, 10);
-    } catch (e) {
-      console.error('[IntroScreen] pushState failed, using location.href:', e);
-      // Fallback на обычный редирект
-      window.location.href = '/login';
-    }
+    navigate('/app', { replace: true });
   };
 
   const ctaLabel = (isMobile && step === 0) ? 'Далее' : 'Начать';
@@ -145,7 +134,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         console.error('[IntroScreen] check account error:', error);
         setPaying(false);
         // Редиректим на регистрацию, так как не можем проверить существование
-        window.location.href = `/login?email=${encodeURIComponent(trimmedEmail)}&action=signup`;
+        navigate(`/app?email=${encodeURIComponent(trimmedEmail)}&action=signup`, { replace: true });
         return;
       }
       
@@ -153,7 +142,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
       if (!data || !data.ok || !data.data?.userId) {
         setPaying(false);
         // Редиректим на страницу регистрации с email
-        window.location.href = `/login?email=${encodeURIComponent(trimmedEmail)}&action=signup`;
+        navigate(`/app?email=${encodeURIComponent(trimmedEmail)}&action=signup`, { replace: true });
         return;
       }
       
@@ -164,7 +153,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
       console.error('[IntroScreen] check account catch:', err);
       setPaying(false);
       // При ошибке редиректим на регистрацию
-      window.location.href = `/login?email=${encodeURIComponent(trimmedEmail)}&action=signup`;
+      window.location.href = `/app?email=${encodeURIComponent(trimmedEmail)}&action=signup`;
     }
   };
 
@@ -211,7 +200,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     if (paying) return;
     setPaying(true);
     try {
-      const returnUrl = window.location.origin + '/app?paid=1';
+      const returnUrl = window.location.origin + '/app?paid=1'; // Для внешнего редиректа на YooKassa
       const normalizedPromo = promoCode.trim();
       const res = await createYooKassaPayment({
         returnUrl,
@@ -226,7 +215,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         return;
       }
       if (res.granted) {
-        window.location.replace('/app');
+        navigate('/app', { replace: true });
         return;
       }
       const url = res.confirmationUrl || '';
@@ -355,7 +344,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
                       handlePay();
                     }
                   }}
-                  autoFocus
                 />
               </div>
 
