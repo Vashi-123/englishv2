@@ -263,7 +263,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
 
           <div className="space-y-6">
             <div>
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mb-3">
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 mb-3 mt-10 sm:mt-0">
                 Откройте полный курс A1
               </h2>
               <p className="text-sm leading-relaxed text-slate-700">
