@@ -496,6 +496,23 @@ export const AppContent: React.FC<{
         }
       }
 
+      // ВАЖНО: Если урок когда-либо был завершен, не сбрасываем статус на false
+      // Это позволяет перезапускать завершенные уроки без блокировки следующих
+      // Проверяем как dayCompletedStatus, так и БД напрямую
+      const wasEverCompletedInState = dayCompletedStatus[checkingDay] === true;
+      const wasEverCompletedInDB = progress?.completed === true;
+      
+      // Если урок был завершен в БД или в состоянии, сохраняем статус завершения
+      if ((wasEverCompletedInState || wasEverCompletedInDB) && !resolvedCompleted) {
+        // Урок был завершен ранее, сохраняем статус завершения для разблокировки следующих уроков
+        resolvedCompleted = true;
+        console.log("[App] Lesson was previously completed, preserving completion status for unlock logic", {
+          wasEverCompletedInState,
+          wasEverCompletedInDB,
+          progressCompleted: progress?.completed,
+        });
+      }
+
       // Проверяем, что день не изменился перед установкой статуса
       if (currentDayPlan && currentDayPlan.day === checkingDay && currentDayPlan.lesson === checkingLesson) {
         setLessonCompleted(resolvedCompleted);
@@ -514,6 +531,8 @@ export const AppContent: React.FC<{
         completed: resolvedCompleted,
         currentDay: currentDayPlan?.day,
         stillValid: currentDayPlan && currentDayPlan.day === checkingDay,
+        wasEverCompletedInState,
+        wasEverCompletedInDB,
       });
     } finally {
       if (showLoading) {
