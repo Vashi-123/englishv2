@@ -42,20 +42,22 @@ export default defineConfig(({ mode }) => {
           },
           output: {
             manualChunks: (id) => {
-              // Разделяем vendor библиотеки
+              // КРИТИЧНО: React и React DOM должны быть в основном bundle
+              // чтобы избежать проблем с forwardRef при code splitting
+              // Проверяем React ПЕРВЫМ и возвращаем undefined - не создавать отдельный chunk
               if (id.includes('node_modules')) {
-                // React и React DOM должны быть в одном chunk для правильной работы forwardRef
-                // Это критично для React 19 и code splitting
-                // Используем более точную проверку для React
                 if (
                   id.includes('/react/') || 
                   id.includes('/react-dom/') || 
-                  id.includes('/react-router/') ||
                   id.includes('\\react\\') ||
-                  id.includes('\\react-dom\\') ||
-                  id.includes('\\react-router\\')
+                  id.includes('\\react-dom\\')
                 ) {
-                  return 'vendor-react';
+                  // Возвращаем undefined - React будет в основном bundle
+                  return undefined;
+                }
+                // React Router можно разделить отдельно
+                if (id.includes('/react-router/') || id.includes('\\react-router\\')) {
+                  return 'vendor-react-router';
                 }
                 // Supabase отдельно
                 if (id.includes('@supabase')) {
