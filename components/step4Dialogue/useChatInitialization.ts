@@ -3,6 +3,8 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
 import { loadLessonInitData, peekCachedChatMessages, peekCachedLessonScript, upsertLessonProgress } from '../../services/generationService';
 import { createInitialLessonMessages, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
+import { isStep4DebugEnabled } from './debugFlags';
+import { repairLessonHistory } from './lessonIntegrity';
 import { parseJsonBestEffort } from './lessonScriptUtils';
 import type { Step4PerfEventInput } from './useLessonPerfLog';
 
@@ -158,6 +160,7 @@ export function useChatInitialization({
           : peekCachedLessonScript(day || 1, lesson || 1, level || 'A1');
         const cached = opts?.forceNewChat ? null : peekCachedChatMessages(day || 1, lesson || 1, level || 'A1');
         if (!force && !opts?.forceNewChat && cached && cached.length > 0 && cachedScript) {
+          branch = 'cache-only';
           if (!lessonScript) {
             try {
               setLessonScript(parseJsonBestEffort(cachedScript, 'lessonScript'));
@@ -165,12 +168,55 @@ export function useChatInitialization({
               // ignore parse errors, fallback to RPC below
             }
           }
+          // Cache-only init must still set currentStep; otherwise progress/CTA logic can reset to 0/null.
+          // We repair the cached history best-effort using the cached script.
+          let scriptForRepair: LessonScriptV2 | null = null;
+          if (lessonScript) {
+            scriptForRepair = lessonScript as LessonScriptV2;
+          } else {
+            try {
+              scriptForRepair = parseJsonBestEffort(cachedScript, 'lessonScript') as LessonScriptV2;
+              setLessonScript(scriptForRepair);
+            } catch {
+              scriptForRepair = null;
+            }
+          }
+
+          const lastModelMsg = [...cached].reverse().find((m) => m.role === 'model' && m.currentStepSnapshot);
+          const candidateProgressStep = (lastModelMsg?.currentStepSnapshot as any) || null;
+
+          const repaired = repairLessonHistory({
+            script: scriptForRepair,
+            messages: cached,
+            progressStep: candidateProgressStep,
+          });
+
+          if (repaired.repaired && isStep4DebugEnabled('integrity')) {
+            console.warn('[Step4Dialogue] Lesson history repaired (cache-only):', repaired.reasons);
+          }
+
+          setMessages(repaired.messages);
+          setCurrentStep(repaired.currentStep);
+          setIsLoading(false);
           setIsInitializing(false);
           onPerfEvent?.({
             label: 'cacheOnlyInit',
             status: 'info',
             data: { messages: cached.length, scriptFromCache: true },
           });
+
+          if (repaired.currentStep) {
+            upsertLessonProgress({
+              day: day || 1,
+              lesson: lesson || 1,
+              level: level || 'A1',
+              currentStepSnapshot: repaired.currentStep,
+            }).catch((err) => {
+              if (isStep4DebugEnabled('integrity')) {
+                console.warn('[Step4Dialogue] upsertLessonProgress after cache-only repair failed:', err);
+              }
+            });
+          }
           return;
         }
 
@@ -212,8 +258,6 @@ export function useChatInitialization({
         // If there are saved messages, restore them
         if (!opts?.forceNewChat && initData.messages && initData.messages.length > 0) {
           console.log('[Step4Dialogue] Restoring chat history:', initData.messages.length, 'messages');
-          setMessages(initData.messages);
-          setIsLoading(false);
           branch = 'restore-history';
           onPerfEvent?.({
             label: 'restoreHistory',
@@ -221,16 +265,56 @@ export function useChatInitialization({
             data: { messages: initData.messages.length, progress: !!initData.progress },
           });
 
-          // Restore currentStep from progress or last message
-          if (initData.progress?.currentStepSnapshot) {
-            console.log('[Step4Dialogue] Restoring currentStep from lesson_progress');
-            setCurrentStep(initData.progress.currentStepSnapshot);
-          } else {
-            const lastModelMsg = [...initData.messages].reverse().find((m) => m.role === 'model' && m.currentStepSnapshot);
-            if (lastModelMsg && lastModelMsg.currentStepSnapshot) {
-              console.log('[Step4Dialogue] Restoring currentStep from history');
-              setCurrentStep(lastModelMsg.currentStepSnapshot);
+          // Ensure we have a script for integrity repair; prefer in-memory state, then RPC, then cache.
+          let scriptForRepair: LessonScriptV2 | null = null;
+          if (lessonScript) {
+            scriptForRepair = lessonScript as LessonScriptV2;
+          } else if (initData.script) {
+            try {
+              scriptForRepair = parseJsonBestEffort(initData.script, 'lessonScript') as LessonScriptV2;
+              setLessonScript(scriptForRepair);
+            } catch {
+              scriptForRepair = null;
             }
+          } else {
+            const cachedScript = peekCachedLessonScript(day || 1, lesson || 1, level || 'A1');
+            if (cachedScript) {
+              try {
+                scriptForRepair = parseJsonBestEffort(cachedScript, 'lessonScript') as LessonScriptV2;
+                setLessonScript(scriptForRepair);
+              } catch {
+                scriptForRepair = null;
+              }
+            }
+          }
+
+          const lastModelMsg = [...initData.messages].reverse().find((m) => m.role === 'model' && m.currentStepSnapshot);
+          const candidateProgressStep = (initData.progress?.currentStepSnapshot ||
+            (lastModelMsg?.currentStepSnapshot as any) ||
+            null) as any;
+
+          const repaired = repairLessonHistory({
+            script: scriptForRepair,
+            messages: initData.messages,
+            progressStep: candidateProgressStep,
+          });
+
+          if (repaired.repaired && isStep4DebugEnabled('integrity')) {
+            console.warn('[Step4Dialogue] Lesson history repaired:', repaired.reasons);
+          }
+
+          setMessages(repaired.messages);
+          setCurrentStep(repaired.currentStep);
+          setIsLoading(false);
+
+          // Keep lesson_progress aligned with the repaired step to avoid validating against a future step.
+          if (repaired.currentStep && JSON.stringify(repaired.currentStep) !== JSON.stringify(initData.progress?.currentStepSnapshot || null)) {
+            upsertLessonProgress({
+              day: day || 1,
+              lesson: lesson || 1,
+              level: level || 'A1',
+              currentStepSnapshot: repaired.currentStep,
+            }).catch((err) => console.warn('[Step4Dialogue] upsertLessonProgress after repair failed:', err));
           }
         } else if (!force && !initData.progress) {
           // No progress and no messages - start new lesson

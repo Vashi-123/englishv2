@@ -9,6 +9,7 @@ import {
   getLessonIdForDayLesson,
   loadLessonScript,
   peekCachedChatMessages,
+  peekCachedLessonScript,
   upsertLessonProgress,
 } from '../../services/generationService';
 import { useLanguage } from '../../hooks/useLanguage';
@@ -103,8 +104,29 @@ export function Step4DialogueScreen({
   const [isAwaitingModelReply, setIsAwaitingModelReply] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
-  const [lessonScript, setLessonScript] = useState<any | null>(null);
-  const [currentStep, setCurrentStep] = useState<any | null>(null);
+  const [lessonScript, setLessonScript] = useState<any | null>(() => {
+    if (!day || !lesson) return null;
+    const cached = peekCachedLessonScript(day, lesson, resolvedLevel);
+    if (!cached) return null;
+    try {
+      return parseJsonBestEffort(cached, 'lessonScript');
+    } catch {
+      return null;
+    }
+  });
+  const [currentStep, setCurrentStep] = useState<any | null>(() => {
+    const fromProps = (initialLessonProgress as any)?.currentStepSnapshot ?? null;
+    if (fromProps && typeof fromProps === 'object') return fromProps;
+    if (!day || !lesson) return null;
+    const cached = peekCachedChatMessages(day, lesson, resolvedLevel) || [];
+    for (let i = cached.length - 1; i >= 0; i--) {
+      const msg = cached[i];
+      if (msg?.role !== 'model') continue;
+      const snap = (msg as any).currentStepSnapshot;
+      if (snap?.type) return snap;
+    }
+    return null;
+  });
   const [isInitializing, setIsInitializing] = useState(true);
   const [lessonCompletedPersisted, setLessonCompletedPersisted] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
@@ -1271,6 +1293,7 @@ export function Step4DialogueScreen({
     determineInputMode,
     processAudioQueue,
     uiGateHidden: ankiGateActive,
+    isAwaitingModelReply,
     vocabProgressStorageKey,
     grammarGateHydrated,
     grammarGateRevision,
@@ -1537,39 +1560,115 @@ export function Step4DialogueScreen({
     window.setTimeout(() => matchingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }, [messages.length, vocabWords]);
 
-  const activeSituationKeys = useMemo(() => {
-    if (currentStep?.type !== 'situations') return [];
-    const keys = new Set<string>();
-
-    const scenarioIndex =
-      typeof currentStep?.index === 'number' && Number.isFinite(currentStep.index) ? currentStep.index : null;
-    if (scenarioIndex != null) {
-      keys.add(`scenario-${scenarioIndex}`);
+  const activeSituation = useMemo(() => {
+    const groupsAll = situationGrouping?.groupByStart ? Object.values(situationGrouping.groupByStart) : [];
+    const visibleLen = gatedVisibleMessages.length;
+    const groups = groupsAll.filter((g) => typeof g?.end === 'number' && g.end >= 0 && g.end < visibleLen);
+    if (!groups.length) {
+      return { keys: [] as string[], hasUserReply: false, completedCorrect: false, step: null as any };
     }
 
-    const groups = situationGrouping?.groupByStart ? Object.values(situationGrouping.groupByStart) : [];
-    const sortedGroups = groups.sort((a, b) => a.start - b.start);
+    const sortedGroups = [...groups].sort((a, b) => a.start - b.start);
+    const scenarioIndexHint =
+      currentStep?.type === 'situations' && typeof currentStep?.index === 'number' && Number.isFinite(currentStep.index)
+        ? currentStep.index
+        : null;
     const matchingGroup =
-      scenarioIndex != null
-        ? sortedGroups.find((g) => g.scenarioIndex === scenarioIndex)
+      scenarioIndexHint != null
+        ? sortedGroups.find((g) => g.scenarioIndex === scenarioIndexHint) || sortedGroups[sortedGroups.length - 1]
         : sortedGroups[sortedGroups.length - 1];
-
-    if (matchingGroup) {
-      const msg = visibleMessages[matchingGroup.start];
-      if (msg) {
-        const stableId = getMessageStableId(msg, matchingGroup.start);
-        keys.add(`msg-${stableId}`);
-      }
-      if (matchingGroup.scenarioIndex != null) {
-        keys.add(`scenario-${matchingGroup.scenarioIndex}`);
-      }
+    if (!matchingGroup) {
+      return { keys: [] as string[], hasUserReply: false, completedCorrect: false, step: null as any };
     }
 
-    return Array.from(keys);
-  }, [currentStep, getMessageStableId, situationGrouping, visibleMessages]);
+    const keys = new Set<string>();
+    if (typeof matchingGroup.scenarioIndex === 'number' && Number.isFinite(matchingGroup.scenarioIndex)) {
+      keys.add(`scenario-${matchingGroup.scenarioIndex}`);
+    }
+    for (let i = matchingGroup.start; i <= matchingGroup.end; i += 1) {
+      const msg = gatedVisibleMessages[i];
+      if (!msg) continue;
+      keys.add(`msg-${getMessageStableId(msg, i)}`);
+    }
 
-  const situationAwaitingStart = activeSituationKeys.some((key) => key && !startedSituations[key]);
-  const firstPendingSituationKey = activeSituationKeys.find((key) => key && !startedSituations[key]) || null;
+    const groupMessages = gatedVisibleMessages.slice(matchingGroup.start, matchingGroup.end + 1);
+    const hasUserReply = groupMessages.some((m) => m.role === 'user' && stripModuleTag(m.text || '').trim());
+
+    const hasFeedback = groupMessages.some((m) => {
+      if (m.role !== 'model') return false;
+      const raw = stripModuleTag(m.text || '').trim();
+      if (!raw.startsWith('{')) return false;
+      try {
+        const p = JSON.parse(raw);
+        return p?.type === 'situation' && typeof p?.feedback === 'string' && p.feedback.trim().length > 0;
+      } catch {
+        return false;
+      }
+    });
+
+    const situationResult = (() => {
+      for (let i = groupMessages.length - 1; i >= 0; i--) {
+        const m = groupMessages[i];
+        if (m.role !== 'model') continue;
+        const raw = stripModuleTag(m.text || '').trim();
+        if (!raw.startsWith('{')) continue;
+        try {
+          const p = JSON.parse(raw);
+          if (p?.type !== 'situation') continue;
+          if (typeof p?.result === 'string') return String(p.result);
+          if (p?.awaitingContinue && p?.prev_user_correct === true) return 'correct';
+        } catch {
+          // ignore
+        }
+      }
+      return null;
+    })();
+
+    const nextModelAfterSituation = (() => {
+      for (let k = matchingGroup.end + 1; k < gatedVisibleMessages.length; k += 1) {
+        if (gatedVisibleMessages[k]?.role === 'model') return gatedVisibleMessages[k];
+      }
+      return null;
+    })();
+
+    const advancedPastSituation = (() => {
+      if (!nextModelAfterSituation) return false;
+      const t = nextModelAfterSituation.currentStepSnapshot?.type;
+      if (t !== 'situations') return true;
+      const nextIdx = nextModelAfterSituation.currentStepSnapshot?.index;
+      if (typeof matchingGroup.scenarioIndex !== 'number' || typeof nextIdx !== 'number') return false;
+      return nextIdx !== matchingGroup.scenarioIndex;
+    })();
+
+    const completedCorrect = Boolean(
+      hasUserReply && (situationResult === 'correct' || (situationResult == null && !hasFeedback && advancedPastSituation))
+    );
+
+    const step = (() => {
+      for (let i = matchingGroup.end; i >= matchingGroup.start; i--) {
+        const m = gatedVisibleMessages[i];
+        if (!m || m.role !== 'model') continue;
+        const snap: any = m.currentStepSnapshot;
+        if (snap?.type === 'situations') return snap;
+      }
+      if (typeof matchingGroup.scenarioIndex === 'number' && Number.isFinite(matchingGroup.scenarioIndex)) {
+        return { type: 'situations', index: matchingGroup.scenarioIndex, subIndex: 0 };
+      }
+      return null;
+    })();
+
+    return { keys: Array.from(keys), hasUserReply, completedCorrect, step };
+  }, [currentStep, gatedVisibleMessages, getMessageStableId, situationGrouping]);
+
+  const activeSituationKeys = activeSituation.keys;
+  const situationAwaitingStart = Boolean(
+    activeSituationKeys.length > 0 &&
+      !activeSituation.hasUserReply &&
+      !activeSituation.completedCorrect &&
+      activeSituationKeys.some((key) => key && !startedSituations[key])
+  );
+  const firstPendingSituationKey =
+    situationAwaitingStart ? activeSituationKeys.find((key) => key && !startedSituations[key]) || null : null;
 
   const effectiveInputMode: InputMode =
     grammarGate.gated || ankiGateActive || situationAwaitingStart ? 'hidden' : inputMode;
@@ -1663,14 +1762,24 @@ export function Step4DialogueScreen({
     }
 
     // 3. Situations start gate
-    if (currentStep?.type === 'situations') {
-      if (firstPendingSituationKey && situationAwaitingStart) {
-        return {
-          label: 'Начать',
-          onClick: () => startSituation(activeSituationKeys.length ? activeSituationKeys : firstPendingSituationKey),
-          disabled: isLoading,
-        };
-      }
+    if (firstPendingSituationKey && situationAwaitingStart) {
+      return {
+        label: 'Начать',
+        onClick: () => {
+          const step = activeSituation.step;
+          if (step && currentStep?.type !== 'situations') {
+            setCurrentStep(step);
+            upsertLessonProgress({
+              day: day || 1,
+              lesson: lesson || 1,
+              level: resolvedLevel,
+              currentStepSnapshot: step,
+            }).catch(() => {});
+          }
+          startSituation(activeSituationKeys.length ? activeSituationKeys : firstPendingSituationKey);
+        },
+        disabled: isLoading,
+      };
     }
 
     // 3. Vocabulary Next Word
@@ -1804,9 +1913,13 @@ export function Step4DialogueScreen({
     showVocab,
     vocabWords,
     vocabIndex,
+    day,
+    lesson,
     activeSituationKeys,
+    activeSituation.step,
     firstPendingSituationKey,
     situationAwaitingStart,
+    resolvedLevel,
     shouldShowVocabCheckButton,
     handleCheckVocabulary,
     messages,
@@ -1820,9 +1933,21 @@ export function Step4DialogueScreen({
     currentStep,
     startedSituations,
     startSituation,
+    setCurrentStep,
   ]);
 
   const lessonProgress = useMemo(() => {
+    const effectiveStep = (() => {
+      if (currentStep?.type) return currentStep;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (!msg || msg.role !== 'model') continue;
+        const snap = (msg as any).currentStepSnapshot;
+        if (snap?.type) return snap;
+      }
+      return null;
+    })();
+
     const getScriptWordsCount = (script: any | null): number => {
       if (!script) return 0;
       const words = (script as any).words;
@@ -1833,10 +1958,9 @@ export function Step4DialogueScreen({
     };
 
     const vocabWordsCount = (vocabWords?.length || 0) > 0 ? vocabWords.length : getScriptWordsCount(lessonScript);
-    // VOCABULARY is a single task regardless of words count.
-    const vocabTaskCount = vocabWordsCount > 0 ? 1 : 0;
-    const matchingCount = vocabWordsCount > 0 ? 1 : 0;
-    const grammarCount =
+    const vocabUnitCount = vocabWordsCount > 0 ? vocabWordsCount : 0;
+    const matchingUnitCount = vocabWordsCount > 0 ? vocabWordsCount : 0;
+    const grammarUnitCount =
       lessonScript?.grammar?.audio_exercise?.expected || lessonScript?.grammar?.text_exercise?.expected ? 1 : 0;
     const constructorCount = lessonScript?.constructor?.tasks?.length || 0;
     const findMistakeCount = lessonScript?.find_the_mistake?.tasks?.length || 0;
@@ -1853,31 +1977,38 @@ export function Step4DialogueScreen({
     })();
 
     const total =
-      vocabTaskCount + matchingCount + grammarCount + constructorCount + findMistakeCount + situationsCount;
+      vocabUnitCount + matchingUnitCount + grammarUnitCount + constructorCount + findMistakeCount + situationsCount;
     if (!total) return { percent: 0, label: '' };
 
     const clamp = (value: number) => Math.max(0, Math.min(total, value));
 
-    const prefixAfterWords = vocabTaskCount + matchingCount;
-    const prefixAfterGrammar = prefixAfterWords + grammarCount;
+    const prefixAfterWords = vocabUnitCount + matchingUnitCount;
+    const prefixAfterGrammar = prefixAfterWords + grammarUnitCount;
     const prefixAfterConstructor = prefixAfterGrammar + constructorCount;
     const prefixAfterFindMistake = prefixAfterConstructor + findMistakeCount;
 
-    const stepType = String(currentStep?.type || '');
-    const stepIndex = Number.isFinite(currentStep?.index) ? Number(currentStep.index) : 0;
-    const stepSubIndex = Number.isFinite((currentStep as any)?.subIndex) ? Number((currentStep as any).subIndex) : 0;
+    const stepType = String(effectiveStep?.type || '');
+    const stepIndex = Number.isFinite((effectiveStep as any)?.index) ? Number((effectiveStep as any).index) : 0;
+    const stepSubIndex = Number.isFinite((effectiveStep as any)?.subIndex)
+      ? Number((effectiveStep as any).subIndex)
+      : 0;
 
     let completed = 0;
     if (!stepType || stepType === 'goal') {
       completed = 0;
     } else if (stepType === 'words') {
-      const vocabDone = !showVocab || (vocabWordsCount > 0 && vocabIndex >= vocabWordsCount - 1);
-      const vocabProgress = vocabTaskCount ? (vocabDone ? 1 : 0) : 0;
-      const matchingProgress = matchingCount && (showMatching || matchesComplete) ? 1 : 0;
-      completed = vocabProgress + matchingProgress;
+      const vocabWithin =
+        vocabUnitCount > 0 && showVocab ? Math.min(Math.max(0, vocabIndex) + 1, vocabUnitCount) : 0;
+      const matchedPairs =
+        matchingUnitCount > 0 && wordOptions.length > 0 ? wordOptions.filter((w) => w && w.matched).length : 0;
+      const matchingWithin = matchesComplete
+        ? matchingUnitCount
+        : showMatching
+          ? Math.min(Math.max(0, matchedPairs), matchingUnitCount)
+          : 0;
+      completed = vocabWithin + matchingWithin;
     } else if (stepType === 'grammar') {
-      const inPractice = (Number.isFinite(currentStep?.index) ? Number(currentStep.index) : 0) >= 1;
-      completed = prefixAfterWords + (inPractice ? 1 : 0);
+      completed = prefixAfterWords + (grammarUnitCount ? 1 : 0);
     } else if (stepType === 'constructor') {
       const within = Math.min(Math.max(0, stepIndex) + 1, constructorCount);
       completed = prefixAfterGrammar + within;
@@ -1914,11 +2045,13 @@ export function Step4DialogueScreen({
     (currentStep as any)?.subIndex,
     currentStep?.type,
     lessonScript,
+    messages,
     matchesComplete,
     showMatching,
     showVocab,
     vocabIndex,
     vocabWords,
+    wordOptions,
   ]);
 
   const overlayVisible = isInitializing || (isLoading && messages.length === 0);
@@ -2037,7 +2170,7 @@ export function Step4DialogueScreen({
               isTranscribing={isTranscribing}
               onToggleRecording={onToggleRecording}
               hiddenTopContent={null}
-              cta={ankiGateActive ? null : activeCta}
+              cta={ankiGateActive && !situationAwaitingStart ? null : activeCta}
               autoFocus={!suppressInputAutofocus}
             />
           )}

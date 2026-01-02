@@ -8,6 +8,7 @@ export function useMessageDrivenUi({
   determineInputMode,
   processAudioQueue,
   uiGateHidden,
+  isAwaitingModelReply,
   vocabProgressStorageKey,
   grammarGateHydrated,
   grammarGateRevision,
@@ -51,6 +52,7 @@ export function useMessageDrivenUi({
   setPendingVocabPlay: Dispatch<SetStateAction<boolean>>;
   setGoalGatePending: Dispatch<SetStateAction<boolean>>;
   vocabWords: any[];
+  isAwaitingModelReply?: boolean;
 }) {
   const goalVocabTimerRef = useRef<number | null>(null);
   const vocabFirstPlayQueuedRef = useRef<Set<string>>(new Set());
@@ -65,9 +67,20 @@ export function useMessageDrivenUi({
       setInputMode('hidden');
       return;
     }
+    if (isAwaitingModelReply) {
+      setInputMode('hidden');
+      return;
+    }
     if (messages.length === 0) return;
-    const lastMsg = messages[messages.length - 1];
-    if (lastMsg.role !== 'model' || !lastMsg.text) return;
+    let lastMsg: ChatMessage | null = null;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i];
+      if (msg.role === 'model' && msg.text) {
+        lastMsg = msg;
+        break;
+      }
+    }
+    if (!lastMsg) return;
 
     // Если в истории уже есть скрытые сообщения после грамматики,
     // не запускаем автопроигрывание/показ ввода до нажатия «Далее».
@@ -199,6 +212,7 @@ export function useMessageDrivenUi({
     goalSeenRef,
     goalGatePending,
     goalGateAcknowledged,
+    isAwaitingModelReply,
     isInitializingRef,
     restoredVocabIndexRef,
     appliedVocabRestoreKeyRef,

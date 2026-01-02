@@ -639,7 +639,8 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     };
 
     if (!currentStep?.type) {
-      sendJson(res, 400, { isCorrect: false, feedback: "Missing currentStep for validation" }, corsHeaders);
+      // Never hard-fail validation: keep the lesson unblocked.
+      sendJson(res, 200, { isCorrect: false, feedback: "Missing currentStep for validation" }, corsHeaders);
       return;
     }
 
@@ -666,14 +667,16 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
         expected = script.grammar.text_exercise.expected;
         stepType = "grammar_text_exercise";
       } else {
-        sendJson(res, 400, { isCorrect: false, feedback: "No grammar exercise in script" }, corsHeaders);
+        console.warn("[groq-lesson-v2] No grammar exercise in script; skipping validation", { lessonId, currentStep });
+        sendJson(res, 200, { isCorrect: true, feedback: "" }, corsHeaders);
         return;
       }
       extra = `Задание/правило: ${script.grammar?.explanation || ""}`;
     } else if (currentStep.type === "constructor") {
       const task = script.constructor?.tasks?.[currentStep.index];
       if (!task?.correct) {
-        sendJson(res, 400, { isCorrect: false, feedback: "Invalid constructor task" }, corsHeaders);
+        console.warn("[groq-lesson-v2] Invalid constructor task; skipping validation", { lessonId, currentStep });
+        sendJson(res, 200, { isCorrect: true, feedback: "" }, corsHeaders);
         return;
       }
       expected = task.correct;
@@ -685,7 +688,8 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
       const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
       if (!scenario || !normalized) {
-        sendJson(res, 400, { isCorrect: false, feedback: "Invalid situation scenario" }, corsHeaders);
+        console.warn("[groq-lesson-v2] Invalid situation scenario; skipping validation", { lessonId, currentStep });
+        sendJson(res, 200, { isCorrect: true, feedback: "" }, corsHeaders);
         return;
       }
       if (normalized.isLessonCompletion) {

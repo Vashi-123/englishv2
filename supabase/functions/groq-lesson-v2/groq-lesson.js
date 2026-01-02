@@ -663,8 +663,9 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     };
 
     if (!currentStep?.type) {
+      // Never hard-fail validation: keep the lesson unblocked.
       return new Response(JSON.stringify({ isCorrect: false, feedback: "Missing currentStep for validation" }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -694,8 +695,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
         expected = script.grammar.text_exercise.expected;
         stepType = "grammar_text_exercise";
       } else {
-        return new Response(JSON.stringify({ isCorrect: false, feedback: "No grammar exercise in script" }), {
-          status: 400,
+        console.warn("[groq-lesson-v2] No grammar exercise in script; skipping validation", {
+          lessonId,
+          currentStep,
+        });
+        return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -703,8 +708,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     } else if (currentStep.type === "constructor") {
       const task = script.constructor?.tasks?.[currentStep.index];
       if (!task?.correct) {
-        return new Response(JSON.stringify({ isCorrect: false, feedback: "Invalid constructor task" }), {
-          status: 400,
+        console.warn("[groq-lesson-v2] Invalid constructor task; skipping validation", {
+          lessonId,
+          currentStep,
+        });
+        return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -717,8 +726,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
       const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
       if (!scenario || !normalized) {
-        return new Response(JSON.stringify({ isCorrect: false, feedback: "Invalid situation scenario" }), {
-          status: 400,
+        console.warn("[groq-lesson-v2] Invalid situation scenario; skipping validation", {
+          lessonId,
+          currentStep,
+        });
+        return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
