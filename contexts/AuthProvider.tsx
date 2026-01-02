@@ -43,14 +43,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const isNative = Capacitor.isNativePlatform();
 
   const refreshSession = useCallback(async () => {
-    // Таймаут для принудительного завершения через 10 секунд
+    // Таймаут для принудительного завершения через 5 секунд (уменьшили с 10)
     const timeoutId = typeof window !== 'undefined' ? window.setTimeout(() => {
-      console.warn('[Auth] refreshSession timeout after 10s, forcing completion');
+      console.warn('[Auth] refreshSession timeout after 5s, forcing completion');
       setLoading(false);
-    }, 10000) : null;
+    }, 5000) : null;
 
     try {
-      const { data, error } = await supabase.auth.getSession();
+      // Используем Promise.race для таймаута запроса - если запрос не завершится за 4 секунды, используем null сессию
+      const sessionPromise = supabase.auth.getSession();
+      const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
+        setTimeout(() => {
+          console.warn('[Auth] getSession timeout after 4s, using null session');
+          resolve({ data: { session: null }, error: null });
+        }, 4000);
+      });
+      
+      const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
+      
       if (error) console.error('[Auth] getSession error:', error);
       const currentSession = data.session ?? null;
       setSession(currentSession);
@@ -170,6 +180,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setLoading(false);
         return;
       }
+      
+      // На iOS: синхронизируем сессию из Preferences в localStorage при старте
+      if (isNative && Capacitor.getPlatform() === 'ios') {
+        try {
+          const { Preferences } = await import('@capacitor/preferences');
+          // Ищем все ключи Supabase в Preferences
+          const projectRef = import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] || '';
+          const supabaseAuthKey = projectRef ? `sb-${projectRef}-auth-token` : null;
+          const keys = [supabaseAuthKey, 'sb-auth-token'].filter(Boolean) as string[];
+          
+          for (const key of keys) {
+            try {
+              const { value } = await Preferences.get({ key });
+              if (value) {
+                // Восстанавливаем в localStorage
+                window.localStorage.setItem(key, value);
+              }
+            } catch {
+              // ignore
+            }
+          }
+          
+          // Также проверяем все ключи localStorage, которые могут быть ключами Supabase
+          for (let i = 0; i < window.localStorage.length; i++) {
+            const key = window.localStorage.key(i);
+            if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+              const value = window.localStorage.getItem(key);
+              if (value) {
+                // Синхронизируем с Preferences
+                Preferences.set({ key, value }).catch(() => {
+                  // ignore
+                });
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('[Auth] Failed to sync Preferences on iOS:', err);
+        }
+      }
+      
       try {
         const url = new URL(window.location.href);
         const code = url.searchParams.get('code');

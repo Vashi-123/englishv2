@@ -216,6 +216,8 @@ export const AppContent: React.FC<{
       wordsModalTimerRef.current = null;
     }
     setShowWordsModal(true);
+    // Активируем модал сразу, чтобы он открывался даже если загрузка слов зависает
+    window.requestAnimationFrame(() => setWordsModalActive(true));
     setWordsLoading(true);
     try {
       const words = await getAllUserWords({
@@ -228,6 +230,7 @@ export const AppContent: React.FC<{
       setUserWords([]);
     } finally {
       setWordsLoading(false);
+      // Повторно активируем после загрузки (на случай, если первая анимация была сброшена)
       window.requestAnimationFrame(() => setWordsModalActive(true));
     }
   }, [level, language]);
@@ -1142,7 +1145,16 @@ export const AppContent: React.FC<{
             if (confirmAction === 'reset') {
               await handleResetProgress();
             } else {
-              await onSignOut();
+              // Таймаут для выхода - принудительно закрываем через 6 секунд
+              const signOutPromise = onSignOut();
+              const timeoutPromise = new Promise<void>((resolve) => {
+                setTimeout(() => {
+                  console.warn('[ConfirmModal] Sign out timeout, forcing close');
+                  resolve();
+                }, 6000);
+              });
+              
+              await Promise.race([signOutPromise, timeoutPromise]);
             }
           } catch (err) {
             console.error('[ConfirmModal] action failed:', err);

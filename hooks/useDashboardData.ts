@@ -45,11 +45,19 @@ export const useDashboardData = (
     setError(null);
 
     try {
-      const { data: rpcData, error: rpcError } = await supabase.rpc('get_dashboard_data', {
+      // Таймаут для RPC запроса - не ждем больше 8 секунд
+      const timeoutMs = 8000;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Dashboard data request timeout')), timeoutMs);
+      });
+
+      const rpcPromise = supabase.rpc('get_dashboard_data', {
         p_user_id: userId || null,
         p_level: level,
         p_lang: lang,
       });
+
+      const { data: rpcData, error: rpcError } = await Promise.race([rpcPromise, timeoutPromise]);
 
       if (rpcError) throw rpcError;
 
@@ -140,7 +148,24 @@ export const useDashboardData = (
       // ignore
     }
 
+    let isMounted = true;
     void load();
+
+    // Принудительное завершение загрузки через 10 секунд на случай зависания
+    const forceTimeout = typeof window !== 'undefined' ? window.setTimeout(() => {
+      if (isMounted) {
+        console.warn('[useDashboardData] Force stopping loading after 10s timeout');
+        setLoading(false);
+        setError(new Error('Загрузка данных заняла слишком много времени. Попробуйте обновить страницу.'));
+      }
+    }, 10000) : null;
+
+    return () => {
+      isMounted = false;
+      if (forceTimeout && typeof window !== 'undefined') {
+        window.clearTimeout(forceTimeout);
+      }
+    };
   }, [load]);
 
   return { data, loading, error, reload: load };
