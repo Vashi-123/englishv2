@@ -131,6 +131,7 @@ export type AudioQueueItem = {
   text: string;
   lang: string;
   kind: string;
+  meta?: { vocabIndex?: number; vocabKind?: 'word' | 'example' };
 };
 
 export type VocabWord = {

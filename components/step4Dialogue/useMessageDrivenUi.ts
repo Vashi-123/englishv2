@@ -19,12 +19,14 @@ export function useMessageDrivenUi({
   isInitializingRef,
   restoredVocabIndexRef,
   appliedVocabRestoreKeyRef,
+  vocabProgressHydrated,
   setInputMode,
   setShowVocab,
   setVocabWords,
   setVocabIndex,
   setPendingVocabPlay,
   setGoalGatePending,
+  vocabWords,
 }: {
   messages: ChatMessage[];
   determineInputMode: (parsed: any, msg: ChatMessage) => InputMode;
@@ -41,12 +43,14 @@ export function useMessageDrivenUi({
   isInitializingRef: MutableRefObject<boolean>;
   restoredVocabIndexRef: MutableRefObject<number | null>;
   appliedVocabRestoreKeyRef: MutableRefObject<string | null>;
+  vocabProgressHydrated: boolean;
   setInputMode: Dispatch<SetStateAction<InputMode>>;
   setShowVocab: Dispatch<SetStateAction<boolean>>;
   setVocabWords: Dispatch<SetStateAction<any[]>>;
   setVocabIndex: Dispatch<SetStateAction<number>>;
   setPendingVocabPlay: Dispatch<SetStateAction<boolean>>;
   setGoalGatePending: Dispatch<SetStateAction<boolean>>;
+  vocabWords: any[];
 }) {
   const goalVocabTimerRef = useRef<number | null>(null);
   const vocabFirstPlayQueuedRef = useRef<Set<string>>(new Set());
@@ -148,10 +152,20 @@ export function useMessageDrivenUi({
 
     if (parsed?.type === 'words_list' && Array.isArray(parsed.words)) {
       setVocabWords(parsed.words || []);
-      const desired = isInitializingRef.current ? restoredVocabIndexRef.current : null;
+      const hasAppliedRestore = appliedVocabRestoreKeyRef.current === vocabProgressStorageKey;
+      const restoredIdx = typeof restoredVocabIndexRef.current === 'number' ? restoredVocabIndexRef.current : null;
+      const vocabHydrated = vocabProgressHydrated;
+      const desired =
+        !hasAppliedRestore && restoredIdx != null
+          ? restoredIdx
+          : restoredIdx != null && isInitializingRef.current
+            ? restoredIdx
+            : null;
       const maxIdx = Math.max((parsed.words?.length || 0) - 1, 0);
       setVocabIndex(typeof desired === 'number' ? Math.min(Math.max(desired, 0), maxIdx) : 0);
-      appliedVocabRestoreKeyRef.current = vocabProgressStorageKey;
+      if (vocabHydrated || restoredIdx != null) {
+        appliedVocabRestoreKeyRef.current = vocabProgressStorageKey;
+      }
       if (!vocabFirstPlayQueuedRef.current.has(vocabProgressStorageKey)) {
         vocabFirstPlayQueuedRef.current.add(vocabProgressStorageKey);
         setPendingVocabPlay(true);
@@ -188,6 +202,7 @@ export function useMessageDrivenUi({
     isInitializingRef,
     restoredVocabIndexRef,
     appliedVocabRestoreKeyRef,
+    vocabProgressHydrated,
     setInputMode,
     setGoalGatePending,
     setShowVocab,
@@ -198,6 +213,7 @@ export function useMessageDrivenUi({
 
   // If we loaded chat history and the last message isn't words_list, restore vocab progress from history.
   useEffect(() => {
+    if (!vocabProgressHydrated && restoredVocabIndexRef.current == null) return;
     if (!isInitializing) return;
     if (!messages.length) return;
     if (appliedVocabRestoreKeyRef.current === vocabProgressStorageKey) return;
@@ -230,6 +246,7 @@ export function useMessageDrivenUi({
     isInitializing,
     messages,
     restoredVocabIndexRef,
+    vocabProgressHydrated,
     setPendingVocabPlay,
     setShowVocab,
     setVocabIndex,
@@ -244,4 +261,30 @@ export function useMessageDrivenUi({
       if (goalVocabTimerRef.current != null) window.clearTimeout(goalVocabTimerRef.current);
     };
   }, []);
+
+  // Late-apply restored vocab index if the restore ran after messages processed.
+  useEffect(() => {
+    const desired = restoredVocabIndexRef.current;
+    if (desired == null) return;
+    if (!vocabProgressHydrated && appliedVocabRestoreKeyRef.current !== vocabProgressStorageKey) return;
+    if (appliedVocabRestoreKeyRef.current === vocabProgressStorageKey) return;
+    if (!Array.isArray(vocabWords) || vocabWords.length === 0) return;
+    const maxIdx = Math.max(vocabWords.length - 1, 0);
+    const clamped = Math.min(Math.max(desired, 0), maxIdx);
+    setVocabIndex(clamped);
+    appliedVocabRestoreKeyRef.current = vocabProgressStorageKey;
+    setPendingVocabPlay(false);
+    setShowVocab(goalGateAcknowledged && !goalGatePending);
+  }, [
+    vocabWords,
+    vocabProgressStorageKey,
+    vocabProgressHydrated,
+    appliedVocabRestoreKeyRef,
+    restoredVocabIndexRef,
+    setVocabIndex,
+    setPendingVocabPlay,
+    setShowVocab,
+    goalGateAcknowledged,
+    goalGatePending,
+  ]);
 }

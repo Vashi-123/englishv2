@@ -60,7 +60,7 @@ export const MessageRow: React.FC<Props> = ({
   showGrammarGateButton,
   onPressGrammarNext,
 }) => {
-  const isFullCard = isTaskCard || isVocabulary || isSituationCard;
+  const isFullCard = isTaskCard || isVocabulary || isSituationCard || isSeparatorOnly || showSeparatorTitle;
 
   if (isSeparatorOnly) {
     return (
@@ -77,7 +77,7 @@ export const MessageRow: React.FC<Props> = ({
       ))}
 
       {shouldInsertMatchingHere && (
-        <div className="w-full flex justify-center mb-6 px-4">
+        <div className="w-full flex justify-center mb-6">
           <div className="w-full max-w-2xl px-1">
             <MatchingGameCard {...matching} />
           </div>

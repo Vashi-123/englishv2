@@ -116,8 +116,8 @@ export function useVocabFlow({
     const first = vocabWords[0];
     if (first) {
       const firstQueue: AudioQueueItem[] = [
-        { text: first.word, lang: 'en', kind: 'word' },
-        { text: first.context, lang: 'en', kind: 'example' },
+        { text: first.word, lang: 'en', kind: 'word', meta: { vocabIndex: 0, vocabKind: 'word' } },
+        { text: first.context, lang: 'en', kind: 'example', meta: { vocabIndex: 0, vocabKind: 'example' } },
       ];
       processAudioQueue(firstQueue);
     }

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Проверка переменных окружения</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #0f0;
+    }
+    .check {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #0f0;
+      border-radius: 4px;
+    }
+    .ok { color: #0f0; }
+    .error { color: #f00; }
+    .warning { color: #ff0; }
+  </style>
+</head>
+<body>
+  <h1>Проверка переменных окружения</h1>
+  <div id="results"></div>
+  
+  <script type="module">
+    const results = document.getElementById('results');
+    
+    // Проверяем переменные, которые доступны через import.meta.env
+    // В production они встраиваются в код при сборке
+    const checks = [
+      {
+        name: 'VITE_SUPABASE_URL',
+        value: import.meta.env.VITE_SUPABASE_URL,
+        required: true
+      },
+      {
+        name: 'VITE_SUPABASE_ANON_KEY',
+        value: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        required: true
+      },
+      {
+        name: 'VITE_SITE_URL',
+        value: import.meta.env.VITE_SITE_URL,
+        required: false
+      }
+    ];
+    
+    checks.forEach(check => {
+      const div = document.createElement('div');
+      div.className = 'check';
+      
+      if (check.value) {
+        div.className += ' ok';
+        const displayValue = check.name.includes('KEY') 
+          ? check.value.substring(0, 20) + '...' 
+          : check.value;
+        div.innerHTML = `✓ ${check.name}: ${displayValue}`;
+      } else {
+        div.className += check.required ? ' error' : ' warning';
+        const status = check.required ? '✗ ОТСУТСТВУЕТ (ОБЯЗАТЕЛЬНО!)' : '⚠ Не установлена (опционально)';
+        div.innerHTML = `${status} ${check.name}`;
+      }
+      
+      results.appendChild(div);
+    });
+    
+    // Дополнительная проверка через window
+    const windowCheck = document.createElement('div');
+    windowCheck.className = 'check';
+    windowCheck.innerHTML = `📍 Текущий origin: ${window.location.origin}`;
+    results.appendChild(windowCheck);
+  </script>
+</body>
+</html>
+

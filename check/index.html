@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>GoPractice / Check</title>
     <link rel="icon" type="image/x-icon" href="%BASE_URL%favicon.ico?v=2" />
+    <script>
+      (function () {
+        const originalWarn = console.warn.bind(console);
+        const allowWarning = typeof localStorage !== 'undefined' && localStorage.getItem('debug_tailwind_warning') === 'true';
+        console.warn = (...args) => {
+          if (
+            !allowWarning &&
+            typeof args[0] === 'string' &&
+            args[0].includes('cdn.tailwindcss.com should not be used in production')
+          ) {
+            return;
+          }
+          originalWarn(...args);
+        };
+      })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
       :root {

@@ -118,10 +118,14 @@ export function parseMarkdown(text: string): React.ReactNode {
         </code>
       );
     } else if (matchItem.type === 'header') {
+      const isTaskHeader = /задани/i.test(matchItem.text);
+      const headerClass = isTaskHeader
+        ? 'text-xs uppercase text-brand-primary font-bold tracking-wider my-2 border border-purple-300/80 rounded-lg px-3 py-1.5 bg-purple-50/60'
+        : 'text-xs uppercase text-brand-primary font-bold tracking-wider my-2';
       parts.push(
         <div
           key={key++}
-          className="text-xs uppercase text-brand-primary font-bold tracking-wider my-2"
+          className={headerClass}
         >
           {matchItem.text}
         </div>

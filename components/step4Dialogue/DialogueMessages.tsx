@@ -1,4 +1,4 @@
-import React, { useMemo, useCallback } from 'react';
+import React, { useMemo, useCallback, useEffect, useState, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
 import { MatchingGameCard } from './MatchingGameCard';
@@ -93,11 +93,12 @@ export function DialogueMessages({
 
         nextLessonNumber,
         nextLessonIsPremium,
-	        ankiGateActive,
-	        ankiIntroText,
-	        ankiQuizItems,
-	        onAnkiAnswer,
-	        onAnkiComplete,
+        ankiGateActive,
+        ankiIntroText,
+        ankiQuizItems,
+        onAnkiAnswer,
+        onAnkiComplete,
+        startedSituations,
 				}: {
   scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
@@ -179,9 +180,10 @@ export function DialogueMessages({
 
 	        ankiGateActive?: boolean;
 	        ankiIntroText?: string;
-	        ankiQuizItems?: Array<{ id?: number; word: string; translation: string }>;
-	        onAnkiAnswer?: (params: { id?: number; word: string; translation: string; isCorrect: boolean }) => void;
-	        onAnkiComplete?: () => void;
+        ankiQuizItems?: Array<{ id?: number; word: string; translation: string }>;
+        onAnkiAnswer?: (params: { id?: number; word: string; translation: string; isCorrect: boolean }) => void;
+        onAnkiComplete?: () => void;
+        startedSituations: Record<string, boolean>;
 			}) {
   let findMistakeOrdinal = 0;
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
@@ -244,36 +246,38 @@ export function DialogueMessages({
     };
   }, [visibleMessages]);
   
-  // ОПТИМИЗАЦИЯ iOS: Виртуализация включается раньше на iOS для лучшей производительности
-  // iOS: 10 сообщений, мобильные: 15, десктоп: 30
-  const virtualizationThreshold = isIOSDevice ? 10 : isMobile ? 15 : 30;
-  const shouldVirtualize = visibleMessages.length > virtualizationThreshold;
-  
-  const virtualizer = useVirtualizer({
-    count: visibleMessages.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize,
-    overscan: isIOSDevice ? 1 : isMobile ? 2 : 5, // Минимальный overscan на iOS для экономии памяти
-    enabled: shouldVirtualize,
-    // iOS оптимизация: динамическое измерение высоты для точности
-    measureElement: isIOSDevice ? (el) => {
-      if (!el) return 120;
-      const rect = el.getBoundingClientRect();
-      return rect.height || 120;
-    } : undefined,
-  });
+  // Виртуализацию отключаем — возвращаем прежний рендер без абсолютного позиционирования,
+  // чтобы исключить пустые экраны после переходов между задачами.
+  const shouldVirtualize = false;
 
-  // Создаем массив виртуальных элементов для рендеринга
-  const virtualItems = useMemo(() => {
-    if (!shouldVirtualize) {
-      return null;
+  // Небольшая пауза перед показом карточек Anki, чтобы разделить вступительное сообщение и сами карточки.
+  const [showAnkiCard, setShowAnkiCard] = useState(false);
+  const ankiCardRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (ankiGateActive && !lessonCompletedPersisted) {
+      const timer = window.setTimeout(() => setShowAnkiCard(true), 500);
+      return () => {
+        window.clearTimeout(timer);
+        setShowAnkiCard(false);
+      };
     }
-    return virtualizer.getVirtualItems();
-  }, [shouldVirtualize, virtualizer]);
+    setShowAnkiCard(false);
+  }, [ankiGateActive, lessonCompletedPersisted]);
+
+  useEffect(() => {
+    if (!showAnkiCard) return;
+    // После появления карточки Anki плавно прокручиваем к ней, как в других блоках.
+    const el = ankiCardRef.current;
+    if (!el) return;
+    const handle = window.requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [showAnkiCard]);
 
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pt-12 pb-32 bg-white w-full">
-      <div className={shouldVirtualize ? '' : 'space-y-6'} style={shouldVirtualize ? { height: `${virtualizer.getTotalSize()}px`, position: 'relative' } : undefined}>
+      <div className={shouldVirtualize ? '' : 'space-y-6'}>
         {visibleMessages.length === 0 && isLoading && (
           <div className="min-h-[45vh] flex items-center justify-center">
             <div className="px-5 py-4 rounded-2xl bg-gray-50 border border-gray-200 shadow-sm">
@@ -287,13 +291,7 @@ export function DialogueMessages({
           </div>
         )}
 
-        {(shouldVirtualize && virtualItems ? virtualItems : visibleMessages.map((_, idx) => ({ index: idx }))).map((virtualItemOrIdx) => {
-          const idx = 'index' in virtualItemOrIdx ? virtualItemOrIdx.index : virtualItemOrIdx;
-          const msg = visibleMessages[idx];
-          if (!msg) return null;
-
-          const virtualItem = shouldVirtualize && 'start' in virtualItemOrIdx ? virtualItemOrIdx : null;
-          
+        {visibleMessages.map((msg, idx) => {
           const groupStart = situationGrouping.startByIndex[idx];
           if (typeof groupStart === 'number' && groupStart !== idx) return null;
           const situationGroup =
@@ -494,22 +492,7 @@ export function DialogueMessages({
           const isFullCard = isSituationCard || isVocabulary || isTaskCard || Boolean(isSeparatorOnly || showSeparator);
 
           return (
-            <div
-              key={msgStableId}
-              className={isFullCard ? '' : 'px-6'}
-              style={
-                shouldVirtualize && virtualItem
-                  ? {
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      height: `${virtualItem.size}px`,
-                      transform: `translateY(${virtualItem.start}px)`,
-                    }
-                  : undefined
-              }
-            >
+            <div key={msgStableId} className={isFullCard ? '' : 'px-6'}>
               <MessageRow
                 msg={msg}
                 idx={idx}
@@ -593,6 +576,7 @@ export function DialogueMessages({
                   extractStructuredSections={extractStructuredSections}
                   stripModuleTag={stripModuleTag}
                   renderMarkdown={renderMarkdown}
+                  startedSituations={startedSituations}
                 />
               </MessageRow>
             </div>
@@ -643,26 +627,30 @@ export function DialogueMessages({
 
         {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
           <>
-            <AchievementCard />
+            <div className="w-full flex justify-center">
+              <div className="w-full max-w-[480px] sm:max-w-[520px]">
+                <AchievementCard />
+              </div>
+            </div>
             {onNextLesson && (
-              <div className="flex flex-col items-center -mt-2 mb-8 gap-3 animate-fade-in w-full">
-	                {onNextLesson && (
-	                  <button
-	                    type="button"
-	                    onClick={onNextLesson}
-	                    className="w-full max-w-sm inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-[0_14px_34px_rgba(251,146,60,0.35)] ring-2 ring-amber-200/70 hover:shadow-[0_18px_40px_rgba(244,63,94,0.22)] hover:scale-[1.02] active:scale-[0.99] transition"
-	                  >
-	                    <span className="inline-flex items-center gap-2">
-	                      Следующий урок
-	                      {nextLessonIsPremium && (
-	                        <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-black">
-	                          <Crown className="w-3.5 h-3.5" />
-	                          Premium{typeof nextLessonNumber === 'number' ? ` · ${nextLessonNumber}` : ''}
-	                        </span>
-	                      )}
-	                    </span>
-	                  </button>
-	                )}
+              <div className="flex flex-col items-center -mt-4 mb-8 gap-3 animate-fade-in w-full">
+                <div className="w-full max-w-[480px] sm:max-w-[520px]">
+                  <button
+                    type="button"
+                    onClick={onNextLesson}
+                    className="w-full inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-[0_14px_34px_rgba(251,146,60,0.35)] ring-2 ring-amber-200/70 hover:shadow-[0_18px_40px_rgba(244,63,94,0.22)] hover:scale-[1.02] active:scale-[0.99] transition"
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      Следующий урок
+                      {nextLessonIsPremium && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-black">
+                          <Crown className="w-3.5 h-3.5" />
+                          Premium{typeof nextLessonNumber === 'number' ? ` · ${nextLessonNumber}` : ''}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </div>
               </div>
             )}
           </>
@@ -683,17 +671,19 @@ export function DialogueMessages({
               </div>
             </div>
             <div className="w-full flex justify-center px-4">
-              <div className="w-full max-w-2xl px-1">
-                <AnkiQuizCard
-                  items={ankiQuizItems || []}
-                  total={8}
-                  direction="ru->en"
-                  onAnswer={(p) => onAnkiAnswer?.(p)}
-                  onComplete={() => onAnkiComplete?.()}
-                  playAudio={(text, lang = 'en') => {
-                    processAudioQueue([{ text, lang, kind: 'word' }]);
-                  }}
-                />
+              <div className="w-full max-w-2xl px-1" ref={ankiCardRef}>
+                {showAnkiCard && (
+                  <AnkiQuizCard
+                    items={ankiQuizItems || []}
+                    total={8}
+                    direction="ru->en"
+                    onAnswer={(p) => onAnkiAnswer?.(p)}
+                    onComplete={() => onAnkiComplete?.()}
+                    playAudio={(text, lang = 'en') => {
+                      processAudioQueue([{ text, lang, kind: 'word' }]);
+                    }}
+                  />
+                )}
               </div>
             </div>
           </>

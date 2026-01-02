@@ -1,8 +1,7 @@
 import React from 'react';
 import { Check, Languages } from 'lucide-react';
+import type { AudioQueueItem } from '../../types';
 import { CardHeading } from './CardHeading';
-
-type AudioItem = { text: string; lang: string; kind: string };
 
 export type VocabWord = {
   word: string;
@@ -15,7 +14,7 @@ type Props = {
   show: boolean;
   words: VocabWord[];
   vocabIndex: number;
-  currentAudioItem: AudioItem | null;
+  currentAudioItem: AudioQueueItem | null;
   onRegisterWordEl: (index: number, el: HTMLDivElement | null) => void;
   onPlayWord: (word: VocabWord) => void;
   onNextWord: () => void;
@@ -62,8 +61,33 @@ export function VocabularyListCard({
 
       <div className="space-y-3">
         {visibleWords.map((w, i) => {
-          const isWordSpeaking = currentAudioItem?.text === w.word;
-          const isExampleSpeaking = currentAudioItem?.text === w.context;
+          const normalizeText = (text?: string) => String(text || '').replace(/\s+/g, ' ').trim().toLowerCase();
+          
+          const isWordSpeaking = (() => {
+            if (!currentAudioItem) return false;
+            if (currentAudioItem.meta?.vocabKind === 'word' && currentAudioItem.meta.vocabIndex === i) {
+              return true;
+            }
+            if (currentAudioItem.kind === 'word') {
+              const normalizedItemText = normalizeText(currentAudioItem.text);
+              const normalizedWord = normalizeText(w.word);
+              return normalizedItemText && normalizedWord && normalizedItemText === normalizedWord;
+            }
+            return false;
+          })();
+          
+          const isExampleSpeaking = (() => {
+            if (!currentAudioItem || !w.context) return false;
+            if (currentAudioItem.meta?.vocabKind === 'example' && currentAudioItem.meta.vocabIndex === i) {
+              return true;
+            }
+            if (currentAudioItem.kind === 'example') {
+              const normalizedItemText = normalizeText(currentAudioItem.text);
+              const normalizedContext = normalizeText(w.context);
+              return normalizedItemText && normalizedContext && normalizedItemText === normalizedContext;
+            }
+            return false;
+          })();
 
           return (
             <div
@@ -76,7 +100,7 @@ export function VocabularyListCard({
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Слово</div>
                 <div className="flex items-baseline gap-3">
                   <span
-                    className={`text-xl font-bold tracking-tight leading-none ${isWordSpeaking ? 'text-brand-primary' : 'text-gray-900'}`}
+                    className={`text-xl font-bold tracking-tight leading-none ${isWordSpeaking ? 'text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded-lg' : 'text-gray-900'}`}
                   >
                     {w.word}
                   </span>
@@ -87,7 +111,7 @@ export function VocabularyListCard({
 
               <div className="relative">
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Пример</div>
-                <p className={`text-[15px] leading-relaxed ${isExampleSpeaking ? 'text-brand-primary' : 'text-gray-800'}`}>
+                <p className={`text-[15px] leading-relaxed ${isExampleSpeaking ? 'text-brand-primary bg-brand-primary/10 px-1.5 py-0.5 rounded-lg' : 'text-gray-800'}`}>
                   {w.context}
                 </p>
                 {w.context_translation && <p className="text-sm text-gray-400 mt-0.5 leading-relaxed">{w.context_translation}</p>}

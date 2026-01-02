@@ -217,7 +217,7 @@ export function ConstructorCard({
 
         {words.length > 0 && (
           <>
-            <div className="flex flex-wrap gap-2 pt-2">
+            <div className="flex flex-wrap gap-3 pt-2">
               {words.map((word, i) => {
                 const used = pickedWordIndices.includes(i);
                 return (
@@ -226,7 +226,7 @@ export function ConstructorCard({
                     type="button"
                     onClick={() => onPickWord(i)}
                     disabled={completed || isLoading}
-                    className={`px-3 py-1.5 rounded-full border text-sm font-semibold shadow-sm transition disabled:opacity-50 ${
+                    className={`px-4 py-2 rounded-full border text-base font-semibold shadow-sm transition disabled:opacity-50 ${
                       used
                         ? 'border-brand-primary/40 bg-brand-primary/10 text-brand-primary'
                         : 'border-gray-200 bg-white text-gray-900 hover:border-brand-primary/30 hover:bg-brand-primary/5'

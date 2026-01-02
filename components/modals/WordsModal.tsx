@@ -76,7 +76,7 @@ export const WordsModal: React.FC<WordsModalProps> = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ${
+      className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ease-out backdrop-blur-[2px] ${
         isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
       aria-modal="true"
@@ -86,7 +86,11 @@ export const WordsModal: React.FC<WordsModalProps> = ({
       <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="relative h-full w-full flex flex-col">
-        <div className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
+        <div
+          className={`w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full transform-gpu transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            isActive ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-3 scale-[0.98]'
+          }`}
+        >
           <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
@@ -275,4 +279,3 @@ export const WordsModal: React.FC<WordsModalProps> = ({
     document.body
   );
 };
-

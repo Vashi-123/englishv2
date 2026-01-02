@@ -8,6 +8,7 @@ interface ConfirmModalProps {
   action: 'reset' | 'signout' | null;
   onConfirm: () => Promise<void>;
   onCancel: () => void;
+  isProcessing?: boolean;
 }
 
 export const ConfirmModal: React.FC<ConfirmModalProps> = ({
@@ -16,6 +17,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   action,
   onConfirm,
   onCancel,
+  isProcessing = false,
 }) => {
   if (!isOpen || !action) return null;
 
@@ -65,15 +67,23 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <button
             type="button"
             onClick={async () => {
+              if (isProcessing) return;
               await onConfirm();
             }}
-            className={`h-11 rounded-2xl text-white font-bold shadow-lg transition hover:opacity-90 ${
+            disabled={isProcessing}
+            className={`h-11 rounded-2xl text-white font-bold shadow-lg transition hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed ${
               isReset
                 ? 'bg-gradient-to-r from-amber-500 to-rose-500 shadow-amber-500/20'
                 : 'bg-gradient-to-r from-rose-600 to-rose-500 shadow-rose-600/20'
             }`}
           >
-            {confirmLabel}
+            {isProcessing ? (
+              <div className="flex items-center justify-center gap-2">
+                <div className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              confirmLabel
+            )}
           </button>
         </div>
       </div>
@@ -81,4 +91,3 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     document.body
   );
 };
-

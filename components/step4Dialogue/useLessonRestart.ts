@@ -66,6 +66,7 @@ export function useLessonRestart({
     setVocabIndex: Dispatch<SetStateAction<number>>;
     setShowVocab: Dispatch<SetStateAction<boolean>>;
     setPendingVocabPlay: Dispatch<SetStateAction<boolean>>;
+    setVocabProgressHydrated: Dispatch<SetStateAction<boolean>>;
   };
 
   findMistake: {
@@ -103,7 +104,7 @@ export function useLessonRestart({
 
   setAnkiDone: Dispatch<SetStateAction<boolean>>;
 
-  initializeChat: (force?: boolean) => Promise<void>;
+  initializeChat: (force?: boolean, opts?: { ignoreCompleted?: boolean; forceNewChat?: boolean }) => Promise<void>;
 }) {
   const resolvedLevel = level || 'A1';
   const legacyKeyFor = (key: string) => key.replace(`:${resolvedLevel}:`, ':');
@@ -138,6 +139,7 @@ export function useLessonRestart({
       vocab.setVocabIndex(0);
       vocab.setShowVocab(false);
       vocab.setPendingVocabPlay(false);
+      vocab.setVocabProgressHydrated(false);
 
       findMistake.setFindMistakeUI({});
       constructor.setConstructorUI({});
@@ -189,20 +191,45 @@ export function useLessonRestart({
       // Optimistic reset: clear any cached messages immediately, then delete DB rows.
       clearChatMessagesCache(day || 1, lesson || 1, resolvedLevel);
 
-      // Delete from DB (retry a couple of times). We still await before re-seeding to avoid deleting new rows.
-      const attempts = 3;
-      for (let i = 0; i < attempts; i += 1) {
-        try {
-          await resetLessonDialogue(day || 1, lesson || 1, resolvedLevel);
-          break;
-        } catch (err) {
-          if (i === attempts - 1) throw err;
-          await new Promise((r) => setTimeout(r, 350 * (i + 1)));
+      // Delete from DB in background with timeout to avoid blocking UI spinner forever.
+      const resetPromise = (async () => {
+        const attempts = 3;
+        for (let i = 0; i < attempts; i += 1) {
+          try {
+            await resetLessonDialogue(day || 1, lesson || 1, resolvedLevel);
+            break;
+          } catch (err) {
+            if (i === attempts - 1) throw err;
+            await new Promise((r) => setTimeout(r, 350 * (i + 1)));
+          }
         }
+      })();
+
+      // Don't block UI on reset: wait a short window, then re-init chat regardless.
+      await Promise.race([resetPromise, new Promise((resolve) => setTimeout(resolve, 3500))]);
+
+      // Safety: sometimes initializeChat can hang (network/RPC). Race it with a timeout so spinner clears.
+      const initResult = await Promise.race([
+        initializeChat(true, {
+          ignoreCompleted: true,
+          forceNewChat: true,
+          includeMessages: false,
+          skipInitRpc: true, // restart from cached script/lesson_id without waiting for RPC
+        }),
+        new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 20000)),
+      ]);
+      if (initResult === 'timeout') {
+        console.error('[Step4Dialogue] initializeChat timed out after reset; forcing idle state');
       }
-      await initializeChat(true);
+
+      // Ensure errors from reset are surfaced in logs even if they finished after the race.
+      resetPromise.catch((error) => console.error('[Step4Dialogue] reset lesson background error:', error));
     } catch (error) {
       console.error('[Step4Dialogue] Error restarting lesson:', error);
+      setIsLoading(false);
+      setIsInitializing(false);
+    } finally {
+      // Fallback: if initializeChat bailed early/timed out, make sure the loader hides.
       setIsLoading(false);
       setIsInitializing(false);
     }

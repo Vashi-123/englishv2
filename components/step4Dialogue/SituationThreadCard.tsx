@@ -17,6 +17,7 @@ type Props = {
   showContinue?: boolean;
   continueLabel?: string;
   onContinue?: () => void;
+  started?: boolean;
   isLoading?: boolean;
   currentAudioItem?: AudioQueueItem | null;
   processAudioQueue?: (queue: Array<{ text: string; lang: string; kind: string }>, messageId?: string) => void;
@@ -33,6 +34,7 @@ export function SituationThreadCard({
   showContinue,
   continueLabel = 'Далее',
   onContinue,
+  started = true,
   isLoading,
   currentAudioItem,
   processAudioQueue,
@@ -42,6 +44,7 @@ export function SituationThreadCard({
   const [shownTranslations, setShownTranslations] = useState<Record<number, boolean>>({});
   const [revealStage, setRevealStage] = useState<0 | 1 | 2>(2);
   const revealTokenRef = useRef(0);
+  const [dialogueVisible, setDialogueVisible] = useState<boolean>(Boolean(started));
 
   const lastCorrectUserIndex = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i--) {
@@ -67,6 +70,11 @@ export function SituationThreadCard({
 
   const lastAiSignatureRef = useRef<string>('');
   useLayoutEffect(() => {
+    if (!started) {
+      setRevealStage(0);
+      lastAiSignatureRef.current = lastAiSignature;
+      return;
+    }
     // Only stage-reveal while we are actually awaiting a reply (prevents "flash then hide" on history load/hydration).
     if (!isLoading) {
       lastAiSignatureRef.current = lastAiSignature;
@@ -96,7 +104,19 @@ export function SituationThreadCard({
       window.clearTimeout(t1);
       window.clearTimeout(t2);
     };
-  }, [isLoading, lastAiSignature, lastCorrectUserIndex]);
+  }, [isLoading, lastAiSignature, lastCorrectUserIndex, started]);
+
+  useEffect(() => {
+    if (!started) {
+      setDialogueVisible(false);
+      return;
+    }
+    setRevealStage(2);
+    const timer = window.setTimeout(() => setDialogueVisible(true), 260);
+    return () => window.clearTimeout(timer);
+  }, [started]);
+
+  const showDialogue = Boolean(started && dialogueVisible);
 
   const renderTaskBanner = (text: string) => (
     <div className="w-full flex justify-center">
@@ -151,6 +171,13 @@ export function SituationThreadCard({
             </div>
           </div>
 
+          {!showDialogue ? (
+            <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50/80 p-5 text-center space-y-3">
+              <div className="text-sm font-semibold text-gray-600">
+                Нажми «Начать» и приступим к диалогу
+              </div>
+            </div>
+          ) : (
 	          <div
 	            className={`mt-4 rounded-2xl border p-3 space-y-3 ${
 	              completedCorrect ? 'border-green-200 bg-green-50/60' : 'border-gray-100 bg-gray-50/60'
@@ -357,6 +384,7 @@ export function SituationThreadCard({
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

@@ -56,6 +56,18 @@ const writeLessonScriptToSession = (cacheKey: string, script: string) => {
   }
 };
 
+export const peekCachedLessonScript = (day: number, lesson: number, level: string): string | null => {
+  const cacheKey = getLessonScriptCacheKey(day, lesson, level);
+  const mem = lessonScriptCache.get(cacheKey);
+  if (mem) return mem;
+  const sessionCached = readLessonScriptFromSession(cacheKey);
+  if (sessionCached) {
+    lessonScriptCache.set(cacheKey, sessionCached);
+    return sessionCached;
+  }
+  return null;
+};
+
 /**
  * Call Groq edge function to generate vocabulary with translations
  */

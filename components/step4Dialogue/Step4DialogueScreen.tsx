@@ -12,7 +12,6 @@ import {
   upsertLessonProgress,
 } from '../../services/generationService';
 import { useLanguage } from '../../hooks/useLanguage';
-import { useIsIOS } from '../../utils/platform';
 import { getOrCreateLocalUser } from '../../services/userService';
 import { applySrsReview, getSrsReviewBatch, upsertSrsCardsFromVocab } from '../../services/srsService';
 import { parseMarkdown } from '../../utils/markdownOptimized';
@@ -48,7 +47,7 @@ export type Step4DialogueProps = {
   day?: number;
   lesson?: number;
   level?: string;
-  initialLessonProgress?: unknown | null;
+  initialLessonProgress?: any | null;
   onFinish: () => void;
   onNextLesson?: () => void;
   onBack?: () => void;
@@ -104,10 +103,11 @@ export function Step4DialogueScreen({
   const [isAwaitingModelReply, setIsAwaitingModelReply] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
-  const [lessonScript, setLessonScript] = useState<LessonScriptV2 | null>(null);
-  const [currentStep, setCurrentStep] = useState<DialogueStep | null>(null);
+  const [lessonScript, setLessonScript] = useState<any | null>(null);
+  const [currentStep, setCurrentStep] = useState<any | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
   const [lessonCompletedPersisted, setLessonCompletedPersisted] = useState(false);
+  const [initError, setInitError] = useState<string | null>(null);
 
   const [showTranslations, setShowTranslations] = useState<Record<number, boolean>>({});
 
@@ -121,52 +121,28 @@ export function Step4DialogueScreen({
   const [suppressInputAutofocus, setSuppressInputAutofocus] = useState(false);
 
   const didSignalReadyRef = useRef(false);
+  useEffect(() => {
+    if (didSignalReadyRef.current) return;
+    const hasRenderable = messages.length > 0 || (!isInitializing && !isLoading);
+    const isOverlayVisible = isInitializing || (isLoading && messages.length === 0);
+    if (hasRenderable && !isOverlayVisible) {
+      didSignalReadyRef.current = true;
+      onReady?.();
+    }
+  }, [isInitializing, isLoading, messages.length, onReady]);
+
   const { currentAudioItem, isPlayingQueue, processAudioQueue, resetTtsState, cancel: cancelTts } = useTtsQueue();
   const [vocabMicReady, setVocabMicReady] = useState(false);
   const vocabAudioActiveRef = useRef(false);
   const vocabAudioFallbackTimerRef = useRef<number | null>(null);
   const isPlayingQueueRef = useRef(false);
-  
-  // ОПТИМИЗАЦИЯ iOS: Группировка связанных ref-обновлений для уменьшения ре-рендеров
+  const currentAudioItemRef = useRef<any>(null);
   useEffect(() => {
     isPlayingQueueRef.current = isPlayingQueue;
-    isInitializingRef.current = isInitializing;
-  }, [isPlayingQueue, isInitializing]);
-  
-  // ОПТИМИЗАЦИЯ iOS: Группировка логики готовности и скролла
+  }, [isPlayingQueue]);
   useEffect(() => {
-    // Логика готовности
-    if (!didSignalReadyRef.current) {
-      const isOverlayVisible = isInitializing || (isLoading && messages.length === 0);
-      if (!isOverlayVisible && messages.length > 0) {
-        didSignalReadyRef.current = true;
-        onReady?.();
-      }
-    }
-    
-    // Логика начального скролла
-    const key = `${day || 1}_${lesson || 1}_${resolvedLevel}_${resolvedLanguage}`;
-    if (didInitialScrollKeyRef.current !== key) {
-      didInitialScrollKeyRef.current = null;
-    }
-    if (isInitializing) {
-      didInitialScrollKeyRef.current = null;
-      return;
-    }
-    if (didInitialScrollKeyRef.current === key) return;
-
-    didInitialScrollKeyRef.current = key;
-    const container = scrollContainerRef.current;
-    const end = messagesEndRef.current;
-    window.requestAnimationFrame(() => {
-      if (container) {
-        const targetTop = Math.max(0, container.scrollHeight - container.clientHeight);
-        container.scrollTo({ top: targetTop, behavior: 'auto' });
-      } else {
-        end?.scrollIntoView({ behavior: 'auto', block: 'end' });
-      }
-    });
-  }, [isInitializing, isLoading, messages.length, onReady, day, lesson, resolvedLanguage, resolvedLevel]);
+    currentAudioItemRef.current = currentAudioItem;
+  }, [currentAudioItem]);
   const clearVocabAudioFallback = useCallback(() => {
     if (vocabAudioFallbackTimerRef.current) {
       window.clearTimeout(vocabAudioFallbackTimerRef.current);
@@ -216,15 +192,38 @@ export function Step4DialogueScreen({
   const goalSeenRef = useRef<boolean>(false);
   const hasRecordedLessonCompleteRef = useRef<boolean>(false);
   const isInitializingRef = useRef<boolean>(true);
+  useEffect(() => {
+    isInitializingRef.current = isInitializing;
+  }, [isInitializing]);
+
   const didInitialScrollKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${day || 1}_${lesson || 1}_${resolvedLevel}_${resolvedLanguage}`;
+    if (didInitialScrollKeyRef.current !== key) {
+      didInitialScrollKeyRef.current = null;
+    }
+    if (isInitializing) {
+      didInitialScrollKeyRef.current = null;
+      return;
+    }
+    if (didInitialScrollKeyRef.current === key) return;
+
+    didInitialScrollKeyRef.current = key;
+    const container = scrollContainerRef.current;
+    const end = messagesEndRef.current;
+    window.requestAnimationFrame(() => {
+      if (container) {
+        const targetTop = Math.max(0, container.scrollHeight - container.clientHeight);
+        container.scrollTo({ top: targetTop, behavior: 'auto' });
+      } else {
+        end?.scrollIntoView({ behavior: 'auto', block: 'end' });
+      }
+    });
+  }, [day, isInitializing, lesson, resolvedLanguage, resolvedLevel]);
 
   // Persist chat messages to a lightweight session cache so leaving/re-entering the lesson is instant.
-  // ОПТИМИЗАЦИЯ iOS: Увеличиваем debounce до 300ms для уменьшения частоты записей
   const cacheTimerRef = useRef<number | null>(null);
-  
-  // ОПТИМИЗАЦИЯ iOS: Группировка кеширования сообщений и очистки markdown кеша
   useEffect(() => {
-    // Кеширование сообщений
     if (!day || !lesson) return;
     if (isInitializing) return;
     if (cacheTimerRef.current != null) {
@@ -234,11 +233,7 @@ export function Step4DialogueScreen({
     cacheTimerRef.current = window.setTimeout(() => {
       cacheChatMessages(day || 1, lesson || 1, resolvedLevel, messages);
       cacheTimerRef.current = null;
-    }, 300); // Увеличено с 120ms до 300ms для оптимизации
-    
-    // Очистка markdown кеша при смене урока
-    markdownCacheRef.current.clear();
-    
+    }, 120);
     return () => {
       if (cacheTimerRef.current != null) {
         window.clearTimeout(cacheTimerRef.current);
@@ -251,13 +246,16 @@ export function Step4DialogueScreen({
 	  const userIdRef = useRef<string | null>(null);
 	  const [ankiUserId, setAnkiUserId] = useState<string | null>(null);
 
-	  const ensureLessonContext = useCallback(async () => {
-	    if (lessonIdRef.current && userIdRef.current) return;
-	    if (!day || !lesson) return;
-	    const resolvedLevel = level || 'A1';
-	    lessonIdRef.current = await getLessonIdForDayLesson(day, lesson, resolvedLevel);
-	    userIdRef.current = (await getAuthUserIdFromSession()) || (await getOrCreateLocalUser());
-	  }, [day, lesson, level]);
+  const ensureLessonContext = useCallback(async () => {
+    if (!day || !lesson) return;
+    if (!userIdRef.current) {
+      userIdRef.current = (await getAuthUserIdFromSession()) || (await getOrCreateLocalUser());
+    }
+    if (!lessonIdRef.current) {
+      const resolvedLevel = level || 'A1';
+      lessonIdRef.current = await getLessonIdForDayLesson(day, lesson, resolvedLevel);
+    }
+  }, [day, lesson, level]);
 
 	  useEffect(() => {
 	    let cancelled = false;
@@ -271,7 +269,7 @@ export function Step4DialogueScreen({
 	    };
 	  }, [ensureLessonContext]);
 
-  const ensureLessonScript = useCallback(async (): Promise<LessonScriptV2> => {
+  const ensureLessonScript = useCallback(async (): Promise<any> => {
     if (lessonScript) return lessonScript;
     if (!day || !lesson) throw new Error('lessonScript is required');
     const resolvedLevel = level || 'A1';
@@ -314,6 +312,8 @@ export function Step4DialogueScreen({
     ensureLessonContext,
     ensureLessonScript,
     appendEngineMessagesWithDelay,
+    lessonIdRef,
+    setInitError,
   });
 
   useLessonRealtimeSubscriptions({
@@ -503,6 +503,10 @@ export function Step4DialogueScreen({
   const [grammarGateHydrated, setGrammarGateHydrated] = useState(false);
   const [grammarGateRevision, setGrammarGateRevision] = useState(0);
   const gatedGrammarSectionIdsRef = useRef<Set<string>>(new Set());
+  const [startedSituations, setStartedSituations] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    setStartedSituations({});
+  }, [day, lesson, resolvedLevel, resolvedLanguage]);
 
   const [findMistakeUI, setFindMistakeUI] = useState<
     Record<string, { selected?: 'A' | 'B'; correct?: boolean; advanced?: boolean }>
@@ -558,10 +562,25 @@ export function Step4DialogueScreen({
   );
   const constructorHydratedRef = useRef<boolean>(false);
 
-  const [vocabWords, setVocabWords] = useState<Array<{ word: string; translation: string; lastSeenAt?: number }>>([]);
+  const [vocabWords, setVocabWords] = useState<any[]>([]);
   const [vocabIndex, setVocabIndex] = useState(0);
   const [showVocab, setShowVocab] = useState(false);
   const [pendingVocabPlay, setPendingVocabPlay] = useState(false);
+  const startSituation = useCallback((keys: string | string[]) => {
+    const list = Array.isArray(keys) ? keys : [keys];
+    if (!list.length) return;
+    setStartedSituations((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const key of list) {
+        if (!key) continue;
+        if (next[key]) continue;
+        next[key] = true;
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, []);
   const [goalGatePending, setGoalGatePending] = useState(false);
   const goalAckStorageKey = useMemo(() => {
     const baseKey = `step4dialogue:goalAck:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
@@ -578,6 +597,7 @@ export function Step4DialogueScreen({
 	  const vocabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 	  const restoredVocabIndexRef = useRef<number | null>(null);
 	  const appliedVocabRestoreKeyRef = useRef<string | null>(null);
+  const [vocabProgressHydrated, setVocabProgressHydrated] = useState<boolean>(false);
 
   const vocabAutoAdvanceTimerRef = useRef<number | null>(null);
 
@@ -774,6 +794,7 @@ export function Step4DialogueScreen({
     vocabProgressStorageKey,
     restoredVocabIndexRef,
     appliedVocabRestoreKeyRef,
+    setVocabProgressHydrated,
     vocabIndex,
     vocabWordsLength: vocabWords.length,
     matchingProgressStorageKey,
@@ -1067,17 +1088,36 @@ export function Step4DialogueScreen({
 		    return deck;
 		  }, [ankiDeckStorageKey, ankiReviewItems, vocabWords]);
 
-    const ankiIntroText =
-      resolvedLanguage.toLowerCase().startsWith('ru')
-        ? 'Сейчас повторим слова. Выбери правильное английское слово.'
-        : 'Quick review: pick the correct English word.';
+  const ankiIntroText =
+    resolvedLanguage.toLowerCase().startsWith('ru')
+      ? 'Сейчас повторим слова. Выбери правильное английское слово.'
+      : 'Quick review: pick the correct English word.';
 
-	    const handleAnkiComplete = useCallback(() => {
-	      try {
-	        window.localStorage.setItem(ankiDoneStorageKey, '1');
-	      } catch {
-	        // ignore
-	      }
+    const waitForAudioIdle = useCallback(async (timeoutMs = 6000) => {
+      const started = Date.now();
+      return new Promise<void>((resolve) => {
+        const tick = () => {
+          const idle = !isPlayingQueueRef.current && !currentAudioItemRef.current;
+          const timedOut = Date.now() - started >= timeoutMs;
+          if (idle || timedOut) {
+            resolve();
+            return;
+          }
+          window.requestAnimationFrame(tick);
+        };
+        tick();
+      });
+    }, []);
+
+    const handleAnkiComplete = useCallback(() => {
+      void (async () => {
+        await waitForAudioIdle();
+
+      try {
+        window.localStorage.setItem(ankiDoneStorageKey, '1');
+      } catch {
+        // ignore
+      }
 	      setAnkiDone(true);
         setAnkiReviewItems([]);
 	      window.setTimeout(() => {
@@ -1103,7 +1143,8 @@ export function Step4DialogueScreen({
             setInputMode('text');
           }
         }, 0);
-	    }, [ankiDoneStorageKey, determineInputMode, grammarGate.gated, messages, setInputMode]);
+      })();
+    }, [ankiDoneStorageKey, determineInputMode, grammarGate.gated, messages, setInputMode, waitForAudioIdle]);
 
       const reviewedSrsCardIdsRef = useRef<Set<number>>(new Set());
       const handleAnkiAnswer = useCallback(async (p: { id?: number; isCorrect: boolean }) => {
@@ -1241,12 +1282,14 @@ export function Step4DialogueScreen({
     isInitializingRef,
     restoredVocabIndexRef,
     appliedVocabRestoreKeyRef,
+    vocabProgressHydrated,
     setInputMode,
     setShowVocab,
     setVocabWords,
     setVocabIndex,
     setPendingVocabPlay,
     setGoalGatePending,
+    vocabWords,
   });
 
   // Start the first vocab audio only after the vocab block is shown.
@@ -1261,11 +1304,16 @@ export function Step4DialogueScreen({
     const normalizedExample = String(first.context || '').replace(/\s+/g, ' ').trim();
     const queue: Array<{ text: string; lang: string; kind: string }> = [];
     if (normalizedWord) {
-      queue.push({ text: normalizedWord, lang: 'en', kind: 'word' });
+      queue.push({ text: normalizedWord, lang: 'en', kind: 'word', meta: { vocabIndex: 0, vocabKind: 'word' } } as any);
     }
     // Add example after word if it exists and is different from word
     if (normalizedExample && normalizedExample !== normalizedWord) {
-      queue.push({ text: normalizedExample, lang: 'en', kind: 'example' });
+      queue.push({
+        text: normalizedExample,
+        lang: 'en',
+        kind: 'example',
+        meta: { vocabIndex: 0, vocabKind: 'example' },
+      } as any);
     }
     if (!queue.length) return;
     enqueueVocabAudio(queue, `vocab:first:${vocabProgressStorageKey}`);
@@ -1299,16 +1347,27 @@ export function Step4DialogueScreen({
 
 	    const word = vocabWords[vocabIndex];
 	    if (!word) return;
-	    const normalizedWord = String(word.word || '').replace(/\s+/g, ' ').trim();
-	    const normalizedExample = String(word.context || '').replace(/\s+/g, ' ').trim();
-	    const queue: Array<{ text: string; lang: string; kind: string }> = [];
-	    if (normalizedWord) {
-	      queue.push({ text: normalizedWord, lang: 'en', kind: 'word' });
-	    }
-	    // Add example after word if it exists and is different from word
-	    if (normalizedExample && normalizedExample !== normalizedWord) {
-	      queue.push({ text: normalizedExample, lang: 'en', kind: 'example' });
-	    }
+	    // Передаем текст как есть, без нормализации (как в старой системе)
+	    const wordText = String(word.word || '').trim();
+	    const exampleText = String(word.context || '').trim();
+    const queue: Array<{ text: string; lang: string; kind: string }> = [];
+    if (wordText) {
+      queue.push({
+        text: wordText,
+        lang: 'en',
+        kind: 'word',
+        meta: { vocabIndex, vocabKind: 'word' },
+      } as any);
+    }
+    // Add example after word if it exists and is different from word
+    if (exampleText && exampleText !== wordText) {
+      queue.push({
+        text: exampleText,
+        lang: 'en',
+        kind: 'example',
+        meta: { vocabIndex, vocabKind: 'example' },
+      } as any);
+    }
 	    if (queue.length) {
 	      enqueueVocabAudio(queue);
 	    }
@@ -1404,7 +1463,7 @@ export function Step4DialogueScreen({
 	      setSelectedWord,
 	      setSelectedTranslation,
 	    },
-		    vocab: { setVocabWords, setVocabIndex, setShowVocab, setPendingVocabPlay },
+    vocab: { setVocabWords, setVocabIndex, setShowVocab, setPendingVocabPlay, setVocabProgressHydrated },
 		    findMistake: { setFindMistakeUI },
 		    constructor: { setConstructorUI },
 	    vocabRestoreRefs: { restoredVocabIndexRef, appliedVocabRestoreKeyRef },
@@ -1478,82 +1537,45 @@ export function Step4DialogueScreen({
     window.setTimeout(() => matchingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
   }, [messages.length, vocabWords]);
 
-  const effectiveInputMode: InputMode = grammarGate.gated || ankiGateActive ? 'hidden' : inputMode;
+  const activeSituationKeys = useMemo(() => {
+    if (currentStep?.type !== 'situations') return [];
+    const keys = new Set<string>();
+
+    const scenarioIndex =
+      typeof currentStep?.index === 'number' && Number.isFinite(currentStep.index) ? currentStep.index : null;
+    if (scenarioIndex != null) {
+      keys.add(`scenario-${scenarioIndex}`);
+    }
+
+    const groups = situationGrouping?.groupByStart ? Object.values(situationGrouping.groupByStart) : [];
+    const sortedGroups = groups.sort((a, b) => a.start - b.start);
+    const matchingGroup =
+      scenarioIndex != null
+        ? sortedGroups.find((g) => g.scenarioIndex === scenarioIndex)
+        : sortedGroups[sortedGroups.length - 1];
+
+    if (matchingGroup) {
+      const msg = visibleMessages[matchingGroup.start];
+      if (msg) {
+        const stableId = getMessageStableId(msg, matchingGroup.start);
+        keys.add(`msg-${stableId}`);
+      }
+      if (matchingGroup.scenarioIndex != null) {
+        keys.add(`scenario-${matchingGroup.scenarioIndex}`);
+      }
+    }
+
+    return Array.from(keys);
+  }, [currentStep, getMessageStableId, situationGrouping, visibleMessages]);
+
+  const situationAwaitingStart = activeSituationKeys.some((key) => key && !startedSituations[key]);
+  const firstPendingSituationKey = activeSituationKeys.find((key) => key && !startedSituations[key]) || null;
+
+  const effectiveInputMode: InputMode =
+    grammarGate.gated || ankiGateActive || situationAwaitingStart ? 'hidden' : inputMode;
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
   const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
-  
-  // ОПТИМИЗАЦИЯ iOS: Определение iOS для адаптивной оптимизации парсинга
-  const isIOSDevice = useIsIOS();
-  
-  // ОПТИМИЗАЦИЯ: Кеширование результатов парсинга markdown для избежания повторных вычислений
-  const markdownCacheRef = useRef(new Map<string, React.ReactNode>());
-  const markdownPendingRef = useRef(new Set<string>());
-  const [, forceUpdate] = useState(0);
-  
-  const renderMarkdown = useCallback((text: string) => {
-    if (!text) return '';
-    
-    // Используем кеш для одинаковых текстов
-    if (markdownCacheRef.current.has(text)) {
-      return markdownCacheRef.current.get(text)!;
-    }
-    
-    // ОПТИМИЗАЦИЯ iOS: Для длинных текстов на iOS используем асинхронный парсинг
-    // чтобы не блокировать UI поток (WKWebView имеет строгие лимиты на выполнение JS)
-    if (isIOSDevice && text.length > 300) {
-      // Проверяем, не парсим ли уже этот текст
-      if (markdownPendingRef.current.has(text)) {
-        // Возвращаем placeholder пока парсится
-        return <span className="text-gray-400 animate-pulse">Загрузка...</span>;
-      }
-      
-      // Помечаем как парсящийся
-      markdownPendingRef.current.add(text);
-      
-      // Создаем placeholder
-      const placeholder = <span className="text-gray-400">Загрузка...</span>;
-      markdownCacheRef.current.set(text, placeholder);
-      
-      // Парсим асинхронно через requestIdleCallback или setTimeout
-      const parseAsync = () => {
-        try {
-          const parsed = parseMarkdown(text);
-          markdownCacheRef.current.set(text, parsed);
-          markdownPendingRef.current.delete(text);
-          // Триггерим ре-рендер для обновления
-          forceUpdate(prev => prev + 1);
-        } catch (error) {
-          console.error('[Markdown] Parse error:', error);
-          markdownPendingRef.current.delete(text);
-          // Возвращаем текст как есть при ошибке
-          const fallback = <span>{text}</span>;
-          markdownCacheRef.current.set(text, fallback);
-          forceUpdate(prev => prev + 1);
-        }
-      };
-      
-      // Используем requestIdleCallback если доступен, иначе setTimeout
-      if (typeof requestIdleCallback !== 'undefined') {
-        requestIdleCallback(parseAsync, { timeout: 100 });
-      } else {
-        setTimeout(parseAsync, 0);
-      }
-      
-      return placeholder;
-    }
-    
-    // Синхронный парсинг для коротких текстов или не-iOS
-    const parsed = parseMarkdown(text);
-    
-    // Ограничиваем размер кеша (максимум 100 элементов)
-    if (markdownCacheRef.current.size >= 100) {
-      const firstKey = markdownCacheRef.current.keys().next().value;
-      markdownCacheRef.current.delete(firstKey);
-    }
-    markdownCacheRef.current.set(text, parsed);
-    return parsed;
-  }, [isIOSDevice]);
-  
+	  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
 	  const acknowledgeGoalGate = useCallback(async () => {
 	    try {
 	      window.localStorage.setItem(goalAckStorageKey, '1');
@@ -1638,6 +1660,17 @@ export function Step4DialogueScreen({
           persistGrammarGateOpened([grammarGate.sectionId!, grammarGate.ordinalKey!].filter(Boolean) as string[]);
         },
       };
+    }
+
+    // 3. Situations start gate
+    if (currentStep?.type === 'situations') {
+      if (firstPendingSituationKey && situationAwaitingStart) {
+        return {
+          label: 'Начать',
+          onClick: () => startSituation(activeSituationKeys.length ? activeSituationKeys : firstPendingSituationKey),
+          disabled: isLoading,
+        };
+      }
     }
 
     // 3. Vocabulary Next Word
@@ -1771,6 +1804,9 @@ export function Step4DialogueScreen({
     showVocab,
     vocabWords,
     vocabIndex,
+    activeSituationKeys,
+    firstPendingSituationKey,
+    situationAwaitingStart,
     shouldShowVocabCheckButton,
     handleCheckVocabulary,
     messages,
@@ -1782,6 +1818,8 @@ export function Step4DialogueScreen({
     stripModuleTag,
     tryParseJsonMessage,
     currentStep,
+    startedSituations,
+    startSituation,
   ]);
 
   const lessonProgress = useMemo(() => {
@@ -1888,6 +1926,22 @@ export function Step4DialogueScreen({
   return (
     <>
       <div className="flex flex-col h-full bg-white relative w-full">
+        {initError && (
+          <div className="absolute top-3 left-0 right-0 z-50 px-3">
+            <div className="mx-auto max-w-3xl lg:max-w-4xl rounded-xl border border-red-200 bg-red-50 px-4 py-3 shadow">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm text-red-900">{initError}</div>
+                <button
+                  type="button"
+                  className="rounded-lg border border-red-300 bg-white px-3 py-1 text-sm font-medium text-red-800 hover:bg-red-100"
+                  onClick={() => initializeChat(true)}
+                >
+                  {resolvedLanguage?.toLowerCase().startsWith('ru') ? 'Повторить' : 'Retry'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {overlayVisible && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/85 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-black/5 bg-white px-5 py-4 shadow-xl">
@@ -1902,6 +1956,7 @@ export function Step4DialogueScreen({
           <DialogueHeader
             progressPercent={lessonProgress.percent}
             progressLabel={lessonProgress.label}
+            lessonNumber={lesson ?? day ?? null}
             onBack={onBack}
             onRestart={() => setShowRestartConfirm(true)}
             isLoading={isLoading}
@@ -1928,7 +1983,7 @@ export function Step4DialogueScreen({
             setVocabIndex={setVocabIndex}
             vocabRefs={vocabRefs}
             currentAudioItem={currentAudioItem}
-            processAudioQueue={processAudioQueue}
+            processAudioQueue={processAudioQueue as any}
             playVocabAudio={enqueueVocabAudio}
             lessonScript={lessonScript}
             currentStep={currentStep}
@@ -1967,6 +2022,7 @@ export function Step4DialogueScreen({
             ankiQuizItems={ankiQuizItems}
             onAnkiAnswer={(p) => handleAnkiAnswer({ id: p.id, isCorrect: p.isCorrect })}
             onAnkiComplete={handleAnkiComplete}
+            startedSituations={startedSituations}
           />
 
           {overlayVisible || tutorMiniOpen ? null : (
@@ -1982,6 +2038,7 @@ export function Step4DialogueScreen({
               onToggleRecording={onToggleRecording}
               hiddenTopContent={null}
               cta={ankiGateActive ? null : activeCta}
+              autoFocus={!suppressInputAutofocus}
             />
           )}
         </div>

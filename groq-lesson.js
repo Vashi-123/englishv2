@@ -45,8 +45,10 @@ const getSituationStep = (scenario, stepIndex) => {
     const ai = String(step?.ai || "").trim();
     const aiTranslation = typeof step?.ai_translation === "string" ? String(step.ai_translation).trim() : "";
     const task = String(step?.task || "").trim();
-    const expected = String(step?.expected_answer || "").trim();
-    if (!ai || !task || !expected) return null;
+    const expectedRaw = String(step?.expected_answer || "").trim();
+    const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
+    const expected = isLessonCompletion ? "" : expectedRaw;
+    if (!ai || !task || (!expected && !isLessonCompletion)) return null;
     return {
       ai,
       ai_translation: aiTranslation || undefined,
@@ -54,13 +56,16 @@ const getSituationStep = (scenario, stepIndex) => {
       expected_answer: expected,
       stepIndex: safeIndex,
       stepsTotal: steps.length,
+      isLessonCompletion,
     };
   }
   const ai = String(scenario?.ai || "").trim();
   const task = String(scenario?.task || "").trim();
-  const expected = String(scenario?.expected_answer || "").trim();
-  if (!ai || !task || !expected) return null;
-  return { ai, ai_translation: undefined, task, expected_answer: expected, stepIndex: 0, stepsTotal: 1 };
+  const expectedRaw = String(scenario?.expected_answer || "").trim();
+  const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
+  const expected = isLessonCompletion ? "" : expectedRaw;
+  if (!ai || !task || (!expected && !isLessonCompletion)) return null;
+  return { ai, ai_translation: undefined, task, expected_answer: expected, stepIndex: 0, stepsTotal: 1, isLessonCompletion };
 };
 
 const extractAssignmentSection = (html) => {
@@ -679,8 +684,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       const stepIndexRaw = currentStep?.subIndex;
       const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
       const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
-      if (!scenario || !normalized?.expected_answer) {
+      if (!scenario || !normalized) {
         sendJson(res, 400, { isCorrect: false, feedback: "Invalid situation scenario" }, corsHeaders);
+        return;
+      }
+      if (normalized.isLessonCompletion) {
+        sendJson(res, 200, { isCorrect: true, feedback: "" }, corsHeaders);
         return;
       }
       expected = normalized.expected_answer;
@@ -693,18 +702,7 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
 
     const validation = await validateAnswer({ step: stepType, expected, studentAnswer, extra });
 
-    let reactionText;
-    if (currentStep.type === "situations" && validation.isCorrect) {
-      const scenario = script.situations?.scenarios?.[currentStep.index];
-      const stepIndexRaw = currentStep?.subIndex;
-      const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
-      const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
-      if (normalized && normalized.stepIndex >= Math.max((normalized.stepsTotal || 1) - 1, 0)) {
-        reactionText = "👍";
-      }
-    }
-
-    sendJson(res, 200, { isCorrect: validation.isCorrect, feedback: validation.feedback || "", reactionText }, corsHeaders);
+    sendJson(res, 200, { isCorrect: validation.isCorrect, feedback: validation.feedback || "" }, corsHeaders);
     return;
 
   } catch (err) {

@@ -1,5 +1,6 @@
-import React from 'react';
-import Step4Dialogue from '../Step4Dialogue';
+import React, { Suspense } from 'react';
+
+const Step4Dialogue = React.lazy(() => import('../Step4Dialogue'));
 
 interface DayPlan {
   day: number;
@@ -32,7 +33,7 @@ export const ExerciseView: React.FC<ExerciseViewProps> = ({
   onFinish,
   onNextLesson,
   onBack,
-}) => {
+  }) => {
   return (
     <div
       key={currentDayPlan ? `${currentDayPlan.day}:${currentDayPlan.lesson}:${level}` : 'no-lesson'}
@@ -41,21 +42,28 @@ export const ExerciseView: React.FC<ExerciseViewProps> = ({
       <div className="flex-1 overflow-y-auto bg-white flex justify-center">
         <div className="h-full w-full max-w-3xl lg:max-w-4xl">
           {currentDayPlan && (
-            <Step4Dialogue
-              day={currentDayPlan.day}
-              lesson={currentDayPlan.lesson}
-              level={level}
-              onFinish={onFinish}
-              onNextLesson={onNextLesson}
-              nextLessonNumber={nextLessonNumber}
-              nextLessonIsPremium={nextLessonIsPremium}
-              onBack={onBack}
-              copy={dialogueCopy}
-            />
+            <Suspense
+              fallback={
+                <div className="flex h-full w-full items-center justify-center">
+                  <div className="h-10 w-10 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin" />
+                </div>
+              }
+            >
+              <Step4Dialogue
+                day={currentDayPlan.day}
+                lesson={currentDayPlan.lesson}
+                level={level}
+                onFinish={onFinish}
+                onNextLesson={onNextLesson}
+                nextLessonNumber={nextLessonNumber}
+                nextLessonIsPremium={nextLessonIsPremium}
+                onBack={onBack}
+                copy={dialogueCopy}
+              />
+            </Suspense>
           )}
         </div>
       </div>
     </div>
   );
 };
-

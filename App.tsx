@@ -345,6 +345,17 @@ const AppRouter: React.FC = () => {
 };
 
 const App = () => {
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    // Hide keyboard accessory bar to stop iOS auto-layout conflicts (Prev/Next/Done).
+    try {
+      const maybeKeyboard = (Capacitor as any).Plugins?.Keyboard;
+      maybeKeyboard?.setAccessoryBarVisible?.({ isVisible: false });
+    } catch {
+      // ignore
+    }
+  }, []);
+
   return (
     <BrowserRouter>
       <AuthProvider>

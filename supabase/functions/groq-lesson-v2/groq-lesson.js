@@ -1,43 +1,78 @@
-// Server (non-Edge) version of groq-lesson-v2.
-// Runs on Node.js (recommended Node 20+).
-//
-// Auth: requires `Authorization: Bearer <supabase_access_token>` and derives userId from JWT.
-// This prevents calling the endpoint without being a signed-in Supabase user.
-import { createServer } from "node:http";
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-import { createClient } from "@supabase/supabase-js";
+// @ts-nocheck
+import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import { createClient } from "npm:@supabase/supabase-js";
 
-function loadDotEnvIfPresent() {
-  const candidates = [resolve(process.cwd(), ".env")];
-  for (const p of candidates) {
-    if (!existsSync(p)) continue;
-    try {
-      const text = readFileSync(p, "utf8");
-      for (const line of text.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) continue;
-        const eq = trimmed.indexOf("=");
-        if (eq === -1) continue;
-        const key = trimmed.slice(0, eq).trim();
-        let value = trimmed.slice(eq + 1).trim();
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
-        if (!key) continue;
-        if (process.env[key] === undefined) process.env[key] = value;
-      }
-    } catch {
-      // ignore .env parse errors
-    }
-    break;
-  }
+interface LessonWordItem {
+  word: string;
+  translation: string;
+  context: string;
+  highlights: string[];
+  context_translation: string;
 }
 
-loadDotEnvIfPresent();
+interface LessonWords {
+  instruction?: string;
+  successText?: string;
+  items: LessonWordItem[];
+}
 
-const getSituationStep = (scenario, stepIndex) => {
+interface LessonScript {
+  goal: string;
+  words: LessonWords | LessonWordItem[];
+  grammar: {
+    explanation: string;
+    audio_exercise?: {
+      expected: string;
+    };
+    text_exercise?: {
+      expected: string;
+      instruction: string;
+    };
+    transition?: string;
+    successText?: string;
+  };
+  constructor: {
+    instruction: string;
+    successText?: string;
+    tasks: Array<{
+      words: string[];
+      correct: string;
+      note?: string;
+      translation?: string;
+    }>;
+  };
+  find_the_mistake: {
+    instruction: string;
+    successText?: string;
+    tasks: Array<{
+      options: string[];
+      answer: "A" | "B";
+      explanation: string;
+    }>;
+  };
+  situations: {
+    instruction?: string;
+    successText?: string;
+    scenarios: Array<{
+      title: string;
+      situation: string;
+      // Legacy single-step scenario fields
+      ai?: string;
+      task?: string;
+      expected_answer?: string;
+      // New multi-step scenario format
+      steps?: Array<{
+        ai: string;
+        ai_translation?: string;
+        task: string;
+        expected_answer: string;
+      }>;
+    }>;
+  };
+  completion: string;
+}
+
+const getSituationStep = (scenario: any, stepIndex: number) => {
   const steps = Array.isArray(scenario?.steps) ? scenario.steps : null;
   if (steps && steps.length > 0) {
     const safeIndex = Math.max(0, Math.min(steps.length - 1, Number.isFinite(stepIndex) ? stepIndex : 0));
@@ -45,8 +80,10 @@ const getSituationStep = (scenario, stepIndex) => {
     const ai = String(step?.ai || "").trim();
     const aiTranslation = typeof step?.ai_translation === "string" ? String(step.ai_translation).trim() : "";
     const task = String(step?.task || "").trim();
-    const expected = String(step?.expected_answer || "").trim();
-    if (!ai || !task || !expected) return null;
+    const expectedRaw = String(step?.expected_answer || "").trim();
+    const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
+    const expected = isLessonCompletion ? "" : expectedRaw;
+    if (!ai || !task || (!expected && !isLessonCompletion)) return null;
     return {
       ai,
       ai_translation: aiTranslation || undefined,
@@ -54,130 +91,78 @@ const getSituationStep = (scenario, stepIndex) => {
       expected_answer: expected,
       stepIndex: safeIndex,
       stepsTotal: steps.length,
+      isLessonCompletion,
     };
   }
   const ai = String(scenario?.ai || "").trim();
   const task = String(scenario?.task || "").trim();
-  const expected = String(scenario?.expected_answer || "").trim();
-  if (!ai || !task || !expected) return null;
-  return { ai, ai_translation: undefined, task, expected_answer: expected, stepIndex: 0, stepsTotal: 1 };
+  const expectedRaw = String(scenario?.expected_answer || "").trim();
+  const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
+  const expected = isLessonCompletion ? "" : expectedRaw;
+  if (!ai || !task || (!expected && !isLessonCompletion)) return null;
+  return { ai, ai_translation: undefined, task, expected_answer: expected, stepIndex: 0, stepsTotal: 1, isLessonCompletion };
 };
 
-const extractAssignmentSection = (html) => {
+const extractAssignmentSection = (html?: string): string | null => {
   if (!html) return null;
   const match = html.match(/<h>Задание<h>([\s\S]+)/i);
   return match ? match[1].trim() : null;
 };
 
-const buildTextExerciseContent = (params) => {
+const buildTextExerciseContent = (params: { explanation: string; instruction?: string }) => {
   const assignment = extractAssignmentSection(params.explanation) || "";
   const instruction = typeof params.instruction === "string" ? params.instruction.trim() : "";
   const content = [assignment, instruction].filter(Boolean).join("\n\n");
   return content || instruction || assignment;
 };
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const MODEL = process.env.GROQ_MODEL || "llama-3.1-8b-instant";
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const PORT = Number(process.env.PORT || "3000");
-const ROUTE_PATH = process.env.GROQ_LESSON_V2_PATH || "/groq-lesson-v2";
-const CORS_ORIGINS = (process.env.CORS_ORIGINS || "*")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
-const ALLOWED_HEADERS = "authorization, x-client-info, apikey, content-type";
-const ALLOWED_METHODS = "POST, OPTIONS";
-
-function getCorsHeaders(origin) {
-  const reqOrigin = (origin || "").trim();
-  const allowAny = CORS_ORIGINS.includes("*");
-  const allowed = allowAny || (reqOrigin && CORS_ORIGINS.includes(reqOrigin));
-  const allowOrigin = allowAny ? "*" : (allowed ? reqOrigin : (CORS_ORIGINS[0] || ""));
-  return {
-    "Access-Control-Allow-Origin": allowOrigin || "*",
-    "Access-Control-Allow-Headers": ALLOWED_HEADERS,
-    "Access-Control-Allow-Methods": ALLOWED_METHODS,
-    "Access-Control-Max-Age": "86400",
-    Vary: "Origin",
+interface ReqPayload {
+  lastUserMessageContent?: string;
+  choice?: "A" | "B";
+  uiLang?: string;
+  validateOnly?: boolean;
+  tutorMode?: boolean;
+  tutorMessages?: Array<{ role: "user" | "model"; text: string }>;
+  lessonId: string; // id из lesson_scripts
+  userId: string;
+  currentStep?: {
+    type: 'goal' | 'words' | 'grammar' | 'constructor' | 'find_the_mistake' | 'situations' | 'completion';
+    index: number;
+    subIndex?: number;
   };
 }
 
-function sendJson(res, status, body, corsHeaders) {
-  const payload = JSON.stringify(body);
-  res.writeHead(status, { ...corsHeaders, "Content-Type": "application/json", "Content-Length": Buffer.byteLength(payload) });
-  res.end(payload);
-}
+const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY");
+const MODEL = Deno.env.get("GROQ_MODEL") || "llama-3.1-8b-instant";
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-function sendText(res, status, text, corsHeaders) {
-  res.writeHead(status, { ...corsHeaders, "Content-Type": "text/plain; charset=utf-8" });
-  res.end(text);
-}
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
-async function readJsonBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  const raw = Buffer.concat(chunks).toString("utf8").trim();
-  if (!raw) return {};
-  return JSON.parse(raw);
-}
+console.info("groq-lesson-v2 function started (VALIDATOR + TUTOR MODE)");
 
-function getBearerToken(req) {
-  const header = String(req.headers["authorization"] || "").trim();
-  const match = header.match(/^Bearer\s+(.+)$/i);
-  return match?.[1]?.trim() || null;
-}
-
-console.info("[server/groq-lesson-v2] started (VALIDATOR + TUTOR MODE)");
-
-async function handleGroqLessonV2(req, res) {
-  const corsHeaders = getCorsHeaders(String(req.headers.origin || ""));
-
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    res.writeHead(204, corsHeaders);
-    res.end();
-    return;
+    return new Response("ok", { headers: corsHeaders });
   }
 
   if (req.method !== "POST") {
-    sendText(res, 405, "Method Not Allowed", corsHeaders);
-    return;
-  }
-
-  if (!req.url || !req.url.startsWith(ROUTE_PATH)) {
-    sendText(res, 404, "Not Found", corsHeaders);
-    return;
+    return new Response("Method Not Allowed", { status: 405, headers: corsHeaders });
   }
 
   if (!GROQ_API_KEY) {
-    sendText(res, 500, "Missing GROQ_API_KEY", corsHeaders);
-    return;
+    return new Response("Missing GROQ_API_KEY", { status: 500, headers: corsHeaders });
   }
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-    sendText(res, 500, "Missing Supabase environment variables", corsHeaders);
-    return;
-  }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-
-  const token = getBearerToken(req);
-  if (!token) {
-    sendJson(res, 401, { ok: false, error: "Missing Authorization bearer token" }, corsHeaders);
-    return;
-  }
-
-  const { data: authData, error: authError } = await supabase.auth.getUser(token);
-  const authedUserId = authData?.user?.id || "";
-  if (authError || !authedUserId) {
-    sendJson(res, 401, { ok: false, error: "Invalid token" }, corsHeaders);
-    return;
+    return new Response("Missing Supabase environment variables", { status: 500, headers: corsHeaders });
   }
 
   try {
-    const body = await readJsonBody(req);
     const {
       lastUserMessageContent,
       choice,
@@ -186,21 +171,33 @@ async function handleGroqLessonV2(req, res) {
       tutorMode,
       tutorMessages,
       lessonId,
+      userId,
       currentStep,
-    } = body;
+    }: ReqPayload = await req.json();
 
     if (!lessonId) {
-      sendText(res, 400, "Missing 'lessonId' - lesson ID is required", corsHeaders);
-      return;
+      return new Response("Missing 'lessonId' - lesson ID is required", { status: 400, headers: corsHeaders });
+    }
+
+    if (!userId) {
+      return new Response("Missing 'userId' - user ID is required", { status: 400, headers: corsHeaders });
     }
 
     // This function supports:
     // - validateOnly=true: validate the student's answer
     // - tutorMode=true: post-lesson Q&A (no DB writes)
     if (!validateOnly && !tutorMode) {
-      sendText(res, 400, "groq-lesson-v2 now only supports validateOnly=true or tutorMode=true.", corsHeaders);
-      return;
+      return new Response("groq-lesson-v2 now only supports validateOnly=true or tutorMode=true.", {
+        status: 400,
+        headers: corsHeaders,
+      });
     }
+
+    const supabase = createClient(
+      SUPABASE_URL,
+      SUPABASE_SERVICE_ROLE_KEY,
+      { auth: { persistSession: false } }
+    );
 
     // Получаем сценарий из lesson_scripts по id
     console.log("[groq-lesson-v2] Fetching lesson script for lesson_id:", lessonId);
@@ -212,26 +209,27 @@ async function handleGroqLessonV2(req, res) {
 
     if (dbError || !lessonData || !lessonData.script) {
       console.error("[groq-lesson-v2] Error fetching lesson script:", dbError?.message || "Script not found", "payload:", { lessonId });
-      sendText(res, 500, "Failed to fetch lesson script", corsHeaders);
-      return;
+      return new Response("Failed to fetch lesson script", { status: 500, headers: corsHeaders });
     }
 
-    let script;
+    let script: LessonScript;
     try {
-      script = lessonData.script;
-    } catch (parseErr) {
-      console.error("[groq-lesson-v2] Failed to parse lesson script:", parseErr?.message || String(parseErr));
-      sendText(res, 500, "Failed to parse lesson script", corsHeaders);
-      return;
+      script = lessonData.script as LessonScript;
+    } catch (parseErr: any) {
+      console.error("[groq-lesson-v2] Failed to parse lesson script:", parseErr?.message);
+      return new Response("Failed to parse lesson script", { status: 500, headers: corsHeaders });
     }
 
     const userLang = uiLang || "ru";
 
-    const makeGroqRequest = async (requestMessages, opts) => {
+    const makeGroqRequest = async (
+      requestMessages: any[],
+      opts?: { max_tokens?: number; temperature?: number }
+    ): Promise<{ text: string; success: boolean }> => {
       const maxRetries = 3;
       let attempt = 0;
 
-      const executeSingleRequest = async (reqId) => {
+      const executeSingleRequest = async (reqId: string): Promise<string> => {
         try {
           const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
             method: "POST",
@@ -260,9 +258,9 @@ async function handleGroqLessonV2(req, res) {
           }
           
           return text;
-        } catch (err) {
+        } catch (err: any) {
           // Rethrow to let Promise.any catch it
-          throw new Error(`[${reqId}] ${err?.message || String(err)}`);
+          throw new Error(`[${reqId}] ${err.message}`);
         }
       };
 
@@ -280,7 +278,7 @@ async function handleGroqLessonV2(req, res) {
 
           return { text, success: true };
 
-        } catch (aggregateError) {
+        } catch (aggregateError: any) {
           console.error(`[groq-lesson-v2] All parallel requests failed (attempt ${attempt}):`, aggregateError);
           
           if (attempt < maxRetries) {
@@ -294,21 +292,38 @@ async function handleGroqLessonV2(req, res) {
     };
 
     if (tutorMode) {
-      const safeText = (value) => String(value ?? "").trim();
+      const safeText = (value: unknown) => String(value ?? "").trim();
+
+      const insertTutorMessage = async (role: "user" | "model", text: string) => {
+        const trimmed = safeText(text);
+        if (!trimmed) return;
+        const { error } = await supabase.from("chat_messages").insert({
+          lesson_id: lessonId,
+          user_id: userId,
+          role,
+          text: trimmed,
+          day: (script as any).day || 0,
+          lesson: (script as any).lesson || 0,
+          current_step_snapshot: { type: "completion", index: 0, tutor: true },
+        });
+        if (error) {
+          console.error("[groq-lesson-v2] Failed to save tutor message:", error.message, "payload:", { lessonId, userId, role });
+        }
+      };
 
       const lessonContext = (() => {
         const goal = safeText(script?.goal);
 
-        const wordsItems = Array.isArray(script?.words?.items)
-          ? script.words.items
-          : Array.isArray(script?.words)
-            ? script.words
+        const wordsItems = Array.isArray((script as any)?.words?.items)
+          ? (script as any).words.items
+          : Array.isArray((script as any)?.words)
+            ? (script as any).words
             : [];
 
         const wordsBlock = wordsItems.length
           ? [
               "Слова:",
-              ...wordsItems.map((w, i) => {
+              ...wordsItems.map((w: any, i: number) => {
                 const word = safeText(w?.word);
                 const translation = safeText(w?.translation);
                 const context = safeText(w?.context);
@@ -324,10 +339,10 @@ async function handleGroqLessonV2(req, res) {
             ].join("\n")
           : "";
 
-        const grammarExplanation = safeText(script?.grammar?.explanation);
-        const grammarAudioExpected = safeText(script?.grammar?.audio_exercise?.expected);
-        const grammarTextExpected = safeText(script?.grammar?.text_exercise?.expected);
-        const grammarTextInstruction = safeText(script?.grammar?.text_exercise?.instruction);
+        const grammarExplanation = safeText((script as any)?.grammar?.explanation);
+        const grammarAudioExpected = safeText((script as any)?.grammar?.audio_exercise?.expected);
+        const grammarTextExpected = safeText((script as any)?.grammar?.text_exercise?.expected);
+        const grammarTextInstruction = safeText((script as any)?.grammar?.text_exercise?.instruction);
 
         const grammarBlock = [
           "Грамматика:",
@@ -339,12 +354,12 @@ async function handleGroqLessonV2(req, res) {
           .filter(Boolean)
           .join("\n\n");
 
-        const constructorTasks = Array.isArray(script?.constructor?.tasks) ? script.constructor.tasks : [];
+        const constructorTasks = Array.isArray((script as any)?.constructor?.tasks) ? (script as any).constructor.tasks : [];
         const constructorBlock = constructorTasks.length
           ? [
               "Конструктор:",
-              ...constructorTasks.map((t, i) => {
-                const words = Array.isArray(t?.words) ? t.words.map((x) => safeText(x)).filter(Boolean) : [];
+              ...constructorTasks.map((t: any, i: number) => {
+                const words = Array.isArray(t?.words) ? t.words.map((x: any) => safeText(x)).filter(Boolean) : [];
                 const correct = safeText(t?.correct);
                 const translation = safeText(t?.translation);
                 return [
@@ -358,12 +373,12 @@ async function handleGroqLessonV2(req, res) {
             ].join("\n")
           : "";
 
-        const findTasks = Array.isArray(script?.find_the_mistake?.tasks) ? script.find_the_mistake.tasks : [];
+        const findTasks = Array.isArray((script as any)?.find_the_mistake?.tasks) ? (script as any).find_the_mistake.tasks : [];
         const findBlock = findTasks.length
           ? [
               "Найди ошибку:",
-              ...findTasks.map((t, i) => {
-                const options = Array.isArray(t?.options) ? t.options.map((x) => safeText(x)).filter(Boolean) : [];
+              ...findTasks.map((t: any, i: number) => {
+                const options = Array.isArray(t?.options) ? t.options.map((x: any) => safeText(x)).filter(Boolean) : [];
                 const answer = safeText(t?.answer);
                 const explanation = safeText(t?.explanation);
                 return [
@@ -378,11 +393,11 @@ async function handleGroqLessonV2(req, res) {
             ].join("\n")
           : "";
 
-        const scenarios = Array.isArray(script?.situations?.scenarios) ? script.situations.scenarios : [];
+        const scenarios = Array.isArray((script as any)?.situations?.scenarios) ? (script as any).situations.scenarios : [];
         const situationsBlock = scenarios.length
           ? [
               "Ситуации:",
-              ...scenarios.map((s, i) => {
+              ...scenarios.map((s: any, i: number) => {
                 const title = safeText(s?.title);
                 const situation = safeText(s?.situation);
                 const steps = Array.isArray(s?.steps) ? s.steps : null;
@@ -390,7 +405,7 @@ async function handleGroqLessonV2(req, res) {
                   return [
                     `${i + 1}. ${title}`,
                     situation ? `   Описание: ${situation}` : "",
-                    ...steps.map((st, j) => {
+                    ...steps.map((st: any, j: number) => {
                       const ai = safeText(st?.ai);
                       const aiTr = safeText(st?.ai_translation);
                       const task = safeText(st?.task);
@@ -425,7 +440,7 @@ async function handleGroqLessonV2(req, res) {
             ].join("\n")
           : "";
 
-        const completion = safeText(script?.completion);
+        const completion = safeText((script as any)?.completion);
 
         const text = [
           goal ? `Цель урока: ${goal}` : "",
@@ -466,7 +481,7 @@ Lesson context (for you):\n\n${lessonContext}`;
             .slice(-12)
         : [];
 
-      const toGroqRole = (role) => (role === "model" ? "assistant" : "user");
+      const toGroqRole = (role: "user" | "model") => (role === "model" ? "assistant" : "user");
 
       const greeting =
         userLang.toLowerCase().startsWith("ru")
@@ -481,14 +496,32 @@ Lesson context (for you):\n\n${lessonContext}`;
           userLang.toLowerCase().startsWith("ru")
             ? "Мы уже разобрали 5 вопросов по этому уроку. Если хочешь — начнем следующий урок."
             : "We've already covered 5 questions for this lesson. If you want, let's start the next lesson.";
-        sendJson(res, 200, { response: limitReached, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }, corsHeaders);
-        return;
+        await insertTutorMessage("model", limitReached);
+        return new Response(
+          JSON.stringify({
+            response: limitReached,
+            isCorrect: true,
+            feedback: "",
+            nextStep: currentStep ?? null,
+            translation: "",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
       // If the user just opened tutor mode (no question yet), return a greeting and persist it so it shows on re-entry.
       if (!userQuestion) {
-        sendJson(res, 200, { response: greeting, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }, corsHeaders);
-        return;
+        await insertTutorMessage("model", greeting);
+        return new Response(
+          JSON.stringify({
+            response: greeting,
+            isCorrect: true,
+            feedback: "",
+            nextStep: currentStep ?? null,
+            translation: "",
+          }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
       const messages = [
@@ -504,21 +537,40 @@ Lesson context (for you):\n\n${lessonContext}`;
         const fallback = userLang.toLowerCase().startsWith("ru")
           ? "Не получилось ответить прямо сейчас. Попробуй еще раз."
           : "Couldn't answer right now. Please try again.";
-        sendJson(res, 200, { response: fallback, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }, corsHeaders);
-        return;
+        await insertTutorMessage("user", userQuestion);
+        await insertTutorMessage("model", fallback);
+        return new Response(
+          JSON.stringify({ response: fallback, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
-      sendJson(res, 200, { response: result.text.trim(), isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }, corsHeaders);
-      return;
+      await insertTutorMessage("user", userQuestion);
+      await insertTutorMessage("model", result.text.trim());
+      return new Response(
+        JSON.stringify({
+          response: result.text.trim(),
+          isCorrect: true,
+          feedback: "",
+          nextStep: currentStep ?? null,
+          translation: "",
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Хелпер для валидации ответа через Groq (только проверка корректности)
-    const validateAnswer = async (params) => {
+    const validateAnswer = async (params: {
+      step: string;
+      expected: string;
+      studentAnswer: string;
+      extra?: string;
+    }): Promise<{ isCorrect: boolean; feedback: string }> => {
       if (!params.studentAnswer) {
         return { isCorrect: true, feedback: "" };
       }
 
-      const normalizeLenient = (value) => {
+      const normalizeLenient = (value: string) => {
         const text = String(value || "")
           .toLowerCase()
           .replace(/[’']/g, "")
@@ -585,7 +637,7 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       const codeFenceMatch = rawText.match(/^```(?:json)?\s*([\s\S]*?)```$/i);
       if (codeFenceMatch) rawText = codeFenceMatch[1].trim();
 
-      const parseBestEffort = (text) => {
+      const parseBestEffort = (text: string) => {
         try {
           return JSON.parse(text);
         } catch {
@@ -611,8 +663,10 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     };
 
     if (!currentStep?.type) {
-      sendJson(res, 400, { isCorrect: false, feedback: "Missing currentStep for validation" }, corsHeaders);
-      return;
+      return new Response(JSON.stringify({ isCorrect: false, feedback: "Missing currentStep for validation" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const studentAnswer = String(lastUserMessageContent || "").trim();
@@ -620,10 +674,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     if (currentStep.type === "find_the_mistake") {
       const idx = typeof currentStep.index === "number" ? currentStep.index : 0;
       const task = script.find_the_mistake?.tasks?.[idx];
-      const submitted = String(choice ? String(choice).toUpperCase() : studentAnswer.toUpperCase().slice(0, 1) || "").slice(0, 1);
+      const submitted =
+        (choice ? String(choice).toUpperCase() : studentAnswer.toUpperCase().slice(0, 1)) as "A" | "B" | "";
       const isCorrect = Boolean(task && submitted && (submitted === task.answer));
-      sendJson(res, 200, { isCorrect, feedback: isCorrect ? "" : "" }, corsHeaders);
-      return;
+      return new Response(JSON.stringify({ isCorrect, feedback: isCorrect ? "" : "" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     let expected = "";
@@ -638,75 +694,56 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
         expected = script.grammar.text_exercise.expected;
         stepType = "grammar_text_exercise";
       } else {
-        sendJson(res, 400, { isCorrect: false, feedback: "No grammar exercise in script" }, corsHeaders);
-        return;
+        return new Response(JSON.stringify({ isCorrect: false, feedback: "No grammar exercise in script" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
       extra = `Задание/правило: ${script.grammar?.explanation || ""}`;
     } else if (currentStep.type === "constructor") {
       const task = script.constructor?.tasks?.[currentStep.index];
       if (!task?.correct) {
-        sendJson(res, 400, { isCorrect: false, feedback: "Invalid constructor task" }, corsHeaders);
-        return;
+        return new Response(JSON.stringify({ isCorrect: false, feedback: "Invalid constructor task" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
       expected = task.correct;
       stepType = "constructor";
       extra = `Слова: ${(task.words || []).join(" ")}`;
     } else if (currentStep.type === "situations") {
       const scenario = script.situations?.scenarios?.[currentStep.index];
-      const stepIndexRaw = currentStep?.subIndex;
+      const stepIndexRaw = (currentStep as any)?.subIndex;
       const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
       const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
-      if (!scenario || !normalized?.expected_answer) {
-        sendJson(res, 400, { isCorrect: false, feedback: "Invalid situation scenario" }, corsHeaders);
-        return;
+      if (!scenario || !normalized) {
+        return new Response(JSON.stringify({ isCorrect: false, feedback: "Invalid situation scenario" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (normalized.isLessonCompletion) {
+        return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
       expected = normalized.expected_answer;
       stepType = "situations";
       extra = `Ситуация: ${scenario.title}. AI сказал: "${normalized.ai}". Задача: ${normalized.task}`;
     } else {
-      sendJson(res, 200, { isCorrect: true, feedback: "" }, corsHeaders);
-      return;
+      return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const validation = await validateAnswer({ step: stepType, expected, studentAnswer, extra });
 
-    let reactionText;
-    if (currentStep.type === "situations" && validation.isCorrect) {
-      const scenario = script.situations?.scenarios?.[currentStep.index];
-      const stepIndexRaw = currentStep?.subIndex;
-      const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
-      const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
-      if (normalized && normalized.stepIndex >= Math.max((normalized.stepsTotal || 1) - 1, 0)) {
-        reactionText = "👍";
-      }
-    }
-
-    sendJson(res, 200, { isCorrect: validation.isCorrect, feedback: validation.feedback || "", reactionText }, corsHeaders);
-    return;
+    return new Response(JSON.stringify({ isCorrect: validation.isCorrect, feedback: validation.feedback || "" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
 
   } catch (err) {
     console.error("groq-lesson-v2 error:", err);
-    sendText(res, 500, `Internal error: ${String(err?.message || err)}`, corsHeaders);
-    return;
+    return new Response(`Internal error: ${err.message}`, { status: 500, headers: corsHeaders });
   }
-}
-
-export function startGroqLessonV2Server() {
-  const server = createServer((req, res) => {
-    Promise.resolve(handleGroqLessonV2(req, res)).catch((err) => {
-      const corsHeaders = getCorsHeaders(String(req.headers.origin || ""));
-      console.error("[server/groq-lesson-v2] unhandled error:", err);
-      sendText(res, 500, "Internal error", corsHeaders);
-    });
-  });
-
-  server.listen(PORT, () => {
-    console.log(`[server/groq-lesson-v2] listening on http://0.0.0.0:${PORT}${ROUTE_PATH}`);
-  });
-}
-
-// If you run this file directly with Node, start the server.
-// In production you usually run the compiled JS (not TS).
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  startGroqLessonV2Server();
-}
+});

@@ -69,6 +69,7 @@ type NormalizedSituationStep = {
   expected_answer: string;
   stepIndex: number;
   stepsTotal: number;
+  isLessonCompletion?: boolean;
 };
 
 const getSituationStep = (
@@ -82,8 +83,10 @@ const getSituationStep = (
     const ai = String(step?.ai || "").trim();
     const aiTranslation = typeof step?.ai_translation === "string" ? String(step.ai_translation).trim() : "";
     const task = String(step?.task || "").trim();
-    const expected = String(step?.expected_answer || "").trim();
-    if (!ai || !task || !expected) return null;
+    const expectedRaw = String(step?.expected_answer || "").trim();
+    const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
+    const expected = isLessonCompletion ? "" : expectedRaw;
+    if (!ai || !task || (!expected && !isLessonCompletion)) return null;
     return {
       title: String((scenario as any)?.title || "").trim(),
       situation: String((scenario as any)?.situation || "").trim(),
@@ -93,13 +96,16 @@ const getSituationStep = (
       expected_answer: expected,
       stepIndex: safeIndex,
       stepsTotal: steps.length,
+      isLessonCompletion,
     };
   }
 
   const ai = String((scenario as any)?.ai || "").trim();
   const task = String((scenario as any)?.task || "").trim();
-  const expected = String((scenario as any)?.expected_answer || "").trim();
-  if (!ai || !task || !expected) return null;
+  const expectedRaw = String((scenario as any)?.expected_answer || "").trim();
+  const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
+  const expected = isLessonCompletion ? "" : expectedRaw;
+  if (!ai || !task || (!expected && !isLessonCompletion)) return null;
   return {
     title: String((scenario as any)?.title || "").trim(),
     situation: String((scenario as any)?.situation || "").trim(),
@@ -108,6 +114,7 @@ const getSituationStep = (
     expected_answer: expected,
     stepIndex: 0,
     stepsTotal: 1,
+    isLessonCompletion,
   };
 };
 
@@ -137,11 +144,31 @@ const buildTextExerciseContent = (params: { explanation: string; instruction?: s
   return content || instruction || assignment;
 };
 
-const formatConstructorPrompt = (constructor: NonNullable<LessonScriptV2["constructor"]>, taskIndex: number) => {
-  const task = constructor.tasks[taskIndex];
+const formatConstructorPrompt = (constructor: LessonScriptV2["constructor"] | undefined | null, taskIndex: number) => {
+  const tasks = Array.isArray(constructor?.tasks) ? constructor?.tasks : [];
+  const safeIndex = Math.max(0, Math.min(tasks.length - 1, taskIndex || 0));
+  const task = tasks[safeIndex];
+
+  // Если данных нет — возвращаем безопасный prompt, чтобы не падать
+  if (!task) {
+    const instruction = constructor?.instruction || "Собери предложение";
+    return `🎯 ${instruction}\n\n<text_input>`;
+  }
+
   const wordsList = (task.words || []).map((w) => `<w>${w}<w>`).join(" ");
   const optionalNote = task.note ? `\n\n💡 ${task.note}` : "";
-  return `🎯 ${constructor.instruction}${optionalNote}\n\n${wordsList}\n\n<text_input>`;
+  return `🎯 ${constructor?.instruction || "Собери предложение"}${optionalNote}\n\n${wordsList}\n\n<text_input>`;
+};
+
+const safeFormatConstructorPrompt = (constructor: LessonScriptV2["constructor"] | undefined | null, taskIndex: number) => {
+  try {
+    return formatConstructorPrompt(constructor, taskIndex);
+  } catch (err) {
+    // В production мы не должны падать из-за битых данных конструктора.
+    console.error("[lessonV2ClientEngine] constructor prompt error:", err);
+    const instruction = constructor?.instruction || "Собери предложение";
+    return `🎯 ${instruction}\n\n<text_input>`;
+  }
 };
 
 const buildFindTheMistakePayload = (
@@ -188,6 +215,7 @@ const buildSituationPayload = (params: {
   awaitingContinue?: boolean;
   continueLabel?: string;
   prevUserCorrect?: boolean;
+  isCompletionStep?: boolean;
 }) => ({
   type: "situation",
   title: params.title,
@@ -200,6 +228,7 @@ const buildSituationPayload = (params: {
   awaitingContinue: params.awaitingContinue,
   continueLabel: params.continueLabel,
   prev_user_correct: params.prevUserCorrect,
+  is_completion_step: params.isCompletionStep ? true : undefined,
   text_exercise:
     params.awaitingContinue
       ? undefined
@@ -347,7 +376,7 @@ export const advanceLesson = (params: {
         messages: [
           { role: "model", text: transitionText, currentStepSnapshot: step },
           makeSeparator("Конструктор", step),
-          { role: "model", text: formatConstructorPrompt(script.constructor, 0), currentStepSnapshot: step },
+          { role: "model", text: safeFormatConstructorPrompt(script.constructor, 0), currentStepSnapshot: step },
         ],
         nextStep: step,
       };
@@ -370,6 +399,33 @@ export const advanceLesson = (params: {
       const step: DialogueStep = { type: "situations", index: 0, subIndex: 0 };
       const normalized = getSituationStep(scenario, 0);
       if (!normalized) return { messages: [], nextStep: null };
+      const task = normalized.isLessonCompletion ? "" : normalized.task;
+      const expected = normalized.isLessonCompletion ? undefined : normalized.expected_answer;
+      if (normalized.isLessonCompletion) {
+        const completionStep: DialogueStep = { type: "completion", index: 0 };
+        return {
+          messages: [
+            { role: "model", text: transitionText, currentStepSnapshot: step },
+            makeSeparator("Ситуации", step),
+            {
+              role: "model",
+              text: JSON.stringify(
+                buildSituationPayload({
+                  title: normalized.title,
+                  situation: normalized.situation,
+                  ai: normalized.ai,
+                  ai_translation: normalized.ai_translation,
+                  task,
+                  expected,
+                })
+              ),
+              currentStepSnapshot: step,
+            },
+            { role: "model", text: `${script.completion} <lesson_complete>`, currentStepSnapshot: completionStep },
+          ],
+          nextStep: completionStep,
+        };
+      }
       return {
         messages: [
           { role: "model", text: transitionText, currentStepSnapshot: step },
@@ -382,8 +438,9 @@ export const advanceLesson = (params: {
                 situation: normalized.situation,
                 ai: normalized.ai,
                 ai_translation: normalized.ai_translation,
-                task: normalized.task,
-                expected: normalized.expected_answer,
+                task,
+                expected,
+                isCompletionStep: normalized.isLessonCompletion,
               })
             ),
             currentStepSnapshot: step,
@@ -416,13 +473,13 @@ export const advanceLesson = (params: {
       return { messages: [], nextStep: null };
     }
 
-    if (idx + 1 < constructor.tasks.length) {
-      const step: DialogueStep = { type: "constructor", index: idx + 1 };
-      return {
-        messages: [{ role: "model", text: formatConstructorPrompt(constructor, idx + 1), currentStepSnapshot: step }],
-        nextStep: step,
-      };
-    }
+      if (idx + 1 < constructor.tasks.length) {
+        const step: DialogueStep = { type: "constructor", index: idx + 1 };
+        return {
+          messages: [{ role: "model", text: safeFormatConstructorPrompt(constructor, idx + 1), currentStepSnapshot: step }],
+          nextStep: step,
+        };
+      }
 
     if (script.find_the_mistake?.tasks?.length) {
       const step: DialogueStep = { type: "find_the_mistake", index: 0 };
@@ -443,6 +500,33 @@ export const advanceLesson = (params: {
       const normalized = getSituationStep(scenario, 0);
       if (!normalized) return { messages: [], nextStep: null };
       const successText = script.constructor?.successText || "Супер! Ты справился со всеми заданиями на построение предложений.";
+      const task = normalized.isLessonCompletion ? "" : normalized.task;
+      const expected = normalized.isLessonCompletion ? undefined : normalized.expected_answer;
+      if (normalized.isLessonCompletion) {
+        const completionStep: DialogueStep = { type: "completion", index: 0 };
+        return {
+          messages: [
+            { role: "model", text: successText, currentStepSnapshot: step },
+            makeSeparator("Ситуации", step),
+            {
+              role: "model",
+              text: JSON.stringify(
+                buildSituationPayload({
+                  title: normalized.title,
+                  situation: normalized.situation,
+                  ai: normalized.ai,
+                  ai_translation: normalized.ai_translation,
+                  task,
+                  expected,
+                })
+              ),
+              currentStepSnapshot: step,
+            },
+            { role: "model", text: `${script.completion} <lesson_complete>`, currentStepSnapshot: completionStep },
+          ],
+          nextStep: completionStep,
+        };
+      }
       return {
         messages: [
           { role: "model", text: successText, currentStepSnapshot: step },
@@ -455,8 +539,9 @@ export const advanceLesson = (params: {
                 situation: normalized.situation,
                 ai: normalized.ai,
                 ai_translation: normalized.ai_translation,
-                task: normalized.task,
-                expected: normalized.expected_answer,
+                task,
+                expected,
+                isCompletionStep: normalized.isLessonCompletion,
               })
             ),
             currentStepSnapshot: step,
@@ -506,6 +591,33 @@ export const advanceLesson = (params: {
       const normalized = getSituationStep(scenario, 0);
       if (!normalized) return { messages: [], nextStep: null };
       const successText = script.find_the_mistake?.successText || "Потрясающе! Ты отлично находишь ошибки.";
+      const task = normalized.isLessonCompletion ? "" : normalized.task;
+      const expected = normalized.isLessonCompletion ? undefined : normalized.expected_answer;
+      if (normalized.isLessonCompletion) {
+        const completionStep: DialogueStep = { type: "completion", index: 0 };
+        return {
+          messages: [
+            { role: "model", text: successText, currentStepSnapshot: step },
+            makeSeparator("Ситуации", step),
+            {
+              role: "model",
+              text: JSON.stringify(
+                buildSituationPayload({
+                  title: normalized.title,
+                  situation: normalized.situation,
+                  ai: normalized.ai,
+                  ai_translation: normalized.ai_translation,
+                  task,
+                  expected,
+                })
+              ),
+              currentStepSnapshot: step,
+            },
+            { role: "model", text: `${script.completion} <lesson_complete>`, currentStepSnapshot: completionStep },
+          ],
+          nextStep: completionStep,
+        };
+      }
       return {
         messages: [
           { role: "model", text: successText, currentStepSnapshot: step },
@@ -518,8 +630,9 @@ export const advanceLesson = (params: {
                 situation: normalized.situation,
                 ai: normalized.ai,
                 ai_translation: normalized.ai_translation,
-                task: normalized.task,
-                expected: normalized.expected_answer,
+                task,
+                expected,
+                isCompletionStep: normalized.isLessonCompletion,
               })
             ),
             currentStepSnapshot: step,
@@ -545,6 +658,8 @@ export const advanceLesson = (params: {
     const normalized = getSituationStep(scenario, subIndex);
     if (!normalized) return { messages: [], nextStep: null };
     const reaction = typeof params.reactionText === "string" ? params.reactionText.trim() : "";
+    const task = normalized.isLessonCompletion ? "" : normalized.task;
+    const expected = normalized.isLessonCompletion ? undefined : normalized.expected_answer;
 
     const awaitingContinue = Boolean((params.currentStep as any)?.awaitingContinue);
     if (awaitingContinue) {
@@ -580,6 +695,30 @@ export const advanceLesson = (params: {
       const nextStepIndex = nextSubIndex ?? 0;
       const nextNormalized = getSituationStep(nextScenario, nextStepIndex);
       if (!nextNormalized) return { messages: [], nextStep: null };
+      const nextTask = nextNormalized.isLessonCompletion ? "" : nextNormalized.task;
+      const nextExpected = nextNormalized.isLessonCompletion ? undefined : nextNormalized.expected_answer;
+      if (nextNormalized.isLessonCompletion) {
+        const completionStep: DialogueStep = { type: "completion", index: 0 };
+        const nextStep: DialogueStep = { type: "situations", index: nextIndex, subIndex: nextStepIndex };
+        const payload = buildSituationPayload({
+          title: nextNormalized.title,
+          situation: nextNormalized.situation,
+          ai: nextNormalized.ai,
+          ai_translation: nextNormalized.ai_translation,
+          task: nextTask,
+          expected: nextExpected,
+          prevUserCorrect: true,
+        });
+        const messages: EngineMessage[] = [
+          { role: "model", text: JSON.stringify(payload), currentStepSnapshot: nextStep },
+        ];
+        if (situations.successText) {
+          messages.push({ role: "model", text: situations.successText, currentStepSnapshot: completionStep });
+          messages.push(makeSeparator("Финал", completionStep));
+        }
+        messages.push({ role: "model", text: `${script.completion} <lesson_complete>`, currentStepSnapshot: completionStep });
+        return { messages, nextStep: completionStep };
+      }
       const step: DialogueStep = { type: "situations", index: nextIndex, subIndex: nextStepIndex };
       return {
         messages: [
@@ -591,8 +730,9 @@ export const advanceLesson = (params: {
                 situation: nextNormalized.situation,
                 ai: nextNormalized.ai,
                 ai_translation: nextNormalized.ai_translation,
-                task: nextNormalized.task,
-                expected: nextNormalized.expected_answer,
+                task: nextTask,
+                expected: nextExpected,
+                isCompletionStep: nextNormalized.isLessonCompletion,
               })
             ),
             currentStepSnapshot: step,
@@ -605,7 +745,7 @@ export const advanceLesson = (params: {
     if (!params.isCorrect) {
       const fb =
         params.feedback ||
-        `В этой ситуации тебе нужно было: ${normalized.task}. Ожидаемый ответ: "${normalized.expected_answer}".`;
+        `В этой ситуации тебе нужно было: ${task || normalized.task}. Ожидаемый ответ: "${expected ?? normalized.expected_answer}".`;
       const step: DialogueStep = { type: "situations", index: idx, subIndex };
       return {
         messages: [
@@ -617,9 +757,9 @@ export const advanceLesson = (params: {
                 situation: normalized.situation,
                 ai: normalized.ai,
                 ai_translation: normalized.ai_translation,
-                task: normalized.task,
+                task,
                 feedback: fb,
-                expected: normalized.expected_answer,
+                expected,
                 result: "incorrect",
               })
             ),
@@ -641,6 +781,28 @@ export const advanceLesson = (params: {
       const nextStepIndex = subIndex + 1;
       const nextNormalized = getSituationStep(scenario, nextStepIndex);
       if (!nextNormalized) return { messages: [], nextStep: null };
+      const nextTask = nextNormalized.isLessonCompletion ? "" : nextNormalized.task;
+      const nextExpected = nextNormalized.isLessonCompletion ? undefined : nextNormalized.expected_answer;
+      if (nextNormalized.isLessonCompletion) {
+        const completionStep: DialogueStep = { type: "completion", index: 0 };
+        const step: DialogueStep = { type: "situations", index: idx, subIndex: nextStepIndex };
+        const payload = buildSituationPayload({
+          title: nextNormalized.title,
+          situation: nextNormalized.situation,
+          ai: nextNormalized.ai,
+          ai_translation: nextNormalized.ai_translation,
+          task: nextTask,
+          expected: nextExpected,
+          prevUserCorrect: true,
+        });
+        const messages: EngineMessage[] = [{ role: "model", text: JSON.stringify(payload), currentStepSnapshot: step }];
+        if (situations?.successText) {
+          messages.push({ role: "model", text: situations.successText, currentStepSnapshot: completionStep });
+          messages.push(makeSeparator("Финал", completionStep));
+        }
+        messages.push({ role: "model", text: `${script.completion} <lesson_complete>`, currentStepSnapshot: completionStep });
+        return { messages, nextStep: completionStep };
+      }
       const step: DialogueStep = { type: "situations", index: idx, subIndex: nextStepIndex };
       return {
         messages: [
@@ -652,9 +814,10 @@ export const advanceLesson = (params: {
                 situation: nextNormalized.situation,
                 ai: nextNormalized.ai,
                 ai_translation: nextNormalized.ai_translation,
-                task: nextNormalized.task,
-                expected: nextNormalized.expected_answer,
+                task: nextTask,
+                expected: nextExpected,
                 prevUserCorrect: true,
+                isCompletionStep: nextNormalized.isLessonCompletion,
               })
             ),
             currentStepSnapshot: step,
@@ -675,13 +838,14 @@ export const advanceLesson = (params: {
             situation: normalized.situation,
             ai: "",
             ai_translation: undefined,
-            task: normalized.task,
+            task,
             feedback,
-            expected: normalized.expected_answer,
+            expected,
             result: "correct",
             awaitingContinue: true,
             continueLabel: "Далее",
             prevUserCorrect: true,
+            isCompletionStep: normalized.isLessonCompletion,
           })
         ),
         currentStepSnapshot: step,
@@ -721,17 +885,20 @@ export const advanceLesson = (params: {
       awaitingContinue: true,
       nextType: "completion",
     };
+    const finalAi = reaction || (normalized.isLessonCompletion ? normalized.ai : "");
+    const finalTask = reaction ? "" : task;
     const finalMarker = {
       role: "model" as const,
       text: JSON.stringify(
         buildSituationPayload({
           title: normalized.title,
           situation: normalized.situation,
-          ai: reaction || "",
+          ai: finalAi,
           ai_translation: undefined,
-          task: reaction ? "" : normalized.task,
+          task: finalTask,
           awaitingContinue: true,
           prevUserCorrect: true,
+          isCompletionStep: normalized.isLessonCompletion,
         })
       ),
       currentStepSnapshot: finalSituationStep,

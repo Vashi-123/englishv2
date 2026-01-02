@@ -173,4 +173,8 @@ class MyBridgeViewController: CAPBridgeViewController {
         NSLog("[MyBridgeViewController] capacitorDidLoad - registering NativeIapPlugin")
         bridge?.registerPluginInstance(NativeIapPlugin())
     }
+
+    // Убираем стандартный accessory bar (Prev/Next/Done), чтобы не плодить auto-layout warnings
+    override var inputAccessoryView: UIView? { nil }
+    override var canBecomeFirstResponder: Bool { true }
 }

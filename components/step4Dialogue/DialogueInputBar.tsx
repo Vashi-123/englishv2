@@ -123,7 +123,7 @@ export function DialogueInputBar({
                 type="button"
                 onClick={cta.onClick}
                 disabled={Boolean(cta.disabled || isLoading)}
-                className="w-full h-12 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full h-14 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
               >
                 {cta.label}
               </button>

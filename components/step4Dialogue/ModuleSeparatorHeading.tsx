@@ -2,7 +2,7 @@ import React from 'react';
 
 export const ModuleSeparatorHeading: React.FC<{ title: string }> = ({ title }) => (
   <div
-    className="w-full flex items-center justify-center pt-14 scroll-mt-10"
+    className="w-full flex items-center justify-center pt-14 pb-6 scroll-mt-10"
     data-module-separator-kind={/граммат|grammar/i.test(title) ? 'grammar' : undefined}
   >
     <div className="h-px bg-brand-primary/25 w-12 sm:w-20 rounded-full"></div>

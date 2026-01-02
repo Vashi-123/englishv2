@@ -17,6 +17,7 @@ import { setItemObjectAsync, setItemAsync } from '../utils/asyncStorage';
 import { 
   X, 
   AlertTriangle,
+  WifiOff,
   CheckCircle2, 
   Lock, 
   Play, 
@@ -41,6 +42,7 @@ import { Dashboard } from './dashboard/Dashboard';
 import { ExerciseView } from './exercise/ExerciseView';
 import { useUIStore, useLessonsStore } from '../stores';
 import { logError } from '../services/errorLogger';
+import { useSupabaseConnectivity } from '../hooks/useSupabaseConnectivity';
 
 export const AppContent: React.FC<{
   userId?: string;
@@ -174,9 +176,11 @@ export const AppContent: React.FC<{
   const grammarCards = dashboardData?.grammarCards || [];
   const grammarLoading = dashboardLoading;
   const grammarModalTimerRef = useRef<number | null>(null);
+  const [confirmProcessing, setConfirmProcessing] = useState(false);
   const statusesInitKeyRef = useRef<string | null>(null);
   const INSIGHT_POPUP_ANIM_MS = 360;
   const CONFIRM_ANIM_MS = 220;
+  const supabaseConnectivity = useSupabaseConnectivity();
 
   const openInsightPopup = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -278,6 +282,7 @@ export const AppContent: React.FC<{
       window.clearTimeout(confirmCloseTimerRef.current);
       confirmCloseTimerRef.current = null;
     }
+    setConfirmProcessing(false);
     setConfirmAction(kind);
     setConfirmVisible(true);
   }, []);
@@ -286,6 +291,7 @@ export const AppContent: React.FC<{
     if (typeof window === 'undefined') {
       setConfirmVisible(false);
       setConfirmAction(null);
+      setConfirmProcessing(false);
       return;
     }
     setConfirmVisible(false);
@@ -293,6 +299,7 @@ export const AppContent: React.FC<{
       window.clearTimeout(confirmCloseTimerRef.current);
       confirmCloseTimerRef.current = null;
     }
+    setConfirmProcessing(false);
     confirmCloseTimerRef.current = window.setTimeout(() => {
       setConfirmAction(null);
       confirmCloseTimerRef.current = null;
@@ -1017,6 +1024,27 @@ export const AppContent: React.FC<{
 
   return (
     <>
+      {supabaseConnectivity.status === 'degraded' && (
+        <div className="fixed top-0 inset-x-0 z-[120] px-4 pt-[env(safe-area-inset-top)]">
+          <div className="mx-auto max-w-4xl rounded-xl border border-red-200 bg-red-50 text-red-900 shadow-md px-4 py-3 flex items-start gap-3">
+            <WifiOff className="w-5 h-5 mt-1 flex-shrink-0" />
+            <div className="flex-1 text-sm">
+              <div className="font-semibold">Нет связи с сервером</div>
+              <div className="text-red-800/80">
+                {supabaseConnectivity.lastError || 'Проверьте интернет или VPN. Мы повторим запрос при восстановлении связи.'}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                reloadDashboard();
+              }}
+              className="ml-2 rounded-lg bg-red-600 text-white px-3 py-1 text-sm font-semibold hover:bg-red-700 transition-colors"
+            >
+              Повторить
+            </button>
+          </div>
+        </div>
+      )}
       {view === ViewState.DASHBOARD && (
         <Dashboard
           userEmail={userEmail}
@@ -1107,11 +1135,20 @@ export const AppContent: React.FC<{
         isOpen={!!confirmAction}
         isVisible={confirmVisible}
         action={confirmAction}
+        isProcessing={confirmProcessing}
         onConfirm={async () => {
-          if (confirmAction === 'reset') {
-            await handleResetProgress();
-          } else {
-            await onSignOut();
+          setConfirmProcessing(true);
+          try {
+            if (confirmAction === 'reset') {
+              await handleResetProgress();
+            } else {
+              await onSignOut();
+            }
+          } catch (err) {
+            console.error('[ConfirmModal] action failed:', err);
+          } finally {
+            setConfirmProcessing(false);
+            closeConfirm();
           }
         }}
         onCancel={closeConfirm}

@@ -96,6 +96,7 @@ export function useLessonRealtimeSubscriptions({
   useEffect(() => {
     lessonCompletedRef.current = lessonCompletedPersisted;
   }, [lessonCompletedPersisted]);
+  const recentPlainRef = useRef<Map<string, number>>(new Map());
 
   useEffect(() => {
     let unsubMessages: (() => void) | null = null;
@@ -117,7 +118,23 @@ export function useLessonRealtimeSubscriptions({
 
       unsubMessages = await subscribeChatMessages(day || 1, lesson || 1, (msg) => {
         if (!isMounted) return;
-        
+
+        const now = Date.now();
+        const windowMs = 2500;
+        const key = msg.id
+          ? null
+          : `${msg.role}|${(msg.text || '').trim().slice(0, 200)}`;
+        if (!msg.id && key) {
+          const prev = recentPlainRef.current.get(key);
+          if (prev && now - prev < windowMs) {
+            return;
+          }
+          recentPlainRef.current.set(key, now);
+          for (const [k, ts] of Array.from(recentPlainRef.current.entries())) {
+            if (now - ts > windowMs) recentPlainRef.current.delete(k);
+          }
+        }
+
         setMessages((prev) => {
           if (msg.id) {
             const idx = prev.findIndex((m) => m.id === msg.id);

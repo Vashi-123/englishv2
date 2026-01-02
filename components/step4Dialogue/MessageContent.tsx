@@ -13,6 +13,7 @@ import { CardHeading } from './CardHeading';
 // Global ref to track played situation audio across all component instances
 // This prevents double playback even if the component re-renders or is mounted multiple times
 const globalAutoPlayedSituationAiRef = new Set<string>();
+const globalAutoPlayedSituationAiTextRef = new Set<string>();
 
 type Props = {
   msg: ChatMessage;
@@ -70,6 +71,7 @@ type Props = {
   extractStructuredSections: (text: string) => Array<{ title: string; body: string }>;
   stripModuleTag: (text: string) => string;
   grammarExerciseCompleted?: boolean;
+  startedSituations: Record<string, boolean>;
 };
 
 function MessageContentComponent({
@@ -110,6 +112,7 @@ function MessageContentComponent({
   extractStructuredSections,
   stripModuleTag,
   grammarExerciseCompleted,
+  startedSituations,
 }: Props) {
   const persistFindMistakePatch = (patch: Record<string, any>) => {
     try {
@@ -128,6 +131,8 @@ function MessageContentComponent({
   let autoPlaySituationAiText: string | null = null;
   let autoPlaySituationAiMessageId: string | null = null;
   let shouldAutoPlaySituationAi = false;
+  let scenarioStartedForCard = true;
+  let scenarioKeyForCard: string | null = null;
 
   if (isSituationCard) {
     const group = situationGroupMessages && situationGroupMessages.length > 0 ? situationGroupMessages : [msg];
@@ -136,6 +141,21 @@ function MessageContentComponent({
       typeof firstModel?.currentStepSnapshot?.index === 'number' && Number.isFinite(firstModel.currentStepSnapshot.index)
         ? (firstModel.currentStepSnapshot.index as number)
         : null;
+    const scenarioKey = scenarioIndexForCard != null ? `scenario-${scenarioIndexForCard}` : `msg-${msgStableId}`;
+    scenarioKeyForCard = scenarioKey;
+    const candidateScenarioKeys = (() => {
+      const keys = new Set<string>();
+      if (scenarioIndexForCard != null) keys.add(`scenario-${scenarioIndexForCard}`);
+      for (const m of group) {
+        const stable =
+          (m as any)?.id ??
+          (typeof (m as any)?.messageOrder === 'number' ? `order-${(m as any).messageOrder}` : null);
+        if (stable) keys.add(`msg-${stable}`);
+      }
+      // Always include the current card key as a fallback.
+      keys.add(scenarioKey);
+      return Array.from(keys);
+    })();
 
     const lastSituationModel = (() => {
       for (let i = group.length - 1; i >= 0; i--) {
@@ -203,8 +223,11 @@ function MessageContentComponent({
       (typeof (lastSituationModel?.msg as any)?.messageOrder === 'number' ? `order-${(lastSituationModel?.msg as any).messageOrder}` : null) ??
       msgStableId;
     autoPlaySituationAiMessageId = situationPayloadKey ? `situation-ai:${String(situationPayloadKey)}` : null;
+    const scenarioStarted =
+      candidateScenarioKeys.some((k) => startedSituations[k]) || hasUserReplyInSituation || situationCompletedCorrect;
+    scenarioStartedForCard = scenarioStarted;
     shouldAutoPlaySituationAi = Boolean(
-      isActiveScenario && aiText && !hasUserReplyInSituation && !situationCompletedCorrect && !isAwaitingModelReply
+      scenarioStarted && isActiveScenario && aiText && !hasUserReplyInSituation && !situationCompletedCorrect && !isAwaitingModelReply
     );
   }
 
@@ -218,6 +241,11 @@ function MessageContentComponent({
     if (!stableShouldAutoPlay) return;
     if (!stableAiText) return;
     if (!stableMessageId) return;
+    const normalizedTextKey = stableAiText.trim().toLowerCase();
+    if (normalizedTextKey && globalAutoPlayedSituationAiTextRef.has(normalizedTextKey)) {
+      console.log('[TTS] Situation AI already played by text, skipping:', normalizedTextKey.slice(0, 40));
+      return;
+    }
     
     // Use global ref to prevent double playback across all component instances
     // This prevents double playback even if React StrictMode runs effects twice
@@ -230,9 +258,14 @@ function MessageContentComponent({
     // Mark as played BEFORE calling processAudioQueue to prevent race conditions
     // This ensures that even if the effect runs twice (StrictMode), only one playback happens
     globalAutoPlayedSituationAiRef.add(stableMessageId);
+    if (normalizedTextKey) globalAutoPlayedSituationAiTextRef.add(normalizedTextKey);
     console.log('[TTS] Auto-playing situation AI:', { messageId: stableMessageId, text: stableAiText.slice(0, 50) });
 
-    processAudioQueue([{ text: stableAiText, lang: 'en', kind: 'situation_ai' }], stableMessageId);
+    const timer = window.setTimeout(() => {
+      processAudioQueue([{ text: stableAiText, lang: 'en', kind: 'situation_ai' }], stableMessageId);
+    }, 280);
+
+    return () => window.clearTimeout(timer);
   }, [stableMessageId, stableAiText, stableShouldAutoPlay, processAudioQueue]);
 
   if (parsed && (parsed.type === 'goal' || parsed.type === 'words_list')) {
@@ -261,23 +294,26 @@ function MessageContentComponent({
 	            if (el) vocabRefs.current.set(index, el);
 	            else vocabRefs.current.delete(index);
 		          }}
-		          onPlayWord={(wordItem) => {
-		            const normalizedWord = String(wordItem.word || '').replace(/\s+/g, ' ').trim();
-		            const queue = [{ text: normalizedWord, lang: 'en', kind: 'word' }].filter(
+		          onPlayWord={(wordItem, wordIndex) => {
+		            // Передаем текст как есть, без нормализации (как в старой системе)
+		            const queue = [{ text: wordItem.word, lang: 'en', kind: 'word', meta: { vocabIndex: wordIndex, vocabKind: 'word' } }].filter(
 		              (x) => String(x.text || '').trim().length > 0
 		            );
 		            // eslint-disable-next-line no-console
-		            console.log('[TTS] onPlayWord -> processAudioQueue', { text: normalizedWord, items: queue.length });
+		            console.log('[TTS] onPlayWord -> processAudioQueue', { text: wordItem.word, items: queue.length });
 		            playVocabAudio(queue);
 		          }}
-		          onPlayExample={(wordItem) => {
-		            const normalizedWord = String(wordItem.word || '').replace(/\s+/g, ' ').trim();
-		            const normalizedExample = String((wordItem as any).context || '').replace(/\s+/g, ' ').trim();
-		            if (!normalizedExample) return;
-		            if (normalizedExample === normalizedWord) return;
+		          onPlayExample={(wordItem, wordIndex) => {
+		            // Передаем текст как есть, без нормализации (как в старой системе)
+		            const exampleText = String((wordItem as any).context || '').trim();
+		            if (!exampleText) return;
+		            const wordText = String(wordItem.word || '').trim();
+		            if (exampleText === wordText) return;
 		            // eslint-disable-next-line no-console
-		            console.log('[TTS] onPlayExample -> processAudioQueue', { text: normalizedExample.slice(0, 80) });
-		            playVocabAudio([{ text: normalizedExample, lang: 'en', kind: 'example' }]);
+		            console.log('[TTS] onPlayExample -> processAudioQueue', { text: exampleText.slice(0, 80), wordIndex });
+		            playVocabAudio([
+		              { text: exampleText, lang: 'en', kind: 'example', meta: { vocabIndex: wordIndex, vocabKind: 'example' } },
+		            ]);
 		          }}
 		          onNextWord={() => {
 		            if (currentIdx + 1 >= words.length) return;
@@ -285,18 +321,24 @@ function MessageContentComponent({
 		            setVocabIndex(nextIdx);
 		            const nextWord = words[nextIdx];
 		            if (nextWord) {
-		              const normalizedWord = String(nextWord.word || '').replace(/\s+/g, ' ').trim();
-		              const normalizedExample = String(nextWord.context || '').replace(/\s+/g, ' ').trim();
+		              // Передаем текст как есть, без нормализации (как в старой системе)
+		              const wordText = String(nextWord.word || '').trim();
+		              const exampleText = String(nextWord.context || '').trim();
 		              const queue: Array<{ text: string; lang: string; kind: string }> = [];
-		              if (normalizedWord) {
-		                queue.push({ text: normalizedWord, lang: 'en', kind: 'word' });
+		              if (wordText) {
+		                queue.push({ text: wordText, lang: 'en', kind: 'word', meta: { vocabIndex: nextIdx, vocabKind: 'word' } });
 		              }
 		              // Add example after word if it exists and is different from word
-		              if (normalizedExample && normalizedExample !== normalizedWord) {
-		                queue.push({ text: normalizedExample, lang: 'en', kind: 'example' });
+		              if (exampleText && exampleText !== wordText) {
+		                queue.push({
+		                  text: exampleText,
+		                  lang: 'en',
+		                  kind: 'example',
+		                  meta: { vocabIndex: nextIdx, vocabKind: 'example' },
+		                });
 		              }
 		              if (queue.length) {
-		              playVocabAudio(queue);
+		                playVocabAudio(queue);
 		              }
 		            }
 		          }}
@@ -739,6 +781,7 @@ function MessageContentComponent({
         completedCorrect={situationCompletedCorrect}
         showContinue={showContinue}
         continueLabel={continueLabel}
+        started={scenarioStartedForCard}
         isLoading={Boolean(isAwaitingModelReply) && Boolean(isActiveScenario)}
         currentAudioItem={currentAudioItem}
         processAudioQueue={processAudioQueue}
@@ -829,6 +872,11 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
   if (prev.isAwaitingModelReply !== next.isAwaitingModelReply) return false;
   if (prev.showVocab !== next.showVocab) return false;
   if (prev.vocabIndex !== next.vocabIndex) return false;
+  // Обновляем рендер при смене активного аудио, чтобы подсветка слов/примеров была синхронизирована с воспроизведением
+  if (prev.currentAudioItem?.text !== next.currentAudioItem?.text) return false;
+  if (prev.currentAudioItem?.kind !== next.currentAudioItem?.kind) return false;
+  if ((prev.currentAudioItem?.meta?.vocabIndex ?? null) !== (next.currentAudioItem?.meta?.vocabIndex ?? null)) return false;
+  if ((prev.currentAudioItem?.meta?.vocabKind ?? null) !== (next.currentAudioItem?.meta?.vocabKind ?? null)) return false;
   
   // Сравнение объектов через JSON для критичных
   if (prev.msg.currentStepSnapshot !== next.msg.currentStepSnapshot) {
@@ -865,6 +913,14 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
     const nextCtor = next.constructorUI[key];
     if (prevCtor?.completed !== nextCtor?.completed) return false;
     if (prevCtor?.pickedWordIndices?.length !== nextCtor?.pickedWordIndices?.length) return false;
+  }
+
+  // Situations: re-render when start state changes so the dialogue opens/hides correctly
+  const prevStartedKeys = Object.keys(prev.startedSituations || {});
+  const nextStartedKeys = Object.keys(next.startedSituations || {});
+  if (prevStartedKeys.length !== nextStartedKeys.length) return false;
+  for (const key of prevStartedKeys) {
+    if (prev.startedSituations[key] !== next.startedSituations[key]) return false;
   }
   
   // Функции и refs не сравниваем (они стабильны через useCallback/useRef)
