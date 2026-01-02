@@ -227,8 +227,30 @@ export function useLessonFlow({
 
       try {
         const ensureCtxSpan = startSpan('ensureLessonContext');
-        await ensureLessonContextRef.current();
-        ensureCtxSpan?.('ok');
+        try {
+          await withTimeout(ensureLessonContextRef.current(), 12000, 'ensureLessonContext');
+          ensureCtxSpan?.('ok');
+        } catch (err: any) {
+          ensureCtxSpan?.('error', { error: String(err?.message || err) });
+          const fallbackText = language?.toLowerCase?.().startsWith('ru')
+            ? 'Не удалось подключиться к серверу. Проверь интернет и попробуй еще раз.'
+            : 'Could not reach the server. Check your connection and try again.';
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `sys-connection-${Date.now()}`,
+              role: 'model',
+              text: fallbackText,
+              currentStepSnapshot: currentStepRef.current ?? null,
+              local: { source: 'engine', saveStatus: 'failed', error: String(err?.message || err) },
+            },
+          ]);
+          setIsAwaitingModelReply(false);
+          setIsLoading(false);
+          inFlightRef.current = false;
+          totalSpan?.('error', { error: 'ensureLessonContext failed' });
+          return;
+        }
         const lessonId = lessonIdRef.current;
         const userId = userIdRef.current;
         const stepForInput = opts?.stepOverride ?? getLatestExpectedInputStep();
@@ -238,8 +260,31 @@ export function useLessonFlow({
         }
 
         const scriptSpan = startSpan('ensureLessonScript', { stepType: stepForInput.type });
-        const script = (await ensureLessonScriptRef.current()) as LessonScriptV2;
-        scriptSpan?.('ok');
+        let script: LessonScriptV2;
+        try {
+          script = (await withTimeout(ensureLessonScriptRef.current(), 15000, 'ensureLessonScript')) as LessonScriptV2;
+          scriptSpan?.('ok');
+        } catch (err: any) {
+          scriptSpan?.('error', { error: String(err?.message || err) });
+          const fallbackText = language?.toLowerCase?.().startsWith('ru')
+            ? 'Не удалось загрузить задание. Проверь интернет и попробуй еще раз.'
+            : 'Could not load the exercise. Check your connection and try again.';
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `sys-script-${Date.now()}`,
+              role: 'model',
+              text: fallbackText,
+              currentStepSnapshot: currentStepRef.current ?? null,
+              local: { source: 'engine', saveStatus: 'failed', error: String(err?.message || err) },
+            },
+          ]);
+          setIsAwaitingModelReply(false);
+          setIsLoading(false);
+          inFlightRef.current = false;
+          totalSpan?.('error', { error: 'ensureLessonScript failed' });
+          return;
+        }
         let isCorrect = true;
         let feedback = '';
         let reactionText: string | undefined = undefined;

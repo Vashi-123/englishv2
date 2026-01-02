@@ -634,7 +634,7 @@ export function DialogueMessages({
             </div>
             {onNextLesson && (
               <div className="flex flex-col items-center -mt-4 mb-8 gap-3 animate-fade-in w-full">
-                <div className="w-full max-w-[480px] sm:max-w-[520px]">
+                <div className="w-full max-w-[70%]">
                   <button
                     type="button"
                     onClick={onNextLesson}

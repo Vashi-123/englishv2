@@ -71,10 +71,28 @@ const safeStorage = {
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   global: {
     fetch: async (input, init) => {
+      const maxAttempts = 3;
+      const isNetworkishError = (resp: Response) => resp.status === 0;
+      const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
       try {
-        const response = await fetch(input, init);
+        let response: Response | null = null;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          try {
+            response = await fetch(input, init);
+            if (response.ok || !isNetworkishError(response) || attempt === maxAttempts - 1) {
+              break;
+            }
+          } catch (err) {
+            if (attempt === maxAttempts - 1) throw err;
+          }
+          const backoffMs = 400 * Math.pow(1.6, attempt);
+          await delay(Math.min(2000, backoffMs));
+        }
+        if (!response) throw new Error('No response from fetch');
+
         // Проверяем на ошибки CORS или access control
-        if (!response.ok && response.status === 0) {
+        if (!response.ok && isNetworkishError(response)) {
           console.warn('[Supabase] Network error or CORS issue:', String(input));
           notifyConnectivity({
             status: "degraded",
