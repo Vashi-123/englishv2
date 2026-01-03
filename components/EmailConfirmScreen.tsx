@@ -22,6 +22,7 @@ export const EmailConfirmScreen: React.FC = () => {
   const [message, setMessage] = useState<string>('Подтверждение email...');
   const [email, setEmail] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | undefined>(undefined);
+  const [nextPath, setNextPath] = useState<string>('/app');
   const { freeLessonCount } = useFreePlan();
   const { isPremium, loading: entitlementsLoading } = useEntitlements(userId);
   const [paying, setPaying] = useState(false);
@@ -36,6 +37,19 @@ export const EmailConfirmScreen: React.FC = () => {
   const [promoLoading, setPromoLoading] = useState<boolean>(false);
   const [promoMessage, setPromoMessage] = useState<string | null>(null);
   const [promoOk, setPromoOk] = useState<boolean | null>(null);
+
+  const withPartnerAutologin = (path: string, isPartnerFlow: boolean): string => {
+    if (!isPartnerFlow) return path;
+    try {
+      const url = new URL(path, window.location.origin);
+      if (!url.pathname.startsWith('/partners')) return path;
+      if (!url.searchParams.get('autologin')) url.searchParams.set('autologin', '1');
+      return url.pathname + (url.search ? url.search : '') + (url.hash ? url.hash : '');
+    } catch {
+      if (!path.startsWith('/partners')) return path;
+      return path.includes('?') ? `${path}&autologin=1` : `${path}?autologin=1`;
+    }
+  };
 
   // Загружаем цену продукта
   useEffect(() => {
@@ -201,7 +215,7 @@ export const EmailConfirmScreen: React.FC = () => {
   const handleContinue = async () => {
     markPaywallShown();
     // Редиректим в /app (ProtectedRoute проверит сессию)
-    navigate('/app', { replace: true });
+    navigate(nextPath || '/app', { replace: true });
   };
 
   useEffect(() => {
@@ -213,6 +227,21 @@ export const EmailConfirmScreen: React.FC = () => {
         const token = url.searchParams.get('token') || url.hash.match(/[#&]token=([^&]+)/)?.[1] || null;
         const code = url.searchParams.get('code') || url.hash.match(/[#&]code=([^&]+)/)?.[1] || null;
         const type = url.searchParams.get('type') || url.hash.match(/[#&]type=([^&]+)/)?.[1] || 'signup'; // signup, email, recovery, etc.
+        const flowRaw = url.searchParams.get('flow') || url.hash.match(/[#&]flow=([^&]+)/)?.[1] || null;
+        const isPartnerFlow = String(flowRaw || '').toLowerCase() === 'partner';
+        const nextParamRaw = url.searchParams.get('next') || url.hash.match(/[#&]next=([^&]+)/)?.[1] || null;
+        const resolvedNext = (() => {
+          if (!nextParamRaw) return isPartnerFlow ? '/partners' : '/app';
+          try {
+            const decoded = decodeURIComponent(nextParamRaw);
+            // Only allow same-origin relative paths.
+            if (decoded.startsWith('/')) return decoded;
+            return isPartnerFlow ? '/partners' : '/app';
+          } catch {
+            return isPartnerFlow ? '/partners' : '/app';
+          }
+        })();
+        setNextPath(withPartnerAutologin(resolvedNext, isPartnerFlow));
         const emailParam = url.searchParams.get('email') || url.hash.match(/[#&]email=([^&]+)/)?.[1] || null;
         
         if (emailParam) {
@@ -231,12 +260,22 @@ export const EmailConfirmScreen: React.FC = () => {
             // Показываем страницу paywall (email уже подтвержден, можно оплачивать)
             if (emailParam) {
               setEmail(emailParam);
-              // Показываем страницу с информацией о регистрации и предложением открыть полный доступ
-              setStatus('showPaywall');
+              if (isPartnerFlow) {
+                setStatus('success');
+                setMessage('Регистрация прошла успешно. Теперь войди в партнерский кабинет.');
+              } else {
+                // Показываем страницу с информацией о регистрации и предложением открыть полный доступ
+                setStatus('showPaywall');
+              }
               return;
             } else {
-              // Если нет email, но токен PKCE - email подтвержден, показываем paywall
-              setStatus('showPaywall');
+              // Если нет email, но токен PKCE - email подтвержден
+              if (isPartnerFlow) {
+                setStatus('success');
+                setMessage('Регистрация прошла успешно. Теперь войди в партнерский кабинет.');
+              } else {
+                setStatus('showPaywall');
+              }
               return;
             }
           }
@@ -269,8 +308,13 @@ export const EmailConfirmScreen: React.FC = () => {
               return;
             }
             
-            // Для signup показываем страницу с информацией о регистрации и предложением открыть полный доступ
-            setStatus('showPaywall');
+            // Для signup показываем страницу paywall, но для партнеров — просто успешную регистрацию.
+            if (isPartnerFlow) {
+              setStatus('success');
+              setMessage('Регистрация прошла успешно!');
+            } else {
+              setStatus('showPaywall');
+            }
             return;
           }
         }
@@ -287,11 +331,21 @@ export const EmailConfirmScreen: React.FC = () => {
                 // Показываем страницу paywall (email подтвержден, можно оплачивать)
                 if (emailParam) {
                   setEmail(emailParam);
-                  setStatus('showPaywall');
+                  if (isPartnerFlow) {
+                    setStatus('success');
+                    setMessage('Регистрация прошла успешно. Теперь войди в партнерский кабинет.');
+                  } else {
+                    setStatus('showPaywall');
+                  }
                   return;
                 } else {
-                  // Если нет email, но код есть - показываем paywall
-                  setStatus('showPaywall');
+                  // Если нет email, но код есть
+                  if (isPartnerFlow) {
+                    setStatus('success');
+                    setMessage('Регистрация прошла успешно. Теперь войди в партнерский кабинет.');
+                  } else {
+                    setStatus('showPaywall');
+                  }
                   return;
                 }
               }
@@ -316,8 +370,12 @@ export const EmailConfirmScreen: React.FC = () => {
                 return;
               }
               
-              // Для signup показываем страницу с информацией о регистрации и предложением открыть полный доступ
-              setStatus('showPaywall');
+              if (isPartnerFlow) {
+                setStatus('success');
+                setMessage('Регистрация прошла успешно!');
+              } else {
+                setStatus('showPaywall');
+              }
               return;
             }
           } catch (err) {
@@ -358,10 +416,10 @@ export const EmailConfirmScreen: React.FC = () => {
     if (status === 'showPaywall' && (userId || email)) {
       if (isPaywallShown()) {
         // Экран уже был показан - редиректим в /app
-        navigate('/app', { replace: true });
+        navigate(nextPath || '/app', { replace: true });
       }
     }
-  }, [status, userId, email]);
+  }, [status, userId, email, nextPath, navigate]);
 
   const priceLabel = formatPrice(String(priceValue), String(priceCurrency));
   const listPriceLabel = formatPrice('15000.00', 'RUB');
@@ -595,21 +653,25 @@ export const EmailConfirmScreen: React.FC = () => {
           {status === 'success' && (
             <>
               <CheckCircle className="w-16 h-16 mx-auto mb-4 text-emerald-600" />
-              <h1 className="text-2xl font-black text-slate-900 mb-2">Email подтвержден!</h1>
+              <h1 className="text-2xl font-black text-slate-900 mb-2">
+                {nextPath?.startsWith('/partners') ? 'Регистрация прошла успешно!' : 'Email подтвержден!'}
+              </h1>
               <p className="text-slate-600 mb-6">{message}</p>
               <div className="space-y-3">
                 <button
-                  onClick={() => navigate('/app', { replace: true })}
+                  onClick={() => navigate(nextPath?.startsWith('/partners') ? '/partners' : '/app', { replace: true })}
                   className="w-full px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl hover:opacity-90 transition"
                 >
-                  Войти в аккаунт
+                  {nextPath?.startsWith('/partners') ? 'Перейти в кабинет партнера' : 'Войти в аккаунт'}
                 </button>
-                <button
-                  onClick={() => navigate('/', { replace: true })}
-                  className="w-full px-6 py-3 border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition"
-                >
-                  Вернуться на главную
-                </button>
+                {!nextPath?.startsWith('/partners') && (
+                  <button
+                    onClick={() => navigate('/', { replace: true })}
+                    className="w-full px-6 py-3 border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition"
+                  >
+                    Вернуться на главную
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -641,4 +703,3 @@ export const EmailConfirmScreen: React.FC = () => {
     </>
   );
 };
-

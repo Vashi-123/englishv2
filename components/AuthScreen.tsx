@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '../services/supabaseClient';
@@ -33,10 +33,33 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
         setIsPaymentRedirect(true);
       }
     }
+    
+    // Очищаем флаг OAuth при монтировании, если он остался установленным
+    // (например, после отмены предыдущего OAuth или перезапуска приложения)
+    try {
+      const inProgress = localStorage.getItem(OAUTH_IN_PROGRESS_KEY);
+      if (inProgress === '1') {
+        // Проверяем, есть ли активная сессия
+        supabase.auth.getSession().then(({ data }) => {
+          if (!data?.session) {
+            // Если сессии нет, очищаем флаг
+            localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+            setOauthLoading(null);
+          }
+        }).catch(() => {
+          // При ошибке тоже очищаем флаг
+          localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+          setOauthLoading(null);
+        });
+      }
+    } catch {
+      // ignore
+    }
   }, []);
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
+  const oauthCompletionRef = useRef<{ startedAt: number; completed: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const { copy } = useLanguage();
@@ -64,6 +87,85 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
       return undefined;
     }
   })();
+
+  // Native OAuth can return without unmounting this screen (Browser.open flow, slow session propagation).
+  // Poll for a session while the OAuth spinner is shown, then complete login.
+  useEffect(() => {
+    if (!oauthLoading) {
+      oauthCompletionRef.current = null;
+      return;
+    }
+    if (!oauthCompletionRef.current) oauthCompletionRef.current = { startedAt: Date.now(), completed: false };
+    let cancelled = false;
+    
+    // Также проверяем флаг OAuth в localStorage - он сбрасывается в AuthProvider при успешной обработке
+    const checkOAuthFlag = () => {
+      try {
+        const inProgress = localStorage.getItem(OAUTH_IN_PROGRESS_KEY);
+        return inProgress === '1';
+      } catch {
+        return false;
+      }
+    };
+    
+    const interval = window.setInterval(async () => {
+      if (cancelled) return;
+      const state = oauthCompletionRef.current;
+      if (!state || state.completed) return;
+      const elapsed = Date.now() - state.startedAt;
+      if (elapsed > 30000) {
+        state.completed = true;
+        setOauthLoading(null);
+        setError('Не удалось завершить вход. Попробуй еще раз.');
+        return;
+      }
+      
+      // Проверяем сессию независимо от флага, так как она может установиться с задержкой
+      try {
+        const { data } = await supabase.auth.getSession();
+        const hasSession = Boolean(data?.session?.user?.id);
+        if (hasSession) {
+          state.completed = true;
+          setOauthLoading(null);
+          // Сбрасываем флаг на всякий случай
+          try {
+            localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+          } catch {
+            // ignore
+          }
+          if (onAuthSuccess) await onAuthSuccess();
+          return;
+        }
+      } catch {
+        // ignore
+      }
+      
+      // Если прошло больше 2 секунд и флаг сброшен, но сессии нет - возможно ошибка
+      const stillInProgress = checkOAuthFlag();
+      if (!stillInProgress && elapsed > 5000) {
+        // Флаг сброшен более 5 секунд назад, но сессии нет - возможно ошибка
+        // Но продолжаем проверять сессию до таймаута
+      }
+    }, 650);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [oauthLoading, onAuthSuccess]);
+
+  const waitForSession = async (timeoutMs: number) => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.user?.id) return data.session;
+      } catch {
+        // ignore
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return null;
+  };
 
   const getErrorMessage = (err: unknown) => {
     if (err instanceof Error) return err.message || err.name || 'Не удалось выполнить запрос';
@@ -151,51 +253,192 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   const handleOAuth = async (provider: 'google' | 'apple') => {
     setError(null);
     setMessage(null);
-    setOauthLoading(provider);
     let keepSpinner = false; // если уходим на редирект, оставляем индикатор
+    
+    // ВАЖНО: Всегда очищаем флаг OAuth при начале нового OAuth процесса
+    // Это предотвращает блокировку при переключении между провайдерами
+    try {
+      localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+    } catch {
+      // ignore
+    }
+    
     try {
       if (!oauthRedirectTo) {
         throw new Error('Для входа через OAuth нужен VITE_SITE_URL (https://...)');
       }
+
+      // If the user is already signed in and taps Google OAuth, don't auto-enter the previous session.
+      // Explicitly clear the local Supabase session first so the flow waits for Google account selection.
+      if (provider === 'google') {
+        try {
+          const { data } = await supabase.auth.getSession();
+          if (data?.session?.user?.id) {
+            await (supabase.auth as any).signOut?.({ scope: 'local' }).catch(() => {});
+          }
+        } catch {
+          // ignore
+        }
+        // Extra safety: clear stored Supabase tokens so the app doesn't immediately render the previous session.
+        try {
+          const keysToRemove: string[] = [];
+          for (let i = 0; i < window.localStorage.length; i++) {
+            const key = window.localStorage.key(i);
+            if (!key) continue;
+            if ((key.startsWith('sb-') && key.endsWith('-auth-token')) || key === 'sb-auth-token') {
+              keysToRemove.push(key);
+            }
+          }
+          keysToRemove.forEach((k) => {
+            try {
+              window.localStorage.removeItem(k);
+            } catch {
+              // ignore
+            }
+          });
+          if (isNative && isIOS && keysToRemove.length) {
+            import('@capacitor/preferences')
+              .then(({ Preferences }) => {
+                keysToRemove.forEach((k) => {
+                  Preferences.remove({ key: k }).catch(() => {});
+                });
+              })
+              .catch(() => {});
+          }
+        } catch {
+          // ignore
+        }
+      }
+
+      // Only show the OAuth spinner after we cleared any existing session (prevents auto-login).
+      setOauthLoading(provider);
       const manualRedirect = !isNative; // на вебе сами дергаем редирект, чтобы успел показаться спиннер
+      
+      // Для Google принудительно показываем выбор аккаунта
+      const googleQueryParams = provider === 'google' 
+        ? { queryParams: { prompt: 'select_account consent' } }
+        : {};
+      
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
           redirectTo: oauthRedirectTo,
           skipBrowserRedirect: manualRedirect || isNative,
-          ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {}),
+          ...googleQueryParams,
         },
       });
       if (error) throw error;
-      if (isNative && isIOS) {
-        if (!data?.url) throw new Error('Не удалось открыть OAuth (пустой URL)');
-        if (!oauthRedirectScheme) throw new Error('Некорректный callback scheme для OAuth');
-        keepSpinner = true;
+      
+      // Для Google принудительно добавляем prompt=select_account в URL
+      let oauthUrl = data?.url || '';
+      if (provider === 'google' && oauthUrl) {
         try {
-          const { url: callbackUrl } = await openAuthSession(data.url, oauthRedirectScheme);
+          const url = new URL(oauthUrl);
+          // Принудительно устанавливаем prompt для выбора аккаунта
+          url.searchParams.set('prompt', 'select_account consent');
+          oauthUrl = url.toString();
+        } catch {
+          // ignore URL parsing errors
+        }
+      }
+      
+      if (isNative && isIOS) {
+        if (!oauthUrl) throw new Error('Не удалось открыть OAuth (пустой URL)');
+        if (!oauthRedirectScheme) throw new Error('Некорректный callback scheme для OAuth');
+        try {
+          // Устанавливаем флаг, что OAuth в процессе
+          try {
+            localStorage.setItem(OAUTH_IN_PROGRESS_KEY, '1');
+          } catch {
+            // ignore
+          }
+          
+          const { url: callbackUrl } = await openAuthSession(oauthUrl, oauthRedirectScheme);
           if (callbackUrl) {
             const parsed = new URL(callbackUrl);
             const code = parsed.searchParams.get('code');
             const accessToken = parsed.searchParams.get('access_token');
             const refreshToken = parsed.searchParams.get('refresh_token');
+            const oauthError = parsed.searchParams.get('error') || parsed.searchParams.get('error_description');
+            if (oauthError) {
+              try {
+                localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+              } catch {
+                // ignore
+              }
+              throw new Error(String(oauthError));
+            }
             if (accessToken && refreshToken) {
               const { error } = await supabase.auth.setSession({
                 access_token: accessToken,
                 refresh_token: refreshToken,
               });
-              if (error) throw error;
+              if (error) {
+                try {
+                  localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+                } catch {
+                  // ignore
+                }
+                throw error;
+              }
             } else if (code) {
               const { error } = await supabase.auth.exchangeCodeForSession(code);
-              if (error) throw error;
+              if (error) {
+                try {
+                  localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+                } catch {
+                  // ignore
+                }
+                throw error;
+              }
+            } else {
+              try {
+                localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+              } catch {
+                // ignore
+              }
+              throw new Error('OAuth завершился без code/token');
             }
+            
+            // Сбрасываем флаг после успешной обработки
+            try {
+              localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+            } catch {
+              // ignore
+            }
+            
+            // On iOS the session can take a moment to become visible to the JS client.
+            // Wait briefly so we don't return to a login screen with an infinite spinner.
+            const sess = await waitForSession(10000);
+            if (!sess) {
+              throw new Error('Не удалось завершить вход (сессия не установилась). Попробуйте еще раз.');
+            }
+            setOauthLoading(null);
             if (onAuthSuccess) await onAuthSuccess();
+          } else {
+            // Если callbackUrl пустой, возможно deep link обрабатывается через appUrlOpen
+            // В этом случае polling механизм в useEffect должен обнаружить сессию
+            // Не бросаем ошибку, даем возможность обработаться через appUrlOpen
+            console.log('[AUTH] iOS: callbackUrl пустой, ожидаем обработку через appUrlOpen');
+            // Флаг остается установленным, polling проверит сессию
           }
         } catch (iosErr: any) {
           console.error('[AUTH] iOS auth session error:', iosErr);
-          throw iosErr;
+          // ВСЕГДА очищаем флаг при ошибке, включая отмену
+          try {
+            localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+          } catch {
+            // ignore
+          }
+          // Если ошибка не связана с отменой, пробрасываем дальше
+          if (iosErr?.message !== 'CANCELLED' && !iosErr?.message?.includes('canceled')) {
+            throw iosErr;
+          }
+          // При отмене просто сбрасываем спиннер и очищаем флаг (уже очищен выше)
+          setOauthLoading(null);
         }
       } else if (isNative) {
-        if (!data?.url) throw new Error('Не удалось открыть OAuth (пустой URL)');
+        if (!oauthUrl) throw new Error('Не удалось открыть OAuth (пустой URL)');
         try {
           localStorage.setItem(OAUTH_IN_PROGRESS_KEY, '1');
         } catch {
@@ -207,23 +450,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
               // Даем кадру обновиться (спиннер) и открываем SFSafariViewController как снизу всплывающий лист, чтобы подтянулись cookies Safari.
               await new Promise((res) => setTimeout(res, 120));
               await Browser.open({
-                url: data.url,
+                url: oauthUrl,
                 presentationStyle: 'popover', // iOS: sheet снизу
               });
             } else {
-              await Browser.open({ url: data.url });
+              await Browser.open({ url: oauthUrl });
             }
             keepSpinner = true;
           } catch {
-            window.location.href = data.url;
+            window.location.href = oauthUrl;
             keepSpinner = true;
           }
         };
         void openInBrowser();
-      } else if (data?.url) {
+      } else if (oauthUrl) {
         // Небольшая задержка, чтобы спиннер успел отрисоваться перед редиректом
         setTimeout(() => {
-          window.location.assign(data.url);
+          window.location.assign(oauthUrl);
         }, 50);
         keepSpinner = true;
       } else {
@@ -232,6 +475,12 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     } catch (err: any) {
       // eslint-disable-next-line no-console
       console.error('[AUTH] OAuth error:', err);
+      // ВСЕГДА очищаем флаг при любой ошибке
+      try {
+        localStorage.removeItem(OAUTH_IN_PROGRESS_KEY);
+      } catch {
+        // ignore
+      }
       setError(getErrorMessage(err));
     } finally {
       if (!keepSpinner) {

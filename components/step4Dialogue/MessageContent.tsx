@@ -281,6 +281,11 @@ function MessageContentComponent({
     }
 
 		    if (parsed.type === 'words_list') {
+		      // Если vocabWords уже установлен из состояния и это не последнее сообщение,
+		      // не рендерим блок слов из истории, чтобы избежать дублирования
+		      if (vocabWords.length > 0 && !isLastModelMessage) {
+		        return null;
+		      }
 		      const words = vocabWords.length ? vocabWords : parsed.words || [];
 		      const currentIdx = Math.min(vocabIndex, Math.max(words.length - 1, 0));
 

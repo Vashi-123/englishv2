@@ -7,11 +7,18 @@ type UserEntitlementsRow = {
   premium_until: string | null;
 };
 
-export const isPremiumEffective = (row: Pick<UserEntitlementsRow, "is_premium" | "premium_until"> | null): boolean => {
+type EntitlementsLike =
+  | Pick<UserEntitlementsRow, "is_premium" | "premium_until">
+  | { isPremium?: boolean; premiumUntil?: string | null }
+  | null;
+
+export const isPremiumEffective = (row: EntitlementsLike): boolean => {
   if (!row) return false;
-  if (row.is_premium) return true;
-  if (!row.premium_until) return false;
-  const until = Date.parse(row.premium_until);
+  const isPremium = "is_premium" in row ? Boolean((row as any).is_premium) : Boolean((row as any).isPremium);
+  if (isPremium) return true;
+  const premiumUntil = "premium_until" in row ? ((row as any).premium_until as string | null) : ((row as any).premiumUntil as string | null);
+  if (!premiumUntil) return false;
+  const until = Date.parse(premiumUntil);
   if (!Number.isFinite(until)) return false;
   return until > Date.now();
 };

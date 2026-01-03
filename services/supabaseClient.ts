@@ -48,10 +48,12 @@ const memoryStorage = new Map<string, string>();
 const isNativeIOS = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 
 // Storage для Supabase: используем Capacitor Preferences на iOS, localStorage на вебе
+// Примечание: safeStorage не используется напрямую, используется safeStorageSync для синхронного API Supabase
 const safeStorage = {
   getItem: async (key: string): Promise<string | null> => {
     if (isNativeIOS) {
       try {
+        const { Preferences } = await import('@capacitor/preferences');
         const { value } = await Preferences.get({ key });
         return value ?? null;
       } catch (err) {
@@ -69,6 +71,7 @@ const safeStorage = {
   setItem: async (key: string, value: string): Promise<void> => {
     if (isNativeIOS) {
       try {
+        const { Preferences } = await import('@capacitor/preferences');
         await Preferences.set({ key, value });
         // Также сохраняем в localStorage для совместимости
         try {
@@ -91,6 +94,7 @@ const safeStorage = {
   removeItem: async (key: string): Promise<void> => {
     if (isNativeIOS) {
       try {
+        const { Preferences } = await import('@capacitor/preferences');
         await Preferences.remove({ key });
         // Также удаляем из localStorage для совместимости
         try {
@@ -116,8 +120,24 @@ const safeStorage = {
 // На iOS делаем синхронный доступ к кешу, асинхронно обновляем Preferences
 const syncStorageCache = new Map<string, string>();
 
-// Инициализация: загружаем данные из Preferences в кеш при старте (только на iOS)
+// Инициализация: сначала синхронно загружаем из localStorage, затем асинхронно синхронизируем с Preferences
 if (isNativeIOS && typeof window !== 'undefined') {
+  // СИНХРОННО: сначала загружаем из localStorage (доступен сразу)
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
+        const value = window.localStorage.getItem(key);
+        if (value) {
+          syncStorageCache.set(key, value);
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  
+  // АСИНХРОННО: затем синхронизируем с Preferences (может быть более актуальная версия)
   (async () => {
     try {
       // Динамический импорт Preferences только на iOS
@@ -175,6 +195,21 @@ if (isNativeIOS && typeof window !== 'undefined') {
       // ignore - если Preferences недоступен, используем только localStorage
     }
   })();
+} else if (typeof window !== 'undefined') {
+  // На вебе тоже загружаем из localStorage в кеш для консистентности
+  try {
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
+        const value = window.localStorage.getItem(key);
+        if (value) {
+          syncStorageCache.set(key, value);
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
 }
 
 const safeStorageSync = {
@@ -272,11 +307,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       const isNetworkishError = (resp: Response) => resp.status === 0;
       const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
       
-      // Таймаут для первого запроса - не ждем больше 5 секунд
-      const timeoutMs = 5000;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), timeoutMs);
-      });
+      // NOTE: iOS/iPadOS WebView can take a long time to spin up networking on cold start.
+      // A too-aggressive timeout breaks OAuth PKCE exchange (Apple/Google) and looks like "infinite spinner".
+      const firstAttemptTimeoutMs = isNativeIOS ? 20000 : 8000;
 
       try {
         let response: Response | null = null;
@@ -284,11 +317,48 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           try {
-            // Для первого запроса добавляем таймаут
-            const fetchPromise = fetch(input, init);
-            response = attempt === 0 
-              ? await Promise.race([fetchPromise, timeoutPromise])
-              : await fetchPromise;
+            // For the first request on cold start, apply a soft timeout via AbortController,
+            // so we can retry instead of throwing a hard failure.
+            if (attempt === 0) {
+              const controller = new AbortController();
+              const timer = setTimeout(() => {
+                try {
+                  controller.abort();
+                } catch {
+                  // ignore
+                }
+              }, firstAttemptTimeoutMs);
+
+              // If the caller provided a signal, propagate abort.
+              try {
+                if (init?.signal) {
+                  if ((init.signal as any).aborted) controller.abort();
+                  else {
+                    (init.signal as any).addEventListener?.(
+                      'abort',
+                      () => {
+                        try {
+                          controller.abort();
+                        } catch {
+                          // ignore
+                        }
+                      },
+                      { once: true }
+                    );
+                  }
+                }
+              } catch {
+                // ignore
+              }
+
+              try {
+                response = await fetch(input, { ...(init || {}), signal: controller.signal });
+              } finally {
+                clearTimeout(timer);
+              }
+            } else {
+              response = await fetch(input, init);
+            }
             
             // Если запрос успешен - сразу возвращаем, не делаем retry
             if (response.ok) {
@@ -310,10 +380,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
             lastError = err instanceof Error ? err : new Error(String(err));
             // Если это последняя попытка - пробрасываем ошибку
             if (attempt === maxAttempts - 1) {
-              throw lastError;
-            }
-            // Для таймаута не делаем retry - сразу пробрасываем
-            if (lastError.message === 'Request timeout') {
               throw lastError;
             }
           }
@@ -345,7 +411,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         const isExpectedError = 
           errorMessage.includes('Load failed') || 
           errorMessage.includes('Failed to fetch') ||
-          errorMessage.includes('Request timeout');
+          errorMessage.includes('Request timeout') ||
+          errorMessage.includes('AbortError') ||
+          errorMessage.includes('The operation was aborted');
         
         if (!isExpectedError) {
           console.error('[Supabase] fetch failed:', String(input), err);
@@ -359,11 +427,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     },
   },
   auth: {
-    flowType: 'pkce',
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true,
-    storage: safeStorageSync, // Используем синхронную версию для совместимости
+    flowType: 'pkce', // PKCE flow для безопасности OAuth
+    persistSession: true, // Сохраняем сессию между перезапусками
+    autoRefreshToken: true, // Автоматически обновляем токен при истечении
+    detectSessionInUrl: true, // Автоматически обнаруживает сессию в URL (работает для веба, для нативных приложений deep links обрабатываются вручную через appUrlOpen)
+    storage: safeStorageSync, // Используем синхронную версию для совместимости с Supabase API
   },
 });
 console.log("[DEBUG] Supabase client initialized");

@@ -1,4 +1,4 @@
-import React, { useEffect, lazy, Suspense, useState } from 'react';
+import React, { useEffect, lazy, Suspense, useState, useMemo, useRef } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -108,14 +108,6 @@ const LandingPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isNativePlatform = typeof window !== 'undefined' && Capacitor.isNativePlatform();
-
-  // Проверяем, есть ли параметры подтверждения email
-  const hasAuthParams = location.search.includes('token=') || location.search.includes('code=');
-  
-  if (hasAuthParams) {
-    // Редиректим на /auth/confirm если есть параметры подтверждения
-    return <Navigate to="/auth/confirm" replace />;
-  }
 
   // УБРАНО: автоматический редирект на /app при наличии сессии
   // Теперь на / всегда показывается главная страница (интро или форма входа)
@@ -295,6 +287,31 @@ const EmailConfirmPage: React.FC = () => {
 const PartnerPage: React.FC = () => {
   const { session, refreshSession } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const autologinAttemptedRef = useRef(false);
+
+  const autologinActive = useMemo(() => {
+    try {
+      return new URLSearchParams(location.search).get('autologin') === '1';
+    } catch {
+      return false;
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    if (!autologinActive) return;
+    if (session?.user?.id) return;
+    if (autologinAttemptedRef.current) return;
+    autologinAttemptedRef.current = true;
+    void (async () => {
+      await refreshSession();
+      navigate('/partners', { replace: true });
+    })();
+  }, [autologinActive, navigate, refreshSession, session?.user?.id]);
+
+  if (!session?.user?.id && autologinActive) {
+    return <LoadingScreen />;
+  }
 
   // Если есть сессия - показываем dashboard
   if (session?.user?.id && session?.user?.email) {

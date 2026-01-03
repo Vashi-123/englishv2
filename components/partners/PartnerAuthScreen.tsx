@@ -23,7 +23,13 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
   const rawRedirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
   const redirectTo =
     rawRedirectTo.startsWith('http://') || rawRedirectTo.startsWith('https://') ? rawRedirectTo : undefined;
-  const emailConfirmUrl = redirectTo ? `${redirectTo}/partners` : `${window.location.origin}/partners`;
+  // Partner signups should NOT see the consumer paywall; we route through /auth/confirm with a partner flag
+  // so EmailConfirmScreen can show a partner-specific success screen and redirect to /partners.
+  const emailConfirmUrl = (() => {
+    const base = redirectTo ? `${redirectTo}/auth/confirm` : `${window.location.origin}/auth/confirm`;
+    const next = encodeURIComponent('/partners');
+    return `${base}?type=signup&flow=partner&next=${next}`;
+  })();
 
   const getErrorMessage = (err: unknown) => {
     if (err instanceof Error) return err.message || err.name || 'Не удалось выполнить запрос';
@@ -236,4 +242,3 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
     </div>
   );
 };
-

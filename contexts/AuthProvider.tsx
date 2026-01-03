@@ -32,6 +32,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
+  const sessionRef = useRef<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingSlow, setLoadingSlow] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
@@ -42,6 +43,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const isNative = Capacitor.isNativePlatform();
 
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
   const refreshSession = useCallback(async () => {
     // Таймаут для принудительного завершения через 5 секунд (уменьшили с 10)
     const timeoutId = typeof window !== 'undefined' ? window.setTimeout(() => {
@@ -50,20 +55,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }, 5000) : null;
 
     try {
-      // Используем Promise.race для таймаута запроса - если запрос не завершится за 4 секунды, используем null сессию
+      // NOTE: On iPadOS the WebView/network stack can start very slowly; don't null out an existing
+      // session just because getSession is slow. Prefer keeping the last known session.
       const sessionPromise = supabase.auth.getSession();
-      const timeoutPromise = new Promise<{ data: { session: null }, error: null }>((resolve) => {
-        setTimeout(() => {
-          console.warn('[Auth] getSession timeout after 4s, using null session');
-          resolve({ data: { session: null }, error: null });
-        }, 4000);
+      const timeoutMs = isNative ? 15000 : 8000;
+      const timeoutPromise = new Promise<'timeout'>((resolve) => {
+        setTimeout(() => resolve('timeout'), timeoutMs);
       });
-      
-      const { data, error } = await Promise.race([sessionPromise, timeoutPromise]);
-      
+
+      const raced = await Promise.race([sessionPromise, timeoutPromise]);
+      if (raced === 'timeout') {
+        console.warn('[Auth] getSession timeout, keeping existing session', { timeoutMs });
+        return;
+      }
+
+      const { data, error } = raced as any;
       if (error) console.error('[Auth] getSession error:', error);
-      const currentSession = data.session ?? null;
-      setSession(currentSession);
+      const currentSession = (data && data.session) ? data.session : null;
+      // Only overwrite with null if we truly have no session (sign-out is handled via onAuthStateChange).
+      if (currentSession) {
+        setSession(currentSession);
+      } else if (!sessionRef.current) {
+        setSession(null);
+      }
       if (currentSession) {
         setHasLoggedIn(true);
         try {
@@ -128,6 +142,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       };
 
       try {
+        console.log('[Auth] handleAuthRedirectUrl called with:', incomingUrl);
         const parsed = new URL(incomingUrl);
         const hashRaw = parsed.hash ? parsed.hash.replace(/^#/, '') : '';
         const hashQuery = hashRaw.includes('?') ? hashRaw.split('?').pop() || '' : hashRaw;
@@ -136,6 +151,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const code = parsed.searchParams.get('code') ?? hashParams?.get('code') ?? null;
         const accessToken = parsed.searchParams.get('access_token') ?? hashParams?.get('access_token') ?? null;
         const refreshToken = parsed.searchParams.get('refresh_token') ?? hashParams?.get('refresh_token') ?? null;
+        
+        console.log('[Auth] Extracted params:', { code: code ? 'present' : null, hasAccessToken: !!accessToken, hasRefreshToken: !!refreshToken });
         const hasAuthParams =
           Boolean(code) ||
           Boolean(accessToken) ||
@@ -146,19 +163,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const shouldCloseBrowser = parsed.protocol === 'englishv2:' || hasAuthParams;
 
         if (accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({
+          const { data, error } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken,
           });
-          if (error) console.error('[Auth] setSession error:', error);
-          await refreshSession();
-          safeClearFlag();
+          if (error) {
+            console.error('[Auth] setSession error:', error);
+            safeClearFlag();
+          } else if (data?.session) {
+            setSession(data.session);
+            await refreshSession();
+            // Даем немного времени на распространение сессии перед сбросом флага
+            setTimeout(() => {
+              safeClearFlag();
+            }, 500);
+          } else {
+            safeClearFlag();
+          }
         } else if (code && code !== lastHandledAuthCodeRef.current) {
+          console.log('[Auth] Processing code exchange');
           lastHandledAuthCodeRef.current = code;
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) console.error('[Auth] exchangeCodeForSession error:', error);
-          await refreshSession();
-          safeClearFlag();
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            console.error('[Auth] exchangeCodeForSession error:', error);
+            safeClearFlag();
+          } else if (data?.session) {
+            console.log('[Auth] Session established, user:', data.session.user?.id);
+            setSession(data.session);
+            await refreshSession();
+            // Даем немного времени на распространение сессии перед сбросом флага
+            setTimeout(() => {
+              safeClearFlag();
+            }, 500);
+          } else {
+            console.warn('[Auth] exchangeCodeForSession returned no session');
+            safeClearFlag();
+          }
+        } else if (code && code === lastHandledAuthCodeRef.current) {
+          console.log('[Auth] Code already processed, skipping');
         }
 
         if (shouldCloseBrowser) {
@@ -310,41 +352,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } catch {
           // ignore
         }
-        
-        // Проверяем, является ли это новой регистрацией через OAuth
-        // Для email регистрации paywall показывается на странице /auth/confirm
-        // Для OAuth проверяем в базе данных, есть ли у пользователя прогресс
-        // Если прогресса нет - это новая регистрация
-        const user = newSession.user;
-        if (user?.id) {
-          try {
-            // Проверяем, есть ли у пользователя прогресс уроков
-            const { data: progressData } = await supabase
-              .from('lesson_progress')
-              .select('id')
-              .eq('user_id', user.id)
-              .limit(1);
-            
-            const hasProgress = progressData && progressData.length > 0;
-            
-            if (!hasProgress) {
-              // Проверяем, не показывали ли уже paywall для этого пользователя
-              const paywallShownKey = `paywall_shown_${user.id}`;
-              const paywallShown = sessionStorage.getItem(paywallShownKey);
-              
-              if (!paywallShown) {
-                // Это новая регистрация через OAuth - редиректим на страницу подтверждения с paywall
-                const emailParam = user.email ? `&email=${encodeURIComponent(user.email)}` : '';
-                sessionStorage.setItem(paywallShownKey, '1');
-                window.location.href = `/auth/confirm?type=signup${emailParam}`;
-                return; // Не продолжаем обычную логику
-              }
-            }
-          } catch (err) {
-            // Если ошибка при проверке - продолжаем обычную логику
-            console.error('[Auth] Error checking if user is new:', err);
-          }
-        }
+        // Не редиректим на /auth/confirm при входе: OAuth должен просто логинить и открывать приложение.
         
         // На больших экранах не скрываем интро, чтобы показывать всегда
         const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
@@ -407,4 +415,3 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     </AuthContext.Provider>
   );
 };
-

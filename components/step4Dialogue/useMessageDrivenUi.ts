@@ -231,6 +231,8 @@ export function useMessageDrivenUi({
     if (!isInitializing) return;
     if (!messages.length) return;
     if (appliedVocabRestoreKeyRef.current === vocabProgressStorageKey) return;
+    // Если слова уже установлены из основного useEffect, не устанавливаем их повторно
+    if (vocabWords.length > 0) return;
 
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i];
@@ -261,6 +263,7 @@ export function useMessageDrivenUi({
     messages,
     restoredVocabIndexRef,
     vocabProgressHydrated,
+    vocabWords.length,
     setPendingVocabPlay,
     setShowVocab,
     setVocabIndex,

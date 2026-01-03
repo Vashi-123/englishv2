@@ -84,9 +84,16 @@ Deno.serve(async (req: Request) => {
       const userIdFromMeta = typeof metadata?.user_id === "string" ? metadata.user_id : null;
       const userId = userIdFromMeta || (paymentRow?.user_id as string | undefined) || null;
       if (userId) {
+        // Get user email if available
+        const { data: userData } = await supabase.auth.admin.getUserById(userId);
+        const userEmail = userData?.user?.email ? String(userData.user.email).trim() : null;
+        
         await supabase
           .from("user_entitlements")
-          .upsert({ user_id: userId, is_premium: true, premium_until: null }, { onConflict: "user_id" });
+          .upsert(
+            { user_id: userId, email: userEmail || null, is_premium: true, premium_until: null, paid: true },
+            { onConflict: "user_id" }
+          );
       }
     }
 

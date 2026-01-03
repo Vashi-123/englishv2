@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { ActivityType, ViewState } from '../types';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDashboardData } from '../hooks/useDashboardData';
-import { isPremiumEffective } from '../hooks/useEntitlements';
+import { isPremiumEffective, useEntitlements } from '../hooks/useEntitlements';
 import Step4Dialogue from './Step4Dialogue';
 import { PaywallScreen } from './PaywallScreen';
 import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from '../services/generationService';
@@ -49,30 +49,6 @@ export const AppContent: React.FC<{
   userEmail?: string;
   onSignOut: () => Promise<void>;
 }> = ({ userId, userEmail, onSignOut }) => {
-  // Защита: если userId не передан, показываем ошибку
-  // Это не должно происходить, но на всякий случай
-  if (!userId) {
-    return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center px-6 pt-[var(--app-safe-top)]">
-        <div className="w-full max-w-md text-center space-y-4">
-          <div className="text-red-500 text-6xl">⚠️</div>
-          <h2 className="text-xl font-bold text-slate-900">Ошибка инициализации</h2>
-          <p className="text-sm text-gray-600">
-            Не удалось определить пользователя. Попробуйте обновить страницу.
-          </p>
-          <button
-            onClick={() => {
-              window.location.reload();
-            }}
-            className="px-6 py-3 bg-brand-primary text-white font-semibold rounded-xl hover:bg-brand-secondary transition-colors"
-          >
-            Обновить страницу
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   // Language management
   const { language, setLanguage, copy, languages } = useLanguage();
   // TTS for word pronunciation
@@ -159,9 +135,10 @@ export const AppContent: React.FC<{
   const planError = null; // Error handled by useDashboardData
   const reloadPlans = reloadDashboard;
   const freeLessonCount = dashboardData?.freePlan?.lessonAccessLimit || 3;
-  const entitlements = dashboardData?.entitlements;
-  const isPremium = entitlements ? isPremiumEffective(entitlements) : false;
-  const entitlementsLoading = dashboardLoading;
+  const { entitlements: entitlementsRow, loading: entitlementsRowLoading, refresh: refreshEntitlementsRow } = useEntitlements(userId);
+  const entitlements = entitlementsRow ?? dashboardData?.entitlements ?? null;
+  const isPremium = isPremiumEffective(entitlements);
+  const entitlementsLoading = dashboardLoading || entitlementsRowLoading;
   const refreshEntitlements = reloadDashboard;
   const [isInitializing, setIsInitializing] = useState(true);
   const currentDayPlan = dayPlans.find(d => d.day === selectedDayId) || dayPlans[0];
@@ -486,7 +463,10 @@ export const AppContent: React.FC<{
     }
 
     try {
-      const progress = await loadLessonProgress(checkingDay, checkingLesson, level);
+      const [progress] = await Promise.all([
+        loadLessonProgress(checkingDay, checkingLesson, level),
+        refreshEntitlementsRow(),
+      ]);
       let resolvedCompleted = progress?.completed === true;
 
       // Compatibility/backfill: if progress is missing OR outdated, check chat_messages for the completion tag.
@@ -560,6 +540,7 @@ export const AppContent: React.FC<{
       // Do not block initial render with a fullscreen loader; hydrate statuses in the background.
       setIsInitializing(false);
       const statuses: Record<number, boolean> = {};
+      void refreshEntitlementsRow();
 
       // Prefer lesson_progress to avoid scanning chat history for every day.
       const lessonIds = dayPlans.map((p) => p.lessonId).filter(Boolean) as string[];
@@ -989,6 +970,18 @@ export const AppContent: React.FC<{
     !paywallEnabled || isPremium || resolvedFreeLessonCount <= 0
       ? -1
       : dayPlans.findIndex((d) => (d.lesson ?? d.day) === resolvedFreeLessonCount);
+
+  // ВАЖНО: не делаем return до вызова хуков (иначе в проде ловим "Rendered fewer hooks than expected").
+  if (!userId) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-[var(--app-safe-top)]">
+        <div className="text-center space-y-3 px-6">
+          <div className="h-12 w-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin mx-auto" />
+          <p className="text-sm text-gray-600 font-semibold">Вхожу в аккаунт…</p>
+        </div>
+      </div>
+    );
+  }
 
   // Показываем загрузку, пока данные не загружены
   if (dashboardLoading && !dashboardData) {
