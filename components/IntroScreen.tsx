@@ -497,6 +497,18 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         {secondaryHint && (
           <div className="text-xs text-gray-500 font-semibold text-right">{secondaryHint}</div>
         )}
+
+        {/* Footer с логотипом */}
+        <div className="mt-auto pt-6 pb-4">
+          <div className="flex items-center justify-center">
+            <img
+              src="/full_logo.png"
+              alt="GoPractice"
+              className="h-9 sm:h-[42px] object-contain"
+              draggable={false}
+            />
+          </div>
+        </div>
       </div>
     </div>
     </>
