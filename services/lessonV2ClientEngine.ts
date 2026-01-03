@@ -25,12 +25,21 @@ export type LessonScriptV2 = {
   constructor?: {
     instruction: string;
     successText?: string;
-    tasks: Array<{ words: string[]; correct: string; note?: string }>;
+    tasks: Array<{
+      id?: number;
+      instruction?: string;
+      words: string[];
+      correct: string | string[];
+      note?: string;
+      translation?: string;
+    }>;
   };
   find_the_mistake?: {
     instruction: string;
     successText?: string;
     tasks: Array<{
+      id?: number;
+      instruction?: string;
       options: string[];
       answer: "A" | "B";
       explanation: string;
@@ -157,7 +166,11 @@ const formatConstructorPrompt = (constructor: LessonScriptV2["constructor"] | un
 
   const wordsList = (task.words || []).map((w) => `<w>${w}<w>`).join(" ");
   const optionalNote = task.note ? `\n\n💡 ${task.note}` : "";
-  return `🎯 ${constructor?.instruction || "Собери предложение"}${optionalNote}\n\n${wordsList}\n\n<text_input>`;
+  const instruction =
+    typeof (task as any)?.instruction === "string" && String((task as any).instruction).trim()
+      ? String((task as any).instruction).trim()
+      : constructor?.instruction || "Собери предложение";
+  return `🎯 ${instruction}${optionalNote}\n\n${wordsList}\n\n<text_input>`;
 };
 
 const safeFormatConstructorPrompt = (constructor: LessonScriptV2["constructor"] | undefined | null, taskIndex: number) => {
@@ -460,7 +473,8 @@ export const advanceLesson = (params: {
   if (stepType === "constructor") {
     if (!params.isCorrect) {
       const task = script.constructor?.tasks?.[idx];
-      const fb = params.feedback || (task?.correct ? `Правильный ответ: "${task.correct}". Попробуй еще раз.` : "Попробуй еще раз.");
+      const correctText = Array.isArray(task?.correct) ? task?.correct.join(" ") : task?.correct;
+      const fb = params.feedback || (correctText ? `Правильный ответ: "${correctText}". Попробуй еще раз.` : "Попробуй еще раз.");
       const words = task?.words?.length ? `\n\nСлова: ${task.words.map((w) => `"${w}"`).join(", ")}.` : "";
       return {
         messages: [{ role: "model", text: `Ой, что-то не так. ${fb}${words}`, currentStepSnapshot: { type: "constructor", index: idx } }],
@@ -708,6 +722,7 @@ export const advanceLesson = (params: {
           task: nextTask,
           expected: nextExpected,
           prevUserCorrect: true,
+          result: "correct",
         });
         const messages: EngineMessage[] = [
           { role: "model", text: JSON.stringify(payload), currentStepSnapshot: nextStep },
@@ -794,6 +809,7 @@ export const advanceLesson = (params: {
           task: nextTask,
           expected: nextExpected,
           prevUserCorrect: true,
+          result: "correct",
         });
         const messages: EngineMessage[] = [{ role: "model", text: JSON.stringify(payload), currentStepSnapshot: step }];
         if (situations?.successText) {
@@ -896,6 +912,7 @@ export const advanceLesson = (params: {
           ai: finalAi,
           ai_translation: undefined,
           task: finalTask,
+          result: "correct",
           awaitingContinue: true,
           prevUserCorrect: true,
           isCompletionStep: normalized.isLessonCompletion,

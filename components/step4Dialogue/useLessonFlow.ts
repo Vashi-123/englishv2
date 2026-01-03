@@ -6,6 +6,8 @@ import { advanceLesson, type EngineMessage, type LessonScriptV2 } from '../../se
 import { checkAudioInput, checkTextInput, tryParseJsonMessage } from './messageParsing';
 import { isStep4DebugEnabled } from './debugFlags';
 import type { Step4PerfEventInput } from './useLessonPerfLog';
+import { recordConstructorReview, recordFindMistakeReview } from './reviewDecks';
+import { applyConstructorReview, applyFindMistakeReview } from '../../services/exerciseReviewService';
 
 type EnsureLessonContext = () => Promise<void>;
 type EnsureLessonScript = () => Promise<any>;
@@ -293,6 +295,19 @@ export function useLessonFlow({
           const task = (script as any)?.find_the_mistake?.tasks?.[Number((stepForInput as any)?.index) || 0];
           const expected = task?.answer === 'A' || task?.answer === 'B' ? task.answer : null;
           const isCorrectChoice = expected ? expected === opts.choice : true;
+          try {
+            const deckUserId = userIdRef.current;
+            const cardId = typeof task?.id === 'number' ? task.id : null;
+            const quality = isCorrectChoice ? 5 : 2;
+            if (cardId) {
+              await applyFindMistakeReview({ cardId, quality });
+            } else if (deckUserId && task) {
+              // Offline/server-missing fallback
+              recordFindMistakeReview({ userId: deckUserId, level: level || 'A1', lang: language, task });
+            }
+          } catch {
+            // ignore deck write errors
+          }
           await Promise.resolve(playFeedbackAudio?.({ isCorrect: isCorrectChoice, stepType: 'find_the_mistake' }));
 
           const advanceSpan = startSpan('advanceLesson', { stepType: stepForInput.type, branch: 'find_the_mistake' });
@@ -359,6 +374,23 @@ export function useLessonFlow({
 
         if (['grammar', 'constructor', 'situations'].includes(String(stepForInput.type))) {
           await Promise.resolve(playFeedbackAudio?.({ isCorrect, stepType: String(stepForInput.type) }));
+        }
+
+        if (String(stepForInput.type) === 'constructor' && isCorrect) {
+          try {
+            const deckUserId = userIdRef.current;
+            const idx = Number((stepForInput as any)?.index) || 0;
+            const task = (script as any)?.constructor?.tasks?.[idx];
+            const cardId = typeof task?.id === 'number' ? task.id : null;
+            if (cardId) {
+              await applyConstructorReview({ cardId, quality: 5 });
+            } else if (deckUserId && task) {
+              // Offline/server-missing fallback
+              recordConstructorReview({ userId: deckUserId, level: level || 'A1', lang: language, task });
+            }
+          } catch {
+            // ignore deck write errors
+          }
         }
 
         const advanceSpan = startSpan('advanceLesson', { stepType: stepForInput.type, branch: 'main' });

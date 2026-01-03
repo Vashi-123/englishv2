@@ -116,7 +116,7 @@ export const ChatDemo: React.FC = () => {
     () => ({
       instruction: 'Слова перепутались. Напиши их в правильном порядке.',
       words: ['am', 'Alex', 'I', 'Hello,'],
-      correct: 'Hello, I am Alex.',
+      correct: ['Hello,', 'I', 'am', 'Alex.'],
       translation: 'Привет, я Алекс.',
     }),
     []

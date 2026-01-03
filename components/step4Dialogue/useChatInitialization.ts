@@ -39,6 +39,7 @@ export function useChatInitialization({
   onPerfEvent,
   lessonIdRef,
   setInitError,
+  defaultInitOptions,
 }: {
   day?: number;
   lesson?: number;
@@ -57,6 +58,9 @@ export function useChatInitialization({
   onPerfEvent?: (event: Step4PerfEventInput) => void;
   lessonIdRef: MutableRefObject<string | null>;
   setInitError?: Dispatch<SetStateAction<string | null>>;
+  defaultInitOptions?: {
+    allowSeedFromCachedScript?: boolean;
+  };
 }) {
   const initializedKeyRef = useRef<string | null>(null);
   const ensureLessonContextRef = useRef<EnsureLessonContext>(ensureLessonContext);
@@ -95,6 +99,7 @@ export function useChatInitialization({
         forceNewChat?: boolean;
         includeMessages?: boolean;
         skipInitRpc?: boolean; // use cached script only (restart path)
+        allowSeedFromCachedScript?: boolean; // if script cached but no history, seed without RPC (used for "next lesson" navigation)
       }
     ) => {
       const initKey = `${day || 1}_${lesson || 1}_${level || 'A1'}_${language}`;
@@ -217,6 +222,92 @@ export function useChatInitialization({
               }
             });
           }
+          return;
+        }
+
+        // "Next lesson" mode: if we have cached history but the script isn't cached yet, load the script
+        // (best-effort) and restore without hitting the init RPC.
+        if (!force && !opts?.forceNewChat && opts?.allowSeedFromCachedScript && cached && cached.length > 0) {
+          branch = 'cache-history-no-rpc';
+          setLessonCompletedPersisted(false);
+
+          let scriptForRepair: LessonScriptV2 | null = null;
+          if (lessonScript) {
+            scriptForRepair = lessonScript as LessonScriptV2;
+          } else if (cachedScript) {
+            try {
+              scriptForRepair = parseJsonBestEffort(cachedScript, 'lessonScript') as LessonScriptV2;
+              setLessonScript(scriptForRepair);
+            } catch {
+              scriptForRepair = null;
+            }
+          }
+          if (!scriptForRepair) {
+            try {
+              scriptForRepair = (await ensureLessonScriptRef.current()) as LessonScriptV2;
+              setLessonScript(scriptForRepair);
+            } catch {
+              scriptForRepair = null;
+            }
+          }
+
+          const lastModelMsg = [...cached].reverse().find((m) => m.role === 'model' && m.currentStepSnapshot);
+          const candidateProgressStep = (lastModelMsg?.currentStepSnapshot as any) || null;
+
+          const repaired = repairLessonHistory({
+            script: scriptForRepair,
+            messages: cached,
+            progressStep: candidateProgressStep,
+          });
+
+          setMessages(repaired.messages);
+          setCurrentStep(repaired.currentStep);
+          setIsLoading(false);
+          setIsInitializing(false);
+          initSpan?.('ok', { branch });
+          return;
+        }
+
+        // If we already have a cached script, we can start a brand-new lesson locally without a network RPC.
+        // This is used for "Next lesson" navigation where we prefetch scripts ahead of time.
+        if (!force && !opts?.forceNewChat && opts?.allowSeedFromCachedScript) {
+          branch = 'cached-script-seed';
+          setLessonCompletedPersisted(false);
+          let scriptForSeed: LessonScriptV2 | null = null;
+          if (cachedScript) {
+            try {
+              scriptForSeed = parseJsonBestEffort(cachedScript, 'lessonScript') as LessonScriptV2;
+              setLessonScript(scriptForSeed);
+            } catch {
+              scriptForSeed = null;
+            }
+          }
+
+          if (!scriptForSeed) {
+            // As a fallback, allow ensureLessonScript (may do a normal table fetch, not RPC).
+            scriptForSeed = (await ensureLessonScriptRef.current()) as LessonScriptV2;
+            setLessonScript(scriptForSeed);
+          }
+
+          const seeded = createInitialLessonMessages(scriptForSeed);
+          setCurrentStep(seeded.nextStep || null);
+          setMessages([]);
+          await appendRef.current(seeded.messages as any);
+          setIsLoading(false);
+          setIsInitializing(false);
+
+          // Persist the initial step in the background (don't block UI).
+          void upsertLessonProgress({
+            day: day || 1,
+            lesson: lesson || 1,
+            level: level || 'A1',
+            currentStepSnapshot: seeded.nextStep || null,
+            completed: false,
+          }).catch(() => {
+            // ignore
+          });
+
+          initSpan?.('ok', { branch });
           return;
         }
 
@@ -413,8 +504,8 @@ export function useChatInitialization({
   );
 
   useEffect(() => {
-    initializeChat();
-  }, [initializeChat]);
+    initializeChat(false, defaultInitOptions);
+  }, [defaultInitOptions, initializeChat]);
 
   return { initializeChat };
 }

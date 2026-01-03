@@ -8,6 +8,7 @@ import {
   getAuthUserIdFromSession,
   getLessonIdForDayLesson,
   loadLessonScript,
+  prefetchLessonInitData,
   peekCachedChatMessages,
   peekCachedLessonScript,
   upsertLessonProgress,
@@ -43,6 +44,15 @@ import { useTtsQueue } from './useTtsQueue';
 import { useAutoScrollToEnd } from './useAutoScrollToEnd';
 import { useVocabScroll } from './useVocabScroll';
 import { getCacheKeyWithCurrentUser } from '../../services/cacheUtils';
+import { augmentScriptWithReviewDecks } from './reviewDecks';
+import {
+  buildConstructorTaskKey,
+  buildFindMistakeTaskKey,
+  getConstructorReviewBatch,
+  getFindMistakeReviewBatch,
+  upsertConstructorCardsFromScript,
+  upsertFindMistakeCardsFromScript,
+} from '../../services/exerciseReviewService';
 
 export type Step4DialogueProps = {
   day?: number;
@@ -55,6 +65,9 @@ export type Step4DialogueProps = {
   onReady?: () => void;
   nextLessonNumber?: number;
   nextLessonIsPremium?: boolean;
+  nextDay?: number;
+  nextLesson?: number;
+  startMode?: 'normal' | 'next';
   copy: {
     active: string;
     placeholder: string;
@@ -84,6 +97,9 @@ export function Step4DialogueScreen({
   onReady,
   nextLessonNumber,
   nextLessonIsPremium,
+  nextDay,
+  nextLesson,
+  startMode,
   copy,
 }: Step4DialogueProps) {
   const { language } = useLanguage();
@@ -267,6 +283,7 @@ export function Step4DialogueScreen({
 	  const lessonIdRef = useRef<string | null>(null);
 	  const userIdRef = useRef<string | null>(null);
 	  const [ankiUserId, setAnkiUserId] = useState<string | null>(null);
+    const reviewDeckTokenRef = useRef<string | null>(null);
 
   const ensureLessonContext = useCallback(async () => {
     if (!day || !lesson) return;
@@ -292,15 +309,168 @@ export function Step4DialogueScreen({
 	  }, [ensureLessonContext]);
 
   const ensureLessonScript = useCallback(async (): Promise<any> => {
-    if (lessonScript) return lessonScript;
     if (!day || !lesson) throw new Error('lessonScript is required');
-    const resolvedLevel = level || 'A1';
-    const script = await loadLessonScript(day, lesson, resolvedLevel);
-    if (!script) throw new Error('lessonScript is required');
-    const parsed = parseJsonBestEffort(script, 'lessonScript');
-    setLessonScript(parsed);
-    return parsed;
-  }, [day, lesson, level, lessonScript]);
+    const resolvedLevelLocal = level || 'A1';
+
+    await ensureLessonContext();
+    const deckUserId = userIdRef.current || ankiUserId;
+    const token = `${deckUserId || 'anon'}:${day}:${lesson}:${resolvedLevelLocal}:${resolvedLanguage}`;
+
+    if (lessonScript && reviewDeckTokenRef.current === token) return lessonScript;
+
+    let base = lessonScript;
+    if (!base) {
+      const raw = await loadLessonScript(day, lesson, resolvedLevelLocal);
+      if (!raw) throw new Error('lessonScript is required');
+      base = parseJsonBestEffort(raw, 'lessonScript');
+    }
+
+    if (!deckUserId) {
+      setLessonScript(base);
+      reviewDeckTokenRef.current = token;
+      return base;
+    }
+
+    // Server-backed storage (Anki/SRS style). Fallback to local deck if RPC fails.
+    try {
+      const perLessonLimit = 5;
+      const ctorTasksRaw: any[] = Array.isArray((base as any)?.constructor?.tasks) ? (base as any).constructor.tasks : [];
+      const findTasksRaw: any[] = Array.isArray((base as any)?.find_the_mistake?.tasks) ? (base as any).find_the_mistake.tasks : [];
+
+      // 1) Upsert current lesson tasks into server tables (increments seen_count).
+      const ctorInstruction =
+        typeof (base as any)?.constructor?.instruction === 'string' ? String((base as any).constructor.instruction).trim() : '';
+      const findInstruction =
+        typeof (base as any)?.find_the_mistake?.instruction === 'string' ? String((base as any).find_the_mistake.instruction).trim() : '';
+      const defaultCtorInstruction = resolvedLanguage.toLowerCase().startsWith('ru')
+        ? 'Собери предложение из слов.'
+        : 'Build the sentence from the words.';
+      const defaultFindInstruction = resolvedLanguage.toLowerCase().startsWith('ru')
+        ? 'Выбери вариант с ошибкой.'
+        : 'Pick the option with a mistake.';
+
+      await upsertConstructorCardsFromScript({
+        level: resolvedLevelLocal,
+        targetLang: resolvedLanguage,
+        instruction: ctorInstruction || undefined,
+        tasks: ctorTasksRaw,
+      });
+      await upsertFindMistakeCardsFromScript({
+        level: resolvedLevelLocal,
+        targetLang: resolvedLanguage,
+        instruction: findInstruction || undefined,
+        tasks: findTasksRaw,
+      });
+
+      // 2) Fetch extra tasks for rotation.
+      const [ctorBatch, findBatch] = await Promise.all([
+        getConstructorReviewBatch({ level: resolvedLevelLocal, targetLang: resolvedLanguage, limit: 30 }),
+        getFindMistakeReviewBatch({ level: resolvedLevelLocal, targetLang: resolvedLanguage, limit: 30 }),
+      ]);
+
+      const ctorByKey = new Map<string, { id: number; task: any }>();
+      for (const row of ctorBatch) ctorByKey.set(row.task_key, { id: row.id, task: row.task });
+      const findByKey = new Map<string, { id: number; task: any }>();
+      for (const row of findBatch) findByKey.set(row.task_key, { id: row.id, task: row.task });
+
+      const uniqCtor = new Set<string>();
+      const ctorBase = ctorTasksRaw
+        .map((t) => {
+          const key = buildConstructorTaskKey(t);
+          const fromBatch = ctorByKey.get(key);
+          const patch = fromBatch
+            ? { ...t, id: fromBatch.id, instruction: ctorInstruction || defaultCtorInstruction }
+            : { ...t, instruction: ctorInstruction || defaultCtorInstruction };
+          return { key, task: patch };
+        })
+        .filter((x) => {
+          if (uniqCtor.has(x.key)) return false;
+          uniqCtor.add(x.key);
+          return true;
+        });
+      for (const row of ctorBatch) {
+        if (ctorBase.length >= perLessonLimit) break;
+        if (uniqCtor.has(row.task_key)) continue;
+        uniqCtor.add(row.task_key);
+        const serverTask = (row.task || {}) as any;
+        ctorBase.push({
+          key: row.task_key,
+          task: {
+            ...serverTask,
+            id: row.id,
+            instruction:
+              typeof serverTask?.instruction === 'string' && String(serverTask.instruction).trim()
+                ? String(serverTask.instruction).trim()
+                : defaultCtorInstruction,
+          },
+        });
+      }
+
+      const uniqFind = new Set<string>();
+      const findBase = findTasksRaw
+        .map((t) => {
+          const key = buildFindMistakeTaskKey(t);
+          const fromBatch = findByKey.get(key);
+          const patch = fromBatch
+            ? { ...t, id: fromBatch.id, instruction: findInstruction || defaultFindInstruction }
+            : { ...t, instruction: findInstruction || defaultFindInstruction };
+          return { key, task: patch };
+        })
+        .filter((x) => {
+          if (uniqFind.has(x.key)) return false;
+          uniqFind.add(x.key);
+          return true;
+        });
+      for (const row of findBatch) {
+        if (findBase.length >= perLessonLimit) break;
+        if (uniqFind.has(row.task_key)) continue;
+        uniqFind.add(row.task_key);
+        const serverTask = (row.task || {}) as any;
+        findBase.push({
+          key: row.task_key,
+          task: {
+            ...serverTask,
+            id: row.id,
+            instruction:
+              typeof serverTask?.instruction === 'string' && String(serverTask.instruction).trim()
+                ? String(serverTask.instruction).trim()
+                : defaultFindInstruction,
+          },
+        });
+      }
+
+      const ctorFinal = ctorBase.map((x) => x.task).slice(0, perLessonLimit);
+      const findFinal = findBase.map((x) => x.task).slice(0, perLessonLimit);
+
+      const augmented = {
+        ...(base as any),
+        constructor: (base as any)?.constructor
+          ? { ...(base as any).constructor, tasks: ctorFinal.length ? ctorFinal : (base as any).constructor.tasks }
+          : (base as any).constructor,
+        find_the_mistake: (base as any)?.find_the_mistake
+          ? { ...(base as any).find_the_mistake, tasks: findFinal.length ? findFinal : (base as any).find_the_mistake.tasks }
+          : (base as any).find_the_mistake,
+      };
+
+      setLessonScript(augmented);
+      reviewDeckTokenRef.current = token;
+      return augmented;
+    } catch (err) {
+      console.error('[ReviewDecks] Server deck failed; falling back to local storage decks:', err);
+      const out = augmentScriptWithReviewDecks({
+        script: base,
+        userId: deckUserId,
+        level: resolvedLevelLocal,
+        lang: resolvedLanguage,
+        perLessonLimit: 5,
+        maxDeckSize: 800,
+      });
+      const next = out.changed ? out.script : base;
+      setLessonScript(next);
+      reviewDeckTokenRef.current = token;
+      return next;
+    }
+  }, [ankiUserId, day, ensureLessonContext, lesson, lessonScript, level, resolvedLanguage]);
 
   const { appendEngineMessagesWithDelay, handleStudentAnswer } = useLessonFlow({
     day,
@@ -336,7 +506,18 @@ export function Step4DialogueScreen({
     appendEngineMessagesWithDelay,
     lessonIdRef,
     setInitError,
+    defaultInitOptions: {
+      allowSeedFromCachedScript: startMode === 'next',
+    },
   });
+
+  // Prefetch the *next* lesson's init payload as soon as we show the "Next lesson" CTA,
+  // so that the transition can happen without an RPC on click.
+  useEffect(() => {
+    if (!lessonCompletedPersisted) return;
+    if (!nextDay || !nextLesson) return;
+    void prefetchLessonInitData(nextDay, nextLesson, resolvedLevel);
+  }, [lessonCompletedPersisted, nextDay, nextLesson, resolvedLevel]);
 
   useLessonRealtimeSubscriptions({
     day,
@@ -2117,6 +2298,7 @@ export function Step4DialogueScreen({
             vocabRefs={vocabRefs}
             currentAudioItem={currentAudioItem}
             processAudioQueue={processAudioQueue as any}
+            waitForAudioIdle={waitForAudioIdle}
             playVocabAudio={enqueueVocabAudio}
             lessonScript={lessonScript}
             currentStep={currentStep}

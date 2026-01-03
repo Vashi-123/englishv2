@@ -198,15 +198,17 @@ export type LessonScript = {
   constructor?: {
     instruction?: string;
     tasks?: Array<{
+      id?: number;
       words: string[];
       note?: string;
-      correct?: string;
+      correct?: string | string[];
       translation?: string;
     }>;
   };
   find_the_mistake?: {
     instruction?: string;
     tasks?: Array<{
+      id?: number;
       options: string[];
     }>;
   };

@@ -6,7 +6,17 @@ import { useDashboardData } from '../hooks/useDashboardData';
 import { isPremiumEffective, useEntitlements } from '../hooks/useEntitlements';
 import Step4Dialogue from './Step4Dialogue';
 import { PaywallScreen } from './PaywallScreen';
-import { clearLessonScriptCacheForLevel, hasLessonCompleteTag, loadChatMessages, loadLessonProgress, loadLessonProgressByLessonIds, prefetchLessonScript, resetUserProgress, upsertLessonProgress } from '../services/generationService';
+import {
+  clearLessonScriptCacheForLevel,
+  hasLessonCompleteTag,
+  loadChatMessages,
+  loadLessonProgress,
+  loadLessonProgressByLessonIds,
+  prefetchLessonInitData,
+  prefetchLessonScript,
+  resetUserProgress,
+  upsertLessonProgress,
+} from '../services/generationService';
 import { FREE_LESSON_COUNT } from '../services/billingService';
 import { formatFirstLessonsRu } from '../services/ruPlural';
 import { getAllUserWords, applySrsReview } from '../services/srsService';
@@ -141,6 +151,7 @@ export const AppContent: React.FC<{
   const entitlementsLoading = dashboardLoading || entitlementsRowLoading;
   const refreshEntitlements = reloadDashboard;
   const [isInitializing, setIsInitializing] = useState(true);
+  const [exerciseStartMode, setExerciseStartMode] = useState<'normal' | 'next'>('normal');
   const currentDayPlan = dayPlans.find(d => d.day === selectedDayId) || dayPlans[0];
 
   // Refs for timers (still local as they're component-specific)
@@ -158,6 +169,11 @@ export const AppContent: React.FC<{
   const INSIGHT_POPUP_ANIM_MS = 360;
   const CONFIRM_ANIM_MS = 220;
   const supabaseConnectivity = useSupabaseConnectivity();
+  const prefetchedAheadRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    prefetchedAheadRef.current = new Set();
+  }, [level]);
 
   const openInsightPopup = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -431,6 +447,52 @@ export const AppContent: React.FC<{
     if (view !== ViewState.DASHBOARD) return;
     void prefetchLessonScript(currentDayPlan.day, currentDayPlan.lesson, level);
   }, [currentDayPlan, isInitializing, level, view]);
+
+  // Keep a small buffer of upcoming lessons warm in cache (scripts + init payload),
+  // so "Next lesson" navigation doesn't wait on RPC.
+  useEffect(() => {
+    if (isInitializing) return;
+    if (!currentDayPlan) return;
+    // Prefetch while on dashboard or inside the exercise flow.
+    if (view !== ViewState.DASHBOARD && view !== ViewState.EXERCISE) return;
+
+    const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
+    if (currentIndex < 0) return;
+
+    const freeLimit = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
+    const plansAhead = dayPlans.slice(currentIndex + 1, currentIndex + 1 + 3).filter(Boolean);
+    if (plansAhead.length === 0) return;
+
+    const schedule = (fn: () => void) => {
+      if (typeof window === 'undefined') return fn();
+      const ric = (window as any).requestIdleCallback as ((cb: () => void, opts?: { timeout?: number }) => number) | undefined;
+      if (ric) {
+        ric(fn, { timeout: 1500 });
+        return;
+      }
+      window.setTimeout(fn, 200);
+    };
+
+    schedule(() => {
+      for (const plan of plansAhead) {
+        const day = plan?.day;
+        const lesson = plan?.lesson;
+        if (!day || !lesson) continue;
+        const lessonNumber = lesson ?? day;
+        const locked = !isPremium && lessonNumber > freeLimit;
+        if (locked) continue;
+
+        const key = `${level || 'A1'}:${day}:${lesson}`;
+        if (prefetchedAheadRef.current.has(key)) continue;
+        prefetchedAheadRef.current.add(key);
+
+        void prefetchLessonScript(day, lesson, level);
+        // Best-effort init prefetch: warms lessonId/script/progress/messages cache.
+        // For new lessons messages are usually empty, but it still avoids cold RPC on open.
+        void prefetchLessonInitData(day, lesson, level);
+      }
+    });
+  }, [currentDayPlan, dayPlans, freeLessonCount, isInitializing, isPremium, level, view]);
 
   // If the current lesson was already started (lesson_progress exists), preload chat_messages into cache
   // so Step4 can render instantly without waiting for DB.
@@ -796,6 +858,7 @@ export const AppContent: React.FC<{
 
     if (isLocked) return;
     
+    setExerciseStartMode('normal');
     setActivityStep(type);
     setView(ViewState.EXERCISE);
 
@@ -902,8 +965,8 @@ export const AppContent: React.FC<{
     if (activityStep === ActivityType.DIALOGUE) void checkLessonCompletion(false);
   };
 
-  	  const handleNextLesson = async () => {
-  	    if (!currentDayPlan) return;
+  const handleNextLesson = async () => {
+    if (!currentDayPlan) return;
   	    const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
   	    const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
   	    if (!nextPlan?.day || !nextPlan?.lesson) {
@@ -930,10 +993,11 @@ export const AppContent: React.FC<{
   	      }
   	    }
 
-  	    setSelectedDayId(nextPlan.day);
+    setSelectedDayId(nextPlan.day);
 
-  	    setActivityStep(ActivityType.DIALOGUE);
-  	    setView(ViewState.EXERCISE);
+    setExerciseStartMode('next');
+    setActivityStep(ActivityType.DIALOGUE);
+    setView(ViewState.EXERCISE);
 
     const nextNextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 2] : undefined;
     if (nextNextPlan?.day && nextNextPlan?.lesson) {
@@ -957,7 +1021,7 @@ export const AppContent: React.FC<{
     if (!nextPlan?.day && !nextPlan?.lesson) return { nextLessonNumber: undefined as number | undefined, nextLessonIsPremium: false };
     const nextLessonNumber = (nextPlan?.lesson ?? nextPlan?.day) as number;
     const freeLimit = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
-    return { nextLessonNumber, nextLessonIsPremium: nextLessonNumber > freeLimit };
+    return { nextLessonNumber, nextLessonIsPremium: nextLessonNumber > freeLimit, nextDayPlan: nextPlan };
   })();
 
 
@@ -1095,8 +1159,10 @@ export const AppContent: React.FC<{
         <ExerciseView
           currentDayPlan={currentDayPlan}
           level={level}
+          startMode={exerciseStartMode}
           nextLessonNumber={nextLessonMeta.nextLessonNumber}
           nextLessonIsPremium={nextLessonMeta.nextLessonIsPremium}
+          nextDayPlan={nextLessonMeta.nextDayPlan}
           dialogueCopy={copy.dialogue}
           onFinish={handleNextStep}
           onNextLesson={handleNextLesson}

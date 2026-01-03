@@ -52,6 +52,7 @@ export function DialogueMessages({
   vocabRefs,
   currentAudioItem,
   processAudioQueue,
+  waitForAudioIdle,
   playVocabAudio,
 
   lessonScript,
@@ -126,6 +127,7 @@ export function DialogueMessages({
 	  vocabRefs: MutableRefObject<Map<number, HTMLDivElement>>;
 	  currentAudioItem: any;
   processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>, messageId?: string) => void;
+  waitForAudioIdle?: (timeoutMs?: number) => Promise<void>;
   playVocabAudio: (items: Array<{ text: string; lang: string; kind?: string }>, messageId?: string) => void;
 
   lessonScript: any | null;
@@ -682,6 +684,7 @@ export function DialogueMessages({
                     playAudio={(text, lang = 'en') => {
                       processAudioQueue([{ text, lang, kind: 'word' }]);
                     }}
+                    waitForAudioIdle={waitForAudioIdle}
                   />
                 )}
               </div>

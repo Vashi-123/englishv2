@@ -12,6 +12,11 @@ export function useTtsQueue() {
   const [isPlayingQueue, setIsPlayingQueue] = useState(false);
   const [playedMessageIds, setPlayedMessageIds] = useState<Set<string>>(new Set());
   const playedMessageIdsRef = useRef<Set<string>>(new Set());
+  const inFlightMessageIdsRef = useRef<Set<string>>(new Set());
+  // Extra strict gating for situation autoplay: multiple components/effects can sometimes fire for the same new AI line
+  // with different messageIds. We dedupe by queue "signature" (kind+text) but only for situation autoplay messageIds.
+  const playedSituationAutoplaySignaturesRef = useRef<Set<string>>(new Set());
+  const inFlightSituationAutoplaySignaturesRef = useRef<Set<string>>(new Set());
   const [currentAudioItem, setCurrentAudioItem] = useState<AudioQueueItem | null>(null);
 
   const debuggedSituationMissesRef = useRef<Set<string>>(new Set());
@@ -151,56 +156,111 @@ export function useTtsQueue() {
     async (queue: AudioQueueItem[], messageId?: string) => {
       if (!queue?.length) return;
 
-      if (messageId) {
-        // Important: use a ref for immediate dedupe (state updates are async and can race).
-        if (playedMessageIdsRef.current.has(messageId)) {
+      const hasMessageId = typeof messageId === 'string' && messageId.trim().length > 0;
+      const msgId = hasMessageId ? messageId.trim() : null;
+
+      const isSituationAutoplay = Boolean(msgId && msgId.startsWith('situation-ai:'));
+      const situationSignature = (() => {
+        if (!isSituationAutoplay) return null;
+        const normalized = queue
+          .map((it) => `${it.kind}:${String(it.text || '').replace(/\s+/g, ' ').trim().toLowerCase()}`)
+          .join('|');
+        return normalized.length ? normalized : null;
+      })();
+
+      let markedInFlightMsgId = false;
+      let markedInFlightSignature = false;
+
+      if (msgId) {
+        // Dedupe means "successfully played", not "attempted".
+        // Otherwise autoplay failures (NotAllowedError) would permanently block retries.
+        if (playedMessageIdsRef.current.has(msgId)) {
           // eslint-disable-next-line no-console
-          console.log('[useTtsQueue] skip queue: messageId already played', { messageId, queue: queue.length });
+          console.log('[useTtsQueue] skip queue: messageId already played', { messageId: msgId, queue: queue.length });
           return;
         }
-        playedMessageIdsRef.current.add(messageId);
+        if (isSituationAutoplay && situationSignature && playedSituationAutoplaySignaturesRef.current.has(situationSignature)) {
+          // eslint-disable-next-line no-console
+          console.log('[useTtsQueue] skip queue: situation autoplay signature already played', {
+            messageId: msgId,
+            signature: situationSignature.slice(0, 80),
+          });
+          return;
+        }
+        // Guard against double effects / double calls while the first attempt is still running.
+        if (inFlightMessageIdsRef.current.has(msgId)) {
+          // eslint-disable-next-line no-console
+          console.log('[useTtsQueue] skip queue: messageId in-flight', { messageId: msgId, queue: queue.length });
+          return;
+        }
+        if (isSituationAutoplay && situationSignature && inFlightSituationAutoplaySignaturesRef.current.has(situationSignature)) {
+          // eslint-disable-next-line no-console
+          console.log('[useTtsQueue] skip queue: situation autoplay signature in-flight', {
+            messageId: msgId,
+            signature: situationSignature.slice(0, 80),
+          });
+          return;
+        }
+        inFlightMessageIdsRef.current.add(msgId);
+        markedInFlightMsgId = true;
+        if (isSituationAutoplay && situationSignature) {
+          inFlightSituationAutoplaySignaturesRef.current.add(situationSignature);
+          markedInFlightSignature = true;
+        }
+      }
+
+      try {
         // If something is already playing (e.g. vocab auto-play), interrupt it so situation auto-play isn't dropped.
         if (isPlayingRef.current) {
           cancel();
           await new Promise((r) => setTimeout(r, 100));
         }
         setIsPlayingQueue(true);
-        setPlayedMessageIds((prev) => new Set(prev).add(messageId));
-      } else {
-        if (isPlayingRef.current) {
-          cancel();
-          await new Promise((r) => setTimeout(r, 100));
+
+        const runId = runIdRef.current;
+        isPlayingRef.current = true;
+        let playedAny = false;
+
+        for (const item of queue) {
+          if (runIdRef.current !== runId) break;
+          // Создаем новый объект, чтобы React увидел изменение
+          const newItem = { ...item, meta: item.meta ? { ...item.meta } : undefined };
+          setCurrentAudioItem(newItem);
+          // eslint-disable-next-line no-console
+          console.log(
+            '[useTtsQueue] setCurrentAudioItem',
+            JSON.stringify({
+              text: item.text?.slice(0, 50),
+              kind: item.kind,
+              vocabIndex: item.meta?.vocabIndex,
+              vocabKind: item.meta?.vocabKind,
+              runId,
+              messageId,
+            })
+          );
+          const played = await tryPlayCachedAudio(item, runId);
+
+          if (runIdRef.current !== runId) break;
+          if (!played) continue;
+          playedAny = true;
         }
-        setIsPlayingQueue(true);
-      }
 
-      const runId = runIdRef.current;
-      isPlayingRef.current = true;
+        if (runIdRef.current === runId) {
+          setCurrentAudioItem(null);
+          setIsPlayingQueue(false);
+          isPlayingRef.current = false;
+        }
 
-      for (const item of queue) {
-        if (runIdRef.current !== runId) break;
-        // Создаем новый объект, чтобы React увидел изменение
-        const newItem = { ...item, meta: item.meta ? { ...item.meta } : undefined };
-        setCurrentAudioItem(newItem);
-        // eslint-disable-next-line no-console
-        console.log('[useTtsQueue] setCurrentAudioItem', JSON.stringify({
-          text: item.text?.slice(0, 50),
-          kind: item.kind,
-          vocabIndex: item.meta?.vocabIndex,
-          vocabKind: item.meta?.vocabKind,
-          runId,
-          messageId
-        }));
-        const played = await tryPlayCachedAudio(item, runId);
-
-        if (runIdRef.current !== runId) break;
-        if (!played) continue;
-      }
-
-      if (runIdRef.current === runId) {
-        setCurrentAudioItem(null);
-        setIsPlayingQueue(false);
-        isPlayingRef.current = false;
+        if (msgId && playedAny) {
+          playedMessageIdsRef.current.add(msgId);
+          setPlayedMessageIds((prev) => new Set(prev).add(msgId));
+          if (isSituationAutoplay && situationSignature) {
+            playedSituationAutoplaySignaturesRef.current.add(situationSignature);
+          }
+        }
+      } finally {
+        if (msgId && markedInFlightMsgId) inFlightMessageIdsRef.current.delete(msgId);
+        if (markedInFlightSignature && situationSignature) inFlightSituationAutoplaySignaturesRef.current.delete(situationSignature);
       }
     },
     [cancel, tryPlayCachedAudio]

@@ -1036,6 +1036,21 @@ export const prefetchLessonScript = async (
   }
 };
 
+/**
+ * Prefetch initial lesson payload (RPC) in the background so Step4 can open without waiting.
+ * This is intentionally best-effort and should never block navigation.
+ */
+export const prefetchLessonInitData = async (day: number, lesson: number, level: string = 'A1'): Promise<void> => {
+  try {
+    const init = await loadLessonInitData(day, lesson, level, { includeScript: true, includeMessages: true });
+    if (init?.messages && init.messages.length) {
+      cacheChatMessages(day, lesson, level, init.messages);
+    }
+  } catch {
+    // ignore prefetch errors
+  }
+};
+
 export const clearLessonScriptCacheFor = (day: number, lesson: number, level: string = 'A1') => {
   const cacheKey = getLessonScriptCacheKey(day, lesson, level);
   lessonScriptCache.delete(cacheKey);

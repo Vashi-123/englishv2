@@ -4,16 +4,14 @@ import { extractIntroText, deriveFindMistakeKey } from './messageUtils';
 import { VocabularyCard } from './VocabularyCard';
 import { ExerciseCard } from './ExerciseCard';
 import { WordPayloadCard } from './WordPayloadCard';
-import { ConstructorCard } from './ConstructorCard';
+import { ConstructorCard, formatConstructorSentence } from './ConstructorCard';
 import { FindTheMistakeCard } from './FindTheMistakeCard';
 import { SituationThreadCard } from './SituationThreadCard';
 import { parseSituationMessage } from './situationParsing';
 import { CardHeading } from './CardHeading';
 
-// Global ref to track played situation audio across all component instances
-// This prevents double playback even if the component re-renders or is mounted multiple times
-const globalAutoPlayedSituationAiRef = new Set<string>();
-const globalAutoPlayedSituationAiTextRef = new Set<string>();
+// Situation auto-play is deduped inside `useTtsQueue` by messageId, but only after a successful play.
+// Avoid global "played by text" dedupe here, since it can suppress legitimate plays (and block retries after autoplay errors).
 
 type Props = {
   msg: ChatMessage;
@@ -241,24 +239,6 @@ function MessageContentComponent({
     if (!stableShouldAutoPlay) return;
     if (!stableAiText) return;
     if (!stableMessageId) return;
-    const normalizedTextKey = stableAiText.trim().toLowerCase();
-    if (normalizedTextKey && globalAutoPlayedSituationAiTextRef.has(normalizedTextKey)) {
-      console.log('[TTS] Situation AI already played by text, skipping:', normalizedTextKey.slice(0, 40));
-      return;
-    }
-    
-    // Use global ref to prevent double playback across all component instances
-    // This prevents double playback even if React StrictMode runs effects twice
-    // or if the component is mounted multiple times
-    if (globalAutoPlayedSituationAiRef.has(stableMessageId)) {
-      console.log('[TTS] Situation AI already played, skipping:', stableMessageId);
-      return;
-    }
-    
-    // Mark as played BEFORE calling processAudioQueue to prevent race conditions
-    // This ensures that even if the effect runs twice (StrictMode), only one playback happens
-    globalAutoPlayedSituationAiRef.add(stableMessageId);
-    if (normalizedTextKey) globalAutoPlayedSituationAiTextRef.add(normalizedTextKey);
     console.log('[TTS] Auto-playing situation AI:', { messageId: stableMessageId, text: stableAiText.slice(0, 50) });
 
     const timer = window.setTimeout(() => {
@@ -366,13 +346,20 @@ function MessageContentComponent({
     const constructor = lessonScript?.constructor;
     const task = constructor?.tasks?.[stepIndex] || constructor?.tasks?.[0];
     const instructionText =
-      typeof constructor?.instruction === 'string' && constructor.instruction.trim() ? constructor.instruction : instructionFromMessage;
-    const correctSentence =
-      typeof (task as any)?.correct === 'string' && String((task as any).correct).trim()
-        ? String((task as any).correct).trim()
-        : Array.isArray((task as any)?.words)
-          ? String((task as any).words.join(' ')).trim()
-          : words.join(' ');
+      typeof (task as any)?.instruction === 'string' && String((task as any).instruction).trim()
+        ? String((task as any).instruction).trim()
+        : typeof constructor?.instruction === 'string' && constructor.instruction.trim()
+          ? constructor.instruction
+          : instructionFromMessage;
+    const expectedValue: string | string[] =
+      Array.isArray((task as any)?.correct) && (task as any).correct.length > 0
+        ? (task as any).correct
+        : typeof (task as any)?.correct === 'string' && String((task as any).correct).trim()
+          ? String((task as any).correct).trim()
+          : Array.isArray((task as any)?.words)
+            ? String((task as any).words.join(' ')).trim()
+            : words.join(' ');
+    const correctSentence = Array.isArray(expectedValue) ? formatConstructorSentence(expectedValue) : expectedValue;
 
     const constructorKey = `task-${stepIndex}`;
     const ctorState = constructorUI?.[constructorKey] || {};
@@ -420,7 +407,7 @@ function MessageContentComponent({
         instruction={instructionText || ''}
         note={task?.note}
         words={words.length ? words : (task?.words || [])}
-        expected={correctSentence}
+        expected={expectedValue}
         translation={constructorTranslation}
         renderMarkdown={renderMarkdown}
         isLoading={isLoading}
@@ -468,17 +455,21 @@ function MessageContentComponent({
     if (structuredSections.length > 0) {
       return (
         <div className="space-y-3">
-          {structuredSections.map((section, i) => (
-            <div
-              key={`${section.title}-${i}`}
-              className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto animate-[fadeIn_0.3s_ease-out]"
-            >
-              <CardHeading>{section.title}</CardHeading>
-              <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
-                {renderMarkdown(section.body)}
+          {structuredSections.map((section, i) => {
+            const isTask = /задани/i.test(section.title);
+            const borderClass = isTask ? 'border-brand-primary/60' : 'border-gray-200/60';
+            return (
+              <div
+                key={`${section.title}-${i}`}
+                className={`rounded-2xl border ${borderClass} bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto animate-[fadeIn_0.3s_ease-out]`}
+              >
+                <CardHeading>{section.title}</CardHeading>
+                <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
+                  {renderMarkdown(section.body)}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -536,11 +527,15 @@ function MessageContentComponent({
         : typeof findBlock?.instruction === 'string'
           ? findBlock.instruction
           : '';
+    const taskInstruction: string =
+      typeof (task as any)?.instruction === 'string' && String((task as any).instruction).trim()
+        ? String((task as any).instruction).trim()
+        : '';
     const ui = findMistakeUI[findKey] || {};
 
     return (
       <FindTheMistakeCard
-        instruction={instruction}
+        instruction={instruction || taskInstruction}
         options={options}
         answer={answer}
         explanation={explanation}
@@ -620,12 +615,16 @@ function MessageContentComponent({
         const answer: 'A' | 'B' | undefined = (task as any)?.answer === 'A' || (task as any)?.answer === 'B' ? (task as any).answer : undefined;
         const explanation: string = typeof (task as any)?.explanation === 'string' ? (task as any).explanation : '';
         const instruction: string = typeof (findBlock as any)?.instruction === 'string' ? (findBlock as any).instruction : '';
+        const taskInstruction: string =
+          typeof (task as any)?.instruction === 'string' && String((task as any).instruction).trim()
+            ? String((task as any).instruction).trim()
+            : '';
         const ui = findMistakeUI[findKey] || {};
         return (
           <div className="space-y-4">
             {intro && <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">{renderMarkdown(intro)}</div>}
             <FindTheMistakeCard
-              instruction={instruction}
+              instruction={instruction || taskInstruction}
               options={options}
               answer={answer}
               explanation={explanation}
@@ -827,17 +826,21 @@ function MessageContentComponent({
   if (structuredSections.length > 0) {
     return (
       <div className="space-y-3">
-        {structuredSections.map((section, i) => (
-          <div
-            key={`${section.title}-${i}`}
-            className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto"
-          >
-            <CardHeading>{section.title}</CardHeading>
-            <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
-              {renderMarkdown(section.body)}
+        {structuredSections.map((section, i) => {
+          const isTask = /задани/i.test(section.title);
+          const borderClass = isTask ? 'border-brand-primary/60' : 'border-gray-200/60';
+          return (
+            <div
+              key={`${section.title}-${i}`}
+              className={`rounded-2xl border ${borderClass} bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto`}
+            >
+              <CardHeading>{section.title}</CardHeading>
+              <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
+                {renderMarkdown(section.body)}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }

@@ -6,7 +6,7 @@ type Props = {
   instruction: string;
   note?: string;
   words: string[];
-  expected?: string;
+  expected?: string | string[];
   translation?: string;
   renderMarkdown: (text: string) => React.ReactNode;
   isLoading?: boolean;
@@ -16,7 +16,7 @@ type Props = {
   onStateChange?: (state: { pickedWordIndices: number[]; completed: boolean }) => void;
 };
 
-const formatSentence = (tokens: string[]) => {
+export const formatConstructorSentence = (tokens: string[]) => {
   const punctNoSpaceBefore = new Set(['.', ',', '!', '?', ';', ':', ')', '…']);
   const noSpaceAfter = new Set(['(']);
   let out = '';
@@ -77,18 +77,42 @@ export function ConstructorCard({
   const wrongAttemptTokenRef = useRef<number>(0);
 
   const pickedTokens = useMemo(() => pickedWordIndices.map((i) => words[i]).filter(Boolean), [pickedWordIndices, words]);
-  const sentence = useMemo(() => formatSentence(pickedTokens), [pickedTokens]);
-  const expectedWordsCount = useMemo(() => {
-    if (!expected) return 0;
-    const normalized = normalizeLenient(expected);
-    if (!normalized) return 0;
-    return normalized.split(' ').filter(Boolean).length;
+  const sentence = useMemo(() => formatConstructorSentence(pickedTokens), [pickedTokens]);
+  const expectedTokens = useMemo(() => {
+    if (!expected) return null;
+    if (!Array.isArray(expected)) return null;
+    const tokens = expected.map((t) => String(t ?? '').trim()).filter(Boolean);
+    return tokens.length ? tokens : null;
   }, [expected]);
+  const expectedSentence = useMemo(() => {
+    if (!expected) return '';
+    if (Array.isArray(expected)) {
+      return expectedTokens ? formatConstructorSentence(expectedTokens) : '';
+    }
+    return String(expected || '').trim();
+  }, [expected, expectedTokens]);
+  const maxPickCount = useMemo(() => {
+    if (expectedTokens) return expectedTokens.length;
+    if (typeof expected === 'string' && expected.trim()) {
+      const normalized = normalizeLenient(expected);
+      if (!normalized) return 0;
+      return normalized.split(' ').filter(Boolean).length;
+    }
+    return words.length;
+  }, [expected, expectedTokens, words.length]);
   const isCorrect = useMemo(() => {
     if (!expected) return null;
     if (!sentence) return false;
+    if (expectedTokens) {
+      if (pickedTokens.length !== expectedTokens.length) return false;
+      for (let i = 0; i < expectedTokens.length; i++) {
+        if (pickedTokens[i] !== expectedTokens[i]) return false;
+      }
+      return true;
+    }
+    if (typeof expected !== 'string') return false;
     return normalizeLenient(sentence) === normalizeLenient(expected);
-  }, [expected, sentence]);
+  }, [expected, expectedTokens, pickedTokens, sentence]);
 
   useEffect(() => {
     if (hydratedFromPropsRef.current) return;
@@ -105,13 +129,13 @@ export function ConstructorCard({
     const nextPicked = hasIncoming ? (initialPickedWordIndices as number[]) : [];
     if (hasIncoming) setPickedWordIndices(nextPicked);
     if (incomingCompleted) {
-      const incomingSentence = formatSentence(nextPicked.map((i) => words[i]).filter(Boolean));
-      const ok = expected ? normalizeLenient(incomingSentence) === normalizeLenient(expected) : true;
+      const incomingSentence = formatConstructorSentence(nextPicked.map((i) => words[i]).filter(Boolean));
+      const ok = expected ? normalizeLenient(incomingSentence) === normalizeLenient(expectedSentence) : true;
       if (ok) setCompleted(true);
       else setPickedWordIndices([]);
     }
     hydratedFromPropsRef.current = true;
-  }, [expected, initialCompleted, initialPickedWordIndices, pickedWordIndices.length, words]);
+  }, [expected, expectedSentence, initialCompleted, initialPickedWordIndices, pickedWordIndices.length, words]);
 
   useEffect(() => {
     const cb = onStateChangeRef.current;
@@ -132,10 +156,11 @@ export function ConstructorCard({
       setPickedWordIndices((prev) => {
         // toggle: if already used, remove it (so user can fix mistakes without extra buttons)
         if (prev.includes(idx)) return prev.filter((x, i) => !(x === idx && i === prev.lastIndexOf(idx)));
+        if (maxPickCount > 0 && prev.length >= maxPickCount) return prev;
         return [...prev, idx];
       });
     },
-    [completed, isLoading, words.length]
+    [completed, isLoading, maxPickCount, words.length]
   );
 
   useEffect(() => {
@@ -154,7 +179,7 @@ export function ConstructorCard({
 
     // Feedback: once the user has roughly the expected number of words and it's incorrect,
     // show a red hint briefly, then reset the selection so they can try again cleanly.
-    const shouldHint = expectedWordsCount > 0 && pickedWordIndices.length >= expectedWordsCount;
+    const shouldHint = maxPickCount > 0 && pickedWordIndices.length >= maxPickCount;
     if (!shouldHint) return;
 
     setWrongAttempt(true);
@@ -171,14 +196,16 @@ export function ConstructorCard({
       setWrongAttempt(false);
       setPickedWordIndices((prev) => {
         if (!expected) return prev;
-        if (prev.length < expectedWordsCount) return prev;
-        const currentSentence = formatSentence(prev.map((i) => words[i]).filter(Boolean));
+        if (maxPickCount > 0 && prev.length < maxPickCount) return prev;
+        const currentSentence = formatConstructorSentence(prev.map((i) => words[i]).filter(Boolean));
         if (!currentSentence) return prev;
-        const ok = normalizeLenient(currentSentence) === normalizeLenient(expected);
+        const ok = normalizeLenient(currentSentence) === normalizeLenient(expectedSentence);
         return ok ? prev : [];
       });
     }, 900);
-  }, [completed, expected, expectedWordsCount, isCorrect, isLoading, onComplete, pickedWordIndices.length, sentence]);
+  }, [completed, expected, expectedSentence, isCorrect, isLoading, maxPickCount, onComplete, pickedWordIndices.length, sentence, words]);
+
+  const maxReached = maxPickCount > 0 && pickedWordIndices.length >= maxPickCount;
 
   return (
     <div className="space-y-4">
@@ -210,7 +237,7 @@ export function ConstructorCard({
         )}
 
         {translation && (
-          <div className="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <div className="rounded-2xl border border-brand-primary/30 bg-gray-50 px-4 py-3 text-sm text-gray-700">
             {renderMarkdown(translation)}
           </div>
         )}
@@ -225,7 +252,7 @@ export function ConstructorCard({
                     key={`${word}-${i}`}
                     type="button"
                     onClick={() => onPickWord(i)}
-                    disabled={completed || isLoading}
+                    disabled={completed || isLoading || (!used && maxReached)}
                     className={`px-4 py-2 rounded-full border text-base font-semibold shadow-sm transition disabled:opacity-50 ${
                       used
                         ? 'border-brand-primary/40 bg-brand-primary/10 text-brand-primary'
@@ -250,7 +277,7 @@ export function ConstructorCard({
               ) : null}
               {words.length > 0 && (
                 <div className="text-xs text-gray-500">
-                  {pickedWordIndices.length}/{words.length}
+                  {pickedWordIndices.length}/{maxPickCount > 0 ? maxPickCount : words.length}
                 </div>
               )}
             </div>

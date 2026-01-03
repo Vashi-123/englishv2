@@ -36,7 +36,7 @@ interface LessonScript {
     successText?: string;
     tasks: Array<{
       words: string[];
-      correct: string;
+      correct: string | string[];
       note?: string;
       translation?: string;
     }>;
@@ -343,7 +343,9 @@ Deno.serve(async (req: Request) => {
               "Конструктор:",
               ...constructorTasks.map((t: any, i: number) => {
                 const words = Array.isArray(t?.words) ? t.words.map((x: any) => safeText(x)).filter(Boolean) : [];
-                const correct = safeText(t?.correct);
+                const correct = Array.isArray(t?.correct)
+                  ? t.correct.map((x: any) => safeText(x)).filter(Boolean).join(" ")
+                  : safeText(t?.correct);
                 const translation = safeText(t?.translation);
                 return [
                   `${i + 1}. Слова: ${words.join(" ")}`,
@@ -685,7 +687,7 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      expected = task.correct;
+      expected = Array.isArray(task.correct) ? task.correct.join(" ") : task.correct;
       stepType = "constructor";
       extra = `Слова: ${(task.words || []).join(" ")}`;
     } else if (currentStep.type === "situations") {

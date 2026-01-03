@@ -16,8 +16,10 @@ interface DialogueCopy {
 interface ExerciseViewProps {
   currentDayPlan: DayPlan | undefined;
   level: string;
+  startMode?: 'normal' | 'next';
   nextLessonNumber?: number;
   nextLessonIsPremium: boolean;
+  nextDayPlan?: DayPlan;
   dialogueCopy: DialogueCopy;
   onFinish: () => Promise<void>;
   onNextLesson: () => Promise<void>;
@@ -27,8 +29,10 @@ interface ExerciseViewProps {
 export const ExerciseView: React.FC<ExerciseViewProps> = ({
   currentDayPlan,
   level,
+  startMode,
   nextLessonNumber,
   nextLessonIsPremium,
+  nextDayPlan,
   dialogueCopy,
   onFinish,
   onNextLesson,
@@ -53,10 +57,13 @@ export const ExerciseView: React.FC<ExerciseViewProps> = ({
                 day={currentDayPlan.day}
                 lesson={currentDayPlan.lesson}
                 level={level}
+                startMode={startMode}
                 onFinish={onFinish}
                 onNextLesson={onNextLesson}
                 nextLessonNumber={nextLessonNumber}
                 nextLessonIsPremium={nextLessonIsPremium}
+                nextDay={nextDayPlan?.day}
+                nextLesson={nextDayPlan?.lesson}
                 onBack={onBack}
                 copy={dialogueCopy}
               />

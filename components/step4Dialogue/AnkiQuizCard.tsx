@@ -11,6 +11,7 @@ type Props = {
   onAnswer?: (params: { id?: number; word: string; translation: string; isCorrect: boolean }) => void | Promise<void>;
   onComplete: () => void;
   playAudio?: (text: string, lang?: string) => void;
+  waitForAudioIdle?: (timeoutMs?: number) => Promise<void>;
 };
 
 function shuffle<T>(arr: ReadonlyArray<T>): T[] {
@@ -22,7 +23,7 @@ function shuffle<T>(arr: ReadonlyArray<T>): T[] {
   return a;
 }
 
-export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer, onComplete, playAudio }: Props) {
+export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer, onComplete, playAudio, waitForAudioIdle }: Props) {
   const deck = useMemo<DeckItem[]>(() => {
     const normalized = items
       .map((x) => ({
@@ -124,6 +125,19 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
     });
   };
 
+  const scheduleAdvance = (minDelayMs: number) => {
+    if (advanceTimerRef.current != null) window.clearTimeout(advanceTimerRef.current);
+    advanceTimerRef.current = window.setTimeout(() => {
+      void (async () => {
+        try {
+          if (waitForAudioIdle) await waitForAudioIdle(12000);
+        } finally {
+          goNext();
+        }
+      })();
+    }, Math.max(0, minDelayMs));
+  };
+
   if (!current) {
     return (
       <div className="w-full max-w-2xl mx-auto">
@@ -213,7 +227,8 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
                         onAnswer?.({ id: current.id, word: current.word, translation: current.translation, isCorrect: ok })
                       );
                     } finally {
-                      advanceTimerRef.current = window.setTimeout(() => goNext(), ok ? 520 : 1600);
+                      // Don't advance to the next card until audio playback has finished.
+                      scheduleAdvance(ok ? 520 : 1600);
                     }
                   })();
                 }}
