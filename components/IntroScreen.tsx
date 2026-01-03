@@ -109,10 +109,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   };
 
   const ctaLabel = (isMobile && step === 0) ? 'Далее' : 'Начать';
-  const secondaryHint =
-    (isMobile && step === 0)
-      ? 'Дальше — покажем демо'
-      : '';
+  const secondaryHint = '';
 
   const handlePay = async () => {
     if (paying) return;
@@ -497,18 +494,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         {secondaryHint && (
           <div className="text-xs text-gray-500 font-semibold text-right">{secondaryHint}</div>
         )}
-
-        {/* Footer с логотипом */}
-        <div className="mt-auto pt-6 pb-4">
-          <div className="flex items-center justify-center">
-            <img
-              src="/full_logo.png"
-              alt="GoPractice"
-              className="h-6 sm:h-7 object-contain"
-              draggable={false}
-            />
-          </div>
-        </div>
       </div>
     </div>
     </>
