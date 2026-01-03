@@ -54,31 +54,81 @@ export interface PartnerStats {
   }>;
 }
 
-export const getPartnerStats = async (email: string): Promise<PartnerStats> => {
+const isRetryableError = (error: unknown): boolean => {
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    // Сетевые ошибки, таймауты, временные ошибки сервера
+    return (
+      message.includes('network') ||
+      message.includes('timeout') ||
+      message.includes('fetch') ||
+      message.includes('failed to fetch') ||
+      message.includes('запрос занял слишком много времени')
+    );
+  }
+  return false;
+};
+
+export const getPartnerStats = async (email: string, retryCount = 0): Promise<PartnerStats> => {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   if (!supabaseUrl) {
     throw new Error('VITE_SUPABASE_URL is not set');
   }
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/partner-stats`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({ email }),
-  });
+  const maxRetries = 2;
+  const timeoutMs = 10000; // 10 секунд на запрос
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+  try {
+    // Создаем AbortController для таймаута
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/partner-stats`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ email }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const errorMessage = error.error || `HTTP ${response.status}`;
+      
+      // Retry для временных ошибок сервера (5xx)
+      if (retryCount < maxRetries && response.status >= 500 && response.status < 600) {
+        const delay = 200 * Math.pow(1.5, retryCount);
+        await new Promise(resolve => setTimeout(resolve, Math.min(1000, delay)));
+        return getPartnerStats(email, retryCount + 1);
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    if (!result.ok) {
+      throw new Error(result.error || 'Failed to get partner stats');
+    }
+
+    return result.data;
+  } catch (error: unknown) {
+    // Retry для сетевых ошибок и таймаутов
+    if (retryCount < maxRetries && isRetryableError(error)) {
+      const delay = 200 * Math.pow(1.5, retryCount);
+      await new Promise(resolve => setTimeout(resolve, Math.min(1000, delay)));
+      return getPartnerStats(email, retryCount + 1);
+    }
+    
+    // Если это AbortError от таймаута, выбрасываем понятную ошибку
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Запрос занял слишком много времени');
+    }
+    
+    throw error;
   }
-
-  const result = await response.json();
-  if (!result.ok) {
-    throw new Error(result.error || 'Failed to get partner stats');
-  }
-
-  return result.data;
 };
 

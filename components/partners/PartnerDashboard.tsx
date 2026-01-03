@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { getPartnerStats, PartnerStats } from '../../services/partnerService';
 import { 
@@ -19,7 +19,8 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  Download
+  Download,
+  AlertCircle
 } from 'lucide-react';
 import {
   LineChart,
@@ -48,8 +49,27 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [payoutsPage, setPayoutsPage] = useState(1);
+  
+  const retryTimerRef = useRef<number | null>(null);
+  const retryAttemptRef = useRef<number>(0);
+  const isMountedRef = useRef<boolean>(true);
+  const forceTimeoutRef = useRef<number | null>(null);
 
-  const loadStats = async (showRefreshing = false) => {
+  const loadStats = async (showRefreshing = false, isRetry = false) => {
+    // Очищаем предыдущий таймер retry если есть
+    if (retryTimerRef.current != null) {
+      try {
+        if (typeof window !== 'undefined') window.clearTimeout(retryTimerRef.current);
+      } catch {
+        // ignore
+      }
+      retryTimerRef.current = null;
+    }
+
+    if (!isRetry) {
+      retryAttemptRef.current = 0;
+    }
+
     if (showRefreshing) {
       setRefreshing(true);
     } else {
@@ -58,19 +78,84 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
     setError(null);
 
     try {
-      const data = await getPartnerStats(userEmail);
+      // Таймаут для запроса - не ждем больше 12 секунд
+      const timeoutMs = 12000;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Запрос занял слишком много времени')), timeoutMs);
+      });
+
+      const statsPromise = getPartnerStats(userEmail);
+      const data = await Promise.race([statsPromise, timeoutPromise]);
+      
+      if (!isMountedRef.current) return;
+      
       setStats(data);
+      retryAttemptRef.current = 0;
+      setError(null);
     } catch (err) {
       console.error('[PartnerDashboard] Error loading stats:', err);
-      setError(err instanceof Error ? err.message : 'Не удалось загрузить статистику');
+      
+      if (!isMountedRef.current) return;
+
+      const errorMessage = err instanceof Error ? err.message : 'Не удалось загрузить статистику';
+      setError(errorMessage);
+
+      // Retry логика с exponential backoff
+      // Пробуем до 4 раз с увеличивающейся задержкой
+      const attempt = retryAttemptRef.current;
+      if (attempt < 4 && typeof window !== 'undefined') {
+        const delay = Math.min(4000, 500 * Math.pow(2, attempt));
+        retryAttemptRef.current = attempt + 1;
+        
+        retryTimerRef.current = window.setTimeout(() => {
+          if (isMountedRef.current) {
+            console.log(`[PartnerDashboard] Retry attempt ${retryAttemptRef.current} after ${delay}ms`);
+            void loadStats(showRefreshing, true);
+          }
+        }, delay);
+      } else if (attempt >= 4) {
+        // После всех попыток показываем финальную ошибку
+        setError('Не удалось загрузить данные после нескольких попыток. Проверьте подключение к интернету и попробуйте обновить страницу.');
+      }
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (isMountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
+    let loadingState = true;
+    
+    const cleanup = () => {
+      isMountedRef.current = false;
+      loadingState = false;
+      if (retryTimerRef.current != null && typeof window !== 'undefined') {
+        window.clearTimeout(retryTimerRef.current);
+      }
+      if (forceTimeoutRef.current != null && typeof window !== 'undefined') {
+        window.clearTimeout(forceTimeoutRef.current);
+      }
+    };
+
     loadStats();
+
+    // Принудительное завершение загрузки через 15 секунд на случай зависания
+    if (typeof window !== 'undefined') {
+      forceTimeoutRef.current = window.setTimeout(() => {
+        if (isMountedRef.current && loadingState) {
+          console.warn('[PartnerDashboard] Force stopping loading after 15s timeout');
+          loadingState = false;
+          setLoading(false);
+          setError('Загрузка данных заняла слишком много времени. Попробуйте обновить страницу.');
+        }
+      }, 15000);
+    }
+
+    return cleanup;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail]);
 
   const formatCurrency = (amount: number, currency: string = 'RUB') => {
@@ -239,29 +324,59 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   };
 
   if (loading) {
+    const retryAttempt = retryAttemptRef.current;
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center pt-[var(--app-safe-top)] px-4">
         <div className="text-center space-y-3">
           <Loader2 className="h-12 w-12 text-brand-primary animate-spin mx-auto" />
           <p className="text-sm sm:text-base text-gray-600 font-semibold">Загрузка статистики...</p>
+          {retryAttempt > 0 && (
+            <p className="text-xs text-gray-500">Попытка {retryAttempt} из 4...</p>
+          )}
         </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error && !loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 flex items-center justify-center px-4 sm:px-6 pt-[var(--app-safe-top)]">
         <div className="w-full max-w-md text-center space-y-4">
-          <div className="text-red-500 text-5xl sm:text-6xl">⚠️</div>
+          <div className="flex justify-center">
+            <div className="p-4 bg-red-100 rounded-full">
+              <AlertCircle className="w-12 h-12 text-red-600" />
+            </div>
+          </div>
           <h2 className="text-lg sm:text-xl font-bold text-slate-900">Ошибка загрузки</h2>
-          <p className="text-sm text-gray-600">{error}</p>
-          <button
-            onClick={() => loadStats()}
-            className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold rounded-xl hover:opacity-90 transition-colors shadow-lg shadow-brand-primary/20"
-          >
-            Попробовать снова
-          </button>
+          <p className="text-sm text-gray-600 px-4">{error}</p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+            <button
+              onClick={() => {
+                retryAttemptRef.current = 0;
+                loadStats();
+              }}
+              disabled={loading}
+              className="px-6 py-3 bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-semibold rounded-xl hover:opacity-90 transition-colors shadow-lg shadow-brand-primary/20 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Загрузка...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  Попробовать снова
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-3 bg-gray-100 text-gray-700 font-semibold rounded-xl hover:bg-gray-200 transition-colors"
+            >
+              Обновить страницу
+            </button>
+          </div>
         </div>
       </div>
     );
