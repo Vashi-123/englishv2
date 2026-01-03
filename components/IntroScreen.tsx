@@ -504,7 +504,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
             <img
               src="/full_logo.png"
               alt="GoPractice"
-              className="h-9 sm:h-[42px] object-contain"
+              className="h-6 sm:h-7 object-contain"
               draggable={false}
             />
           </div>
