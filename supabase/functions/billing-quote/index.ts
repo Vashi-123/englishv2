@@ -50,6 +50,12 @@ const applyPromoFromDb = async (params: {
     .maybeSingle();
   if (error) throw error;
   if (!data) throw new Error("Промокод не найден");
+  console.log("[billing-quote] Promo code found:", {
+    code: (data as any).code,
+    kind: (data as any).kind,
+    value: (data as any).value,
+    ios_product_id: (data as any).ios_product_id,
+  });
 
   const expiresAt = (data as any).expires_at ? Date.parse(String((data as any).expires_at)) : null;
   if (expiresAt != null && Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
@@ -64,18 +70,27 @@ const applyPromoFromDb = async (params: {
   const kind = String((data as any).kind || "").trim();
   const value = (data as any).value;
   const iosProductId = (data as any).ios_product_id ? String((data as any).ios_product_id) : null;
+  console.log("[billing-quote] Processing promo:", { kind, value, iosProductId, base: params.base });
 
-  if (kind === "free") return { amountValue: "0.00", appliedPromo: clean, iosProductId };
+  if (kind === "free") {
+    const result = { amountValue: "0.00", appliedPromo: clean, iosProductId };
+    console.log("[billing-quote] Free promo result:", result);
+    return result;
+  }
   if (kind === "fixed") {
     const fixed = Number(value);
     if (!Number.isFinite(fixed) || fixed < 0) throw new Error("Некорректный промокод");
-    return { amountValue: toAmountString(fixed), appliedPromo: clean, iosProductId };
+    const result = { amountValue: toAmountString(fixed), appliedPromo: clean, iosProductId };
+    console.log("[billing-quote] Fixed promo result:", result);
+    return result;
   }
   if (kind === "percent") {
     const pct = Number(value);
     if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) throw new Error("Некорректный промокод");
     const discounted = params.base * (1 - pct / 100);
-    return { amountValue: toAmountString(discounted), appliedPromo: clean, iosProductId };
+    const result = { amountValue: toAmountString(discounted), appliedPromo: clean, iosProductId };
+    console.log("[billing-quote] Percent promo result:", result);
+    return result;
   }
   throw new Error("Некорректный промокод");
 };
@@ -112,6 +127,11 @@ Deno.serve(async (req: Request) => {
     if (!Number.isFinite(baseAmount) || baseAmount < 0) return json(500, { ok: false, error: "Invalid price config" });
 
     const priced = await applyPromoFromDb({ supabase, base: baseAmount, promoCode, productKey });
+    console.log("[billing-quote] Promo applied result:", {
+      amountValue: priced.amountValue,
+      appliedPromo: priced.appliedPromo,
+      iosProductId: priced.iosProductId,
+    });
 
     // Get default ios_product_id from billing_products if promo doesn't have one
     let iosProductId = priced.iosProductId;
@@ -122,9 +142,12 @@ Deno.serve(async (req: Request) => {
         .eq("key", productKey)
         .maybeSingle();
       iosProductId = productData?.ios_product_id ? String(productData.ios_product_id) : null;
+      console.log("[billing-quote] Using default ios_product_id from billing_products:", iosProductId);
+    } else {
+      console.log("[billing-quote] Using ios_product_id from promo code:", iosProductId);
     }
 
-    return json(200, {
+    const response = {
       ok: true,
       productKey,
       amountValue: priced.amountValue,
@@ -132,7 +155,9 @@ Deno.serve(async (req: Request) => {
       promoApplied: Boolean(priced.appliedPromo),
       promoCode: priced.appliedPromo || null,
       iosProductId: iosProductId || null,
-    });
+    };
+    console.log("[billing-quote] Final response:", response);
+    return json(200, response);
   } catch (err) {
     return json(200, { ok: false, error: String(err?.message || err) });
   }

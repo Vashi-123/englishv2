@@ -212,22 +212,35 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     }
     setPromoLoading(true);
     try {
+      console.log("[PaywallScreen] Checking promo code:", code);
       // Use billing-quote API for both web and iOS to check promo codes
       const res = await quoteBilling({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
+      console.log("[PaywallScreen] billing-quote response:", res);
       if (!res || res.ok !== true) {
         const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось проверить промокод";
+        console.error("[PaywallScreen] billing-quote failed:", msg);
         setPromoMessage(msg);
         setPromoOk(false);
         return;
       }
+      console.log("[PaywallScreen] Promo code result:", {
+        promoApplied: res.promoApplied,
+        iosProductId: res.iosProductId,
+        amountValue: res.amountValue,
+        isNativeIos,
+      });
       // On iOS, if promo code provides iosProductId, fetch the actual price from Apple StoreKit
       if (isNativeIos && res.iosProductId) {
+        console.log("[PaywallScreen] Setting promoIosProductId:", res.iosProductId);
         setPromoIosProductId(res.iosProductId);
         try {
+          console.log("[PaywallScreen] Fetching iOS product from StoreKit:", res.iosProductId);
           const iapProduct = await fetchIosIapProductById(res.iosProductId);
+          console.log("[PaywallScreen] iOS product from StoreKit:", iapProduct);
           if (iapProduct) {
             // Use price from Apple StoreKit, not from DB
             if (iapProduct.price) {
+              console.log("[PaywallScreen] Setting price from Apple StoreKit:", iapProduct.price);
               setPriceValue(String(iapProduct.price));
             }
             if (iapProduct.currency) {
@@ -237,6 +250,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
               setIapPriceLabel(iapProduct.localizedPrice);
             }
           } else {
+            console.warn("[PaywallScreen] iOS product not found in StoreKit, using DB price");
             // Fallback to DB price if Apple product not found
             setPriceValue(String(res.amountValue));
             setPriceCurrency(String(res.amountCurrency || "RUB"));
@@ -248,6 +262,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
           setPriceCurrency(String(res.amountCurrency || "RUB"));
         }
       } else {
+        console.log("[PaywallScreen] Web or no iosProductId, using DB price");
         // Web or no iosProductId: use price from DB
         setPriceValue(String(res.amountValue));
         setPriceCurrency(String(res.amountCurrency || "RUB"));
@@ -308,11 +323,19 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     try {
       // Use iosProductId from promo code if available, otherwise use default
       const iosProductId = promoIosProductId || defaultIosProductId;
+      console.log("[PaywallScreen] handlePayIos - productId selection:", {
+        promoIosProductId,
+        defaultIosProductId,
+        selectedIosProductId: iosProductId,
+        priceValue,
+        priceCurrency,
+      });
       const res = await purchaseIosIap({
         productId: iosProductId || undefined, // Pass iosProductId if available, otherwise let iapService get it from DB
         priceValue: Number(priceValue),
         priceCurrency: priceCurrency,
       });
+      console.log("[PaywallScreen] purchaseIosIap result:", res);
       if (!res || res.ok !== true) {
         const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось завершить покупку";
         console.error("[PaywallScreen] iOS purchase failed", msg);

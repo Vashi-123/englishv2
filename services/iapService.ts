@@ -111,8 +111,15 @@ export const fetchIosIapProductById = async (productId: string): Promise<IapProd
 export const purchaseIosIap = async (payload?: IapPurchasePayload): Promise<IapCompleteResponse> => {
   const ready = await ensureInitialized();
   if (!ready || !nativeIap) throw new Error("Покупки через App Store недоступны");
-  const productId = payload?.productId || await getIosProductId();
+  const defaultProductId = await getIosProductId();
+  const productId = payload?.productId || defaultProductId;
+  console.log("[iapService] purchaseIosIap - productId selection:", {
+    payloadProductId: payload?.productId,
+    defaultProductId,
+    selectedProductId: productId,
+  });
   const purchaseResult = await nativeIap.purchase?.({ productId });
+  console.log("[iapService] purchaseIap result:", purchaseResult);
   const purchase = purchaseResult?.purchase;
   if (!purchase) throw new Error("Не удалось завершить покупку");
 
