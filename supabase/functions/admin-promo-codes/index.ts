@@ -160,7 +160,6 @@ Deno.serve(async (req: Request) => {
         created_at: promoCode.created_at ? String(promoCode.created_at) : null,
         updated_at: promoCode.updated_at ? String(promoCode.updated_at) : null,
         totalPayments: codeSuccessful.length,
-        totalUses: codePayments.length, // Все использования, включая неуспешные
         revenue: codeRevenue,
         currency,
         payouts: payoutAmount,

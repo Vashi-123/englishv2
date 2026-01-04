@@ -82,7 +82,6 @@ export interface AdminPromoCode {
   created_at: string | null;
   updated_at: string | null;
   totalPayments: number;
-  totalUses: number;
   revenue: number;
   currency: string;
   payouts: number;

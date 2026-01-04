@@ -154,7 +154,6 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Тип</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Партнер</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Статус</th>
-                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Использований</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Успешных</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Выручка</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Выплачено</th>
@@ -210,9 +209,6 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                           Неактивен
                         </span>
                       )}
-                    </td>
-                    <td className="px-3 py-3 whitespace-nowrap text-xs text-gray-900">
-                      {promo.totalUses}
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-xs font-bold text-emerald-600">
                       {promo.totalPayments}
@@ -302,10 +298,6 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
 
                   {/* Stats grid */}
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
-                    <div>
-                      <p className="text-xs text-gray-600 mb-1">Использований</p>
-                      <p className="text-base font-bold text-slate-900">{promo.totalUses}</p>
-                    </div>
                     <div>
                       <p className="text-xs text-gray-600 mb-1">Успешных</p>
                       <p className="text-base font-bold text-emerald-600">{promo.totalPayments}</p>
