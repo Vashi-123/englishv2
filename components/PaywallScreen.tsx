@@ -7,8 +7,9 @@ import {
   getCachedBillingProduct,
   formatPrice,
   BILLING_PRODUCT_KEY,
+  quoteBilling,
 } from "../services/billingService";
-import { fetchIosIapProduct, purchaseIosIap } from "../services/iapService";
+import { fetchIosIapProduct, fetchIosIapProductById, purchaseIosIap } from "../services/iapService";
 import { formatFirstLessonsRu } from "../services/ruPlural";
 const STATUS_URL = import.meta.env.VITE_PAYMENT_STATUS_URL || "/check";
 const SITE_URL = import.meta.env.VITE_SITE_URL || "https://go-practice.com";
@@ -54,6 +55,8 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const [iapSupported, setIapSupported] = useState(false);
   const [iapLoading, setIapLoading] = useState(false);
   const [iapPriceLabel, setIapPriceLabel] = useState<string | null>(null);
+  const [promoIosProductId, setPromoIosProductId] = useState<string | null>(null);
+  const [defaultIosProductId, setDefaultIosProductId] = useState<string | null>(null);
 
   const listPriceLabel = useMemo(() => formatPrice("15000.00", "RUB"), []);
   const priceBusy = priceLoading || (isNativeIos && iapLoading);
@@ -65,6 +68,26 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 
   useEffect(() => {
     let cancelled = false;
+    // On iOS, prices come from Apple StoreKit, not from DB
+    // But we still need to load iosProductId from DB for default product
+    const loadIosProductId = async () => {
+      try {
+        const product = await fetchBillingProduct(BILLING_PRODUCT_KEY);
+        if (cancelled) return;
+        if (product?.iosProductId) {
+          setDefaultIosProductId(product.iosProductId);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    if (isNativeIos) {
+      void loadIosProductId();
+      setPriceLoading(false);
+      return;
+    }
+
     const cached = getCachedBillingProduct(BILLING_PRODUCT_KEY);
     if (cached?.active && cached.priceValue) {
       setBasePriceValue(cached.priceValue);
@@ -83,6 +106,9 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
         if (product?.active && product.priceValue) {
           setBasePriceValue(product.priceValue);
           setBasePriceCurrency(product.priceCurrency || "RUB");
+          if (product.iosProductId) {
+            setDefaultIosProductId(product.iosProductId);
+          }
           if (!promoAppliedRef.current) {
             setPriceValue(product.priceValue);
             setPriceCurrency(product.priceCurrency || "RUB");
@@ -98,7 +124,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isNativeIos]);
 
   useEffect(() => {
     if (!isNativeIos) return;
@@ -163,21 +189,21 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     return formatPrice(String(diff), String(basePriceCurrency || "RUB"));
   }, [basePriceCurrency, basePriceValue, priceValue, promoOk]);
 
-  // Promo code handlers - web only (iOS uses Apple Offer Codes via StoreKit)
+  // Promo code handlers
   const onPromoInputChange = (value: string) => {
-    if (isNativeIos) return; // No custom promo codes on iOS
     setPromoCode(value.toUpperCase());
     setPromoMessage(null);
     setPromoOk(null);
     setPriceValue(basePriceValue);
     setPriceCurrency(basePriceCurrency);
+    setPromoIosProductId(null);
   };
 
   const handleCheckPromo = async () => {
-    if (isNativeIos) return; // No custom promo codes on iOS
     setPromoMessage(null);
     setPromoOk(null);
     promoAppliedRef.current = false;
+    setPromoIosProductId(null);
     const code = promoCode.trim();
     if (!code) {
       setPromoMessage("Введите промокод");
@@ -186,17 +212,46 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     }
     setPromoLoading(true);
     try {
-      // Dynamic import - web only, not in iOS bundle
-      const { quoteBillingWithPromo } = await import("../services/billingServiceWeb");
-      const res = await quoteBillingWithPromo({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
+      // Use billing-quote API for both web and iOS to check promo codes
+      const res = await quoteBilling({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
       if (!res || res.ok !== true) {
         const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось проверить промокод";
         setPromoMessage(msg);
         setPromoOk(false);
         return;
       }
-      setPriceValue(String(res.amountValue));
-      setPriceCurrency(String(res.amountCurrency || "RUB"));
+      // On iOS, if promo code provides iosProductId, fetch the actual price from Apple StoreKit
+      if (isNativeIos && res.iosProductId) {
+        setPromoIosProductId(res.iosProductId);
+        try {
+          const iapProduct = await fetchIosIapProductById(res.iosProductId);
+          if (iapProduct) {
+            // Use price from Apple StoreKit, not from DB
+            if (iapProduct.price) {
+              setPriceValue(String(iapProduct.price));
+            }
+            if (iapProduct.currency) {
+              setPriceCurrency(iapProduct.currency);
+            }
+            if (iapProduct.localizedPrice) {
+              setIapPriceLabel(iapProduct.localizedPrice);
+            }
+          } else {
+            // Fallback to DB price if Apple product not found
+            setPriceValue(String(res.amountValue));
+            setPriceCurrency(String(res.amountCurrency || "RUB"));
+          }
+        } catch (err) {
+          console.error("[PaywallScreen] Error fetching iOS product price:", err);
+          // Fallback to DB price on error
+          setPriceValue(String(res.amountValue));
+          setPriceCurrency(String(res.amountCurrency || "RUB"));
+        }
+      } else {
+        // Web or no iosProductId: use price from DB
+        setPriceValue(String(res.amountValue));
+        setPriceCurrency(String(res.amountCurrency || "RUB"));
+      }
       setPromoMessage(res.promoApplied ? "Промокод применён" : "Промокод не применён");
       setPromoOk(Boolean(res.promoApplied));
       promoAppliedRef.current = Boolean(res.promoApplied);
@@ -251,10 +306,10 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     if (iapPaying || paying) return;
     setIapPaying(true);
     try {
-      // iOS uses only Apple Offer Codes via StoreKit - no custom promo codes
+      // Use iosProductId from promo code if available, otherwise use default
+      const iosProductId = promoIosProductId || defaultIosProductId;
       const res = await purchaseIosIap({
-        productId: BILLING_PRODUCT_KEY,
-        // promoCode removed - iOS should use Apple Offer Codes only
+        productId: iosProductId || undefined, // Pass iosProductId if available, otherwise let iapService get it from DB
         priceValue: Number(priceValue),
         priceCurrency: priceCurrency,
       });
@@ -363,35 +418,39 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 	            </div>
 	          </div>
 
-          {/* Promo code field - web only, iOS uses Apple Offer Codes via StoreKit */}
-          {!isNativeIos && (
-            <div className="mt-6">
-              <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Промокод</div>
-              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
-                <input
-                  value={promoCode}
-                  onChange={(e) => onPromoInputChange(e.target.value)}
-                  className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900"
-                  placeholder="Введите промокод"
-                  autoComplete="off"
-                  inputMode="text"
-                />
-                <button
-                  type="button"
-                  onClick={handleCheckPromo}
-                  disabled={promoLoading || paying || iapPaying || iapLoading || isLoading || isPremium}
-                  className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60"
-                >
-                  {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Проверить"}
-                </button>
-              </div>
-              {promoMessage && (
-                <div className={`mt-2 text-xs font-bold ${promoOk ? "text-emerald-700" : "text-rose-700"}`}>
-                  {promoMessage}
-                </div>
-              )}
+          {/* Promo code field */}
+          <div className="mt-6">
+            <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Промокод</div>
+            <div className="mt-2 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
+              <input
+                value={promoCode}
+                onChange={(e) => onPromoInputChange(e.target.value)}
+                className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900"
+                placeholder={isNativeIos ? "Введите промокод" : "Введите промокод"}
+                autoComplete="off"
+                inputMode="text"
+                style={{ fontSize: '16px' }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !promoLoading && promoCode.trim()) {
+                    handleCheckPromo();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleCheckPromo}
+                disabled={promoLoading || paying || iapPaying || iapLoading || isLoading || isPremium}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60"
+              >
+                {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Проверить"}
+              </button>
             </div>
-          )}
+            {promoMessage && (
+              <div className={`mt-2 text-xs font-bold ${promoOk ? "text-emerald-700" : "text-rose-700"}`}>
+                {promoMessage}
+              </div>
+            )}
+          </div>
 
           <div className="mt-6 grid gap-3">
             <button

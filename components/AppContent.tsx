@@ -17,7 +17,7 @@ import {
   resetUserProgress,
   upsertLessonProgress,
 } from '../services/generationService';
-import { FREE_LESSON_COUNT } from '../services/billingService';
+import { FREE_LESSON_COUNT, primeBillingProductCache } from '../services/billingService';
 import { formatFirstLessonsRu } from '../services/ruPlural';
 import { getAllUserWords, applySrsReview } from '../services/srsService';
 import { parseMarkdown } from './step4Dialogue/markdown';
@@ -178,6 +178,11 @@ export const AppContent: React.FC<{
     prefetchedAheadRef.current = new Set();
     lastPrefetchedForRef.current = null;
   }, [level]);
+
+  // Preload billing product data in background for faster PaywallScreen loading
+  useEffect(() => {
+    void primeBillingProductCache();
+  }, []);
 
   const openInsightPopup = useCallback(() => {
     if (typeof window === 'undefined') return;

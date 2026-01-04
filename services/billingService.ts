@@ -11,6 +11,7 @@ export type BillingProduct = {
   priceValue: string;
   priceCurrency: string;
   active: boolean;
+  iosProductId?: string | null;
 };
 
 type CachedProduct = BillingProduct & { cachedAt: number };
@@ -51,6 +52,7 @@ export type BillingQuoteResponse = {
   amountCurrency: string;
   promoApplied: boolean;
   promoCode: string | null;
+  iosProductId?: string | null;
 } | {
   ok: false;
   error: string;
@@ -81,7 +83,7 @@ export type CreatePaymentResponse = {
 export const fetchBillingProduct = async (key: string = BILLING_PRODUCT_KEY): Promise<BillingProduct | null> => {
   const { data, error } = await supabase
     .from("billing_products")
-    .select("key,title,price_value,price_currency,active")
+    .select("key,title,price_value,price_currency,active,ios_product_id")
     .eq("key", key)
     .maybeSingle();
   if (error) throw error;
@@ -92,6 +94,7 @@ export const fetchBillingProduct = async (key: string = BILLING_PRODUCT_KEY): Pr
     priceValue: String(data.price_value),
     priceCurrency: String(data.price_currency || "RUB"),
     active: Boolean(data.active),
+    iosProductId: data.ios_product_id ? String(data.ios_product_id) : null,
   };
 };
 
@@ -129,12 +132,12 @@ export const createYooKassaPayment = async (params: {
   return mod.createYooKassaPayment(params);
 };
 
-// quoteBilling with promo codes moved to billingServiceWeb.ts for web-only use
-// iOS should not use custom promo codes - only Apple Offer Codes via StoreKit
-export const quoteBilling = async (params: { productKey?: string }) => {
+// quoteBilling with promo codes - now supports iOS product switching via iosProductId
+export const quoteBilling = async (params: { productKey?: string; promoCode?: string }) => {
   const { data, error } = await supabase.functions.invoke("billing-quote", {
     body: {
       productKey: params.productKey,
+      promoCode: params.promoCode,
     },
   });
   if (error) throw error;

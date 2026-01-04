@@ -336,7 +336,7 @@ export function GrammarDrillsCard({
                     }
                   }}
                   key={`${i}:${d.question}`}
-                  className={`rounded-2xl border bg-white p-4 space-y-3 relative ${
+                  className={`rounded-2xl border bg-white p-4 relative ${
                     isChecked ? (isCorrect ? 'border-emerald-300' : 'border-rose-200') : 'border-gray-200'
                   }`}
                 >
@@ -353,10 +353,13 @@ export function GrammarDrillsCard({
                     </span>
                   </div>
                   
-                  <div className="flex items-start gap-3 pr-10">
-                    <div className="space-y-2 flex-1">
-                      <div className="text-xs font-semibold text-gray-500">{`Задание ${i + 1} из ${drills.length}`}</div>
-                      <div className="text-sm font-semibold text-gray-900">{String(d.task || '').trim()}</div>
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-4 pr-10">
+                      <CardHeading>{`Задание ${i + 1} из ${drills.length}`}</CardHeading>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="text-sm text-gray-900">{String(d.task || '').trim()}</div>
                       <div className="mt-3">
                         <div className="text-base font-semibold text-gray-900 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">{String(d.question || '').trim()}</div>
                       </div>
@@ -365,7 +368,8 @@ export function GrammarDrillsCard({
 
                   {/* Show input only if not all drills are completed or this is not the last drill */}
                   {!(allCorrect && i === drills.length - 1 && checked.every(Boolean)) && (
-                    <input
+                    <div className="mt-4">
+                      <input
                       value={answers[i] || ''}
                       onChange={(e) => {
                         const newValue = e.target.value;
@@ -400,8 +404,15 @@ export function GrammarDrillsCard({
                       placeholder="Ответ…"
                       disabled={isLoading || completed || validating || (isChecked && isCorrect)}
                       style={{ fontSize: '16px' }}
-                      className="w-full rounded-2xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900 outline-none focus:border-brand-primary/50 focus:ring-2 focus:ring-brand-primary/10 disabled:opacity-50"
-                    />
+                      className={`w-full rounded-2xl border px-4 py-3 text-base text-gray-900 outline-none disabled:opacity-50 ${
+                        isChecked && isCorrect
+                          ? 'border-emerald-300 bg-emerald-50 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100'
+                          : isChecked && !isCorrect
+                          ? 'border-rose-300 bg-rose-50 focus:border-rose-400 focus:ring-2 focus:ring-rose-100'
+                          : 'border-gray-200 bg-white focus:border-brand-primary/50 focus:ring-2 focus:ring-brand-primary/10'
+                      }`}
+                      />
+                    </div>
                   )}
 
 

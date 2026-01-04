@@ -38,13 +38,13 @@ const applyPromoFromDb = async (params: {
   base: number;
   promoCode?: string;
   productKey: string;
-}): Promise<{ amountValue: string; appliedPromo?: string }> => {
+}): Promise<{ amountValue: string; appliedPromo?: string; iosProductId?: string | null }> => {
   const clean = normalizeCode(params.promoCode);
   if (!clean) return { amountValue: toAmountString(params.base) };
 
   const { data, error } = await params.supabase
     .from("promo_codes")
-    .select("code,kind,value,active,expires_at,product_key")
+    .select("code,kind,value,active,expires_at,product_key,ios_product_id")
     .eq("code", clean)
     .eq("active", true)
     .maybeSingle();
@@ -63,18 +63,19 @@ const applyPromoFromDb = async (params: {
 
   const kind = String((data as any).kind || "").trim();
   const value = (data as any).value;
+  const iosProductId = (data as any).ios_product_id ? String((data as any).ios_product_id) : null;
 
-  if (kind === "free") return { amountValue: "0.00", appliedPromo: clean };
+  if (kind === "free") return { amountValue: "0.00", appliedPromo: clean, iosProductId };
   if (kind === "fixed") {
     const fixed = Number(value);
     if (!Number.isFinite(fixed) || fixed < 0) throw new Error("Некорректный промокод");
-    return { amountValue: toAmountString(fixed), appliedPromo: clean };
+    return { amountValue: toAmountString(fixed), appliedPromo: clean, iosProductId };
   }
   if (kind === "percent") {
     const pct = Number(value);
     if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) throw new Error("Некорректный промокод");
     const discounted = params.base * (1 - pct / 100);
-    return { amountValue: toAmountString(discounted), appliedPromo: clean };
+    return { amountValue: toAmountString(discounted), appliedPromo: clean, iosProductId };
   }
   throw new Error("Некорректный промокод");
 };
@@ -112,6 +113,17 @@ Deno.serve(async (req: Request) => {
 
     const priced = await applyPromoFromDb({ supabase, base: baseAmount, promoCode, productKey });
 
+    // Get default ios_product_id from billing_products if promo doesn't have one
+    let iosProductId = priced.iosProductId;
+    if (!iosProductId) {
+      const { data: productData } = await supabase
+        .from("billing_products")
+        .select("ios_product_id")
+        .eq("key", productKey)
+        .maybeSingle();
+      iosProductId = productData?.ios_product_id ? String(productData.ios_product_id) : null;
+    }
+
     return json(200, {
       ok: true,
       productKey,
@@ -119,6 +131,7 @@ Deno.serve(async (req: Request) => {
       amountCurrency: currency,
       promoApplied: Boolean(priced.appliedPromo),
       promoCode: priced.appliedPromo || null,
+      iosProductId: iosProductId || null,
     });
   } catch (err) {
     return json(200, { ok: false, error: String(err?.message || err) });

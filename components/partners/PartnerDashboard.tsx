@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { getPartnerStats, PartnerStats } from '../../services/partnerService';
+import { AdminPromoCodesPanel } from './AdminPromoCodesPanel';
 import { 
   TrendingUp, 
   DollarSign, 
@@ -40,6 +41,8 @@ interface PartnerDashboardProps {
   onSignOut: () => Promise<void>;
 }
 
+const normalizeEmail = (email?: string) => (email ? String(email).trim().toLowerCase() : "");
+
 export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, onSignOut }) => {
   const [stats, setStats] = useState<PartnerStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,11 +52,44 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [payoutsPage, setPayoutsPage] = useState(1);
+  const [userIsAdmin, setUserIsAdmin] = useState<boolean>(false);
   
   const retryTimerRef = useRef<number | null>(null);
   const retryAttemptRef = useRef<number>(0);
   const isMountedRef = useRef<boolean>(true);
   const forceTimeoutRef = useRef<number | null>(null);
+
+  // Проверяем, является ли пользователь админом
+  useEffect(() => {
+    const checkAdmin = async () => {
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+        if (!supabaseUrl) return;
+
+        // Пробуем загрузить админ-данные - если получили 403, значит не админ
+        const response = await fetch(`${supabaseUrl}/functions/v1/admin-promo-codes`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ email: userEmail }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          if (result.ok) {
+            setUserIsAdmin(true);
+          }
+        }
+      } catch (err) {
+        // Игнорируем ошибки - просто не показываем админ-панель
+        console.debug('[PartnerDashboard] Admin check failed:', err);
+      }
+    };
+
+    checkAdmin();
+  }, [userEmail]);
 
   const loadStats = async (showRefreshing = false, isRetry = false) => {
     // Очищаем предыдущий таймер retry если есть
@@ -420,6 +456,13 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
       <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 
       <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 relative z-10 flex-1">
+        {/* Admin Panel */}
+        {userIsAdmin && (
+          <div className="mb-6 sm:mb-8">
+            <AdminPromoCodesPanel userEmail={userEmail} />
+          </div>
+        )}
+
         {/* Summary Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
           <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">

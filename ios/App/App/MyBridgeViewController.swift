@@ -60,7 +60,8 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "getProducts", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "purchase", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "restorePurchases", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "restorePurchases", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "presentOfferCode", returnType: CAPPluginReturnPromise)
     ]
 
     private func loadReceipt() -> String? {
@@ -111,12 +112,18 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                     let transaction = try self.verify(verification)
                     await transaction.finish()
                     let receipt = self.loadReceipt()
+                    // Note: offerCodeRefName is not directly available in StoreKit 2 Transaction
+                    // Promo codes are applied automatically by Apple and can be extracted from receipt
+                    // via App Store Server API on the server side
+                    var purchaseData: [String: Any] = [
+                        "transactionId": transaction.id,
+                        "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
+                        "receiptData": receipt ?? NSNull()
+                    ]
+                    // Try to extract offerCodeRefName if available (may not be accessible in StoreKit 2)
+                    // Server will parse receipt to extract promo code information
                     call.resolve([
-                        "purchase": [
-                            "transactionId": transaction.id,
-                            "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
-                            "receiptData": receipt ?? NSNull()
-                        ]
+                        "purchase": purchaseData
                     ])
                 case .userCancelled:
                     call.reject("CANCELLED")
@@ -151,6 +158,17 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.resolve(["purchase": NSNull()])
             } catch {
                 call.reject(error.localizedDescription)
+            }
+        }
+    }
+
+    @objc func presentOfferCode(_ call: CAPPluginCall) {
+        DispatchQueue.main.async {
+            if #available(iOS 14.0, *) {
+                SKPaymentQueue.default().presentCodeRedemptionSheet()
+                call.resolve([:])
+            } else {
+                call.reject("Offer codes are only available on iOS 14.0 or later")
             }
         }
     }

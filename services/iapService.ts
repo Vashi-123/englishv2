@@ -1,7 +1,28 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { supabase } from "./supabaseClient";
+import { fetchBillingProduct, BILLING_PRODUCT_KEY } from "./billingService";
 
-export const IOS_IAP_PRODUCT_ID = import.meta.env.VITE_IOS_IAP_PRODUCT_ID || "englishv2.premium.a1";
+// Fallback product ID if not found in database
+const DEFAULT_IOS_PRODUCT_ID = "englishv2.premium.a1";
+
+// Get iOS product ID from database
+const getIosProductId = async (): Promise<string> => {
+  try {
+    const product = await fetchBillingProduct(BILLING_PRODUCT_KEY);
+    // Use ios_product_id from DB, or fallback to title, or default
+    if (product?.iosProductId) {
+      return product.iosProductId;
+    }
+    // Fallback: use title if it looks like a product ID (contains dots)
+    if (product?.title && product.title.includes('.')) {
+      return product.title;
+    }
+    return DEFAULT_IOS_PRODUCT_ID;
+  } catch (err) {
+    console.error("[iapService] Error fetching product ID from DB:", err);
+    return DEFAULT_IOS_PRODUCT_ID;
+  }
+};
 
 type IapProduct = {
   id: string;
@@ -17,7 +38,7 @@ type IapPurchasePayload = {
   purchaseDateMs?: number;
   priceValue?: number | string | null;
   priceCurrency?: string | null;
-  // promoCode removed - iOS should use Apple Offer Codes via StoreKit only
+  promoCode?: string | null; // Apple Offer Code (extracted from receipt on server)
 };
 
 type IapCompleteResponse = {
@@ -48,7 +69,19 @@ export const fetchIosIapProduct = async (): Promise<IapProduct | null> => {
   const ready = await ensureInitialized();
   if (!ready) return null;
   try {
-    const result = await nativeIap?.getProducts?.({ productIds: [IOS_IAP_PRODUCT_ID] });
+    const productId = await getIosProductId();
+    return await fetchIosIapProductById(productId);
+  } catch (err) {
+    console.error("[iapService] fetch product error", err);
+    return null;
+  }
+};
+
+export const fetchIosIapProductById = async (productId: string): Promise<IapProduct | null> => {
+  const ready = await ensureInitialized();
+  if (!ready) return null;
+  try {
+    const result = await nativeIap?.getProducts?.({ productIds: [productId] });
     const product = result?.products?.[0];
     if (!product) return null;
     const price = typeof product.price === "string"
@@ -64,13 +97,13 @@ export const fetchIosIapProduct = async (): Promise<IapProduct | null> => {
       (price && currency ? `${price} ${currency}` : price) ||
       null;
     return {
-      id: product.productId || product.sku || IOS_IAP_PRODUCT_ID,
+      id: product.productId || product.sku || productId,
       price: price ?? null,
       currency,
       localizedPrice,
     };
   } catch (err) {
-    console.error("[iapService] fetch product error", err);
+    console.error("[iapService] fetch product by id error", err);
     return null;
   }
 };
@@ -78,23 +111,26 @@ export const fetchIosIapProduct = async (): Promise<IapProduct | null> => {
 export const purchaseIosIap = async (payload?: IapPurchasePayload): Promise<IapCompleteResponse> => {
   const ready = await ensureInitialized();
   if (!ready || !nativeIap) throw new Error("Покупки через App Store недоступны");
-  const purchaseResult = await nativeIap.purchase?.({ productId: IOS_IAP_PRODUCT_ID });
+  const productId = payload?.productId || await getIosProductId();
+  const purchaseResult = await nativeIap.purchase?.({ productId });
   const purchase = purchaseResult?.purchase;
   if (!purchase) throw new Error("Не удалось завершить покупку");
 
   const transactionId = purchase.transactionId || payload?.transactionId || crypto.randomUUID();
   const receiptData = purchase.receiptData || payload?.receiptData || null;
   const purchaseDateMs = purchase.purchaseDateMs ?? payload?.purchaseDateMs;
+  const promoCode = purchase.offerCodeRefName || payload?.promoCode || null;
 
   const { data, error } = await supabase.functions.invoke("ios-iap-complete", {
     body: {
-      productId: payload?.productId || IOS_IAP_PRODUCT_ID,
+      productId,
+      product_key: BILLING_PRODUCT_KEY,
       transactionId,
       receiptData,
       purchaseDateMs: Number.isFinite(purchaseDateMs) ? purchaseDateMs : undefined,
       priceValue: payload?.priceValue ?? null,
       priceCurrency: payload?.priceCurrency ?? null,
-      // promoCode removed - iOS uses Apple Offer Codes via StoreKit only
+      promoCode: promoCode || undefined, // Apple Offer Code (will be extracted from receipt on server if not provided)
     },
   });
   if (error) throw error;
@@ -108,8 +144,9 @@ export const restoreIosPurchases = async (): Promise<IapCompleteResponse | null>
     const restored = await nativeIap.restorePurchases?.();
     const purchase = restored?.purchase;
     if (!purchase) return null;
+    const productId = await getIosProductId();
     return purchaseIosIap({
-      productId: IOS_IAP_PRODUCT_ID,
+      productId,
       transactionId: purchase.transactionId,
       receiptData: purchase.receiptData || null,
       purchaseDateMs: purchase.purchaseDateMs,
@@ -119,5 +156,16 @@ export const restoreIosPurchases = async (): Promise<IapCompleteResponse | null>
   } catch (err) {
     console.error("[iapService] restore error", err);
     return null;
+  }
+};
+
+export const presentOfferCode = async (): Promise<void> => {
+  const ready = await ensureInitialized();
+  if (!ready || !nativeIap) throw new Error("Покупки через App Store недоступны");
+  try {
+    await nativeIap.presentOfferCode?.();
+  } catch (err) {
+    console.error("[iapService] present offer code error", err);
+    throw err;
   }
 };

@@ -138,7 +138,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                     }}
                     className="mt-2 w-full h-10 rounded-xl bg-white border border-gray-200 text-slate-900 text-sm font-bold hover:border-brand-primary/40 transition flex items-center justify-center"
                   >
-                    Управлять подпиской
+                    Управлять доступом
                   </button>
                 )}
                 <div className="h-px bg-gray-100" />

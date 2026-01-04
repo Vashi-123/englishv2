@@ -69,6 +69,40 @@ const isRetryableError = (error: unknown): boolean => {
   return false;
 };
 
+export interface AdminPromoCode {
+  id: string;
+  code: string;
+  kind: string | null;
+  value: number | null;
+  active: boolean;
+  isExpired: boolean;
+  expires_at: string | null;
+  product_key: string | null;
+  email: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  totalPayments: number;
+  totalUses: number;
+  revenue: number;
+  currency: string;
+}
+
+export interface AdminPromoCodesData {
+  promoCodes: Array<{
+    id: string;
+    code: string;
+    kind: string | null;
+    value: number | null;
+    active: boolean;
+    expires_at: string | null;
+    product_key: string | null;
+    email: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+  }>;
+  stats: AdminPromoCode[];
+}
+
 export const getPartnerStats = async (email: string, retryCount = 0): Promise<PartnerStats> => {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   if (!supabaseUrl) {
@@ -124,6 +158,65 @@ export const getPartnerStats = async (email: string, retryCount = 0): Promise<Pa
     }
     
     // Если это AbortError от таймаута, выбрасываем понятную ошибку
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Запрос занял слишком много времени');
+    }
+    
+    throw error;
+  }
+};
+
+export const getAdminPromoCodes = async (email: string, retryCount = 0): Promise<AdminPromoCodesData> => {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  if (!supabaseUrl) {
+    throw new Error('VITE_SUPABASE_URL is not set');
+  }
+
+  const maxRetries = 2;
+  const timeoutMs = 10000;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/admin-promo-codes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ email }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      const errorMessage = error.error || `HTTP ${response.status}`;
+      
+      if (retryCount < maxRetries && response.status >= 500 && response.status < 600) {
+        const delay = 200 * Math.pow(1.5, retryCount);
+        await new Promise(resolve => setTimeout(resolve, Math.min(1000, delay)));
+        return getAdminPromoCodes(email, retryCount + 1);
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+    if (!result.ok) {
+      throw new Error(result.error || 'Failed to get admin promo codes');
+    }
+
+    return result.data;
+  } catch (error: unknown) {
+    if (retryCount < maxRetries && isRetryableError(error)) {
+      const delay = 200 * Math.pow(1.5, retryCount);
+      await new Promise(resolve => setTimeout(resolve, Math.min(1000, delay)));
+      return getAdminPromoCodes(email, retryCount + 1);
+    }
+    
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Запрос занял слишком много времени');
     }

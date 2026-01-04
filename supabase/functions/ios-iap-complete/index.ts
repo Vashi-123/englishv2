@@ -9,11 +9,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const DEFAULT_PRODUCT_KEY = Deno.env.get("BILLING_PRODUCT_KEY") || "premium_a1";
-const IOS_IAP_PRODUCT_KEYS = (Deno.env.get("IOS_IAP_PRODUCT_KEYS") || "")
-  .split(",")
-  .map((v) => v.trim())
-  .filter(Boolean);
+const DEFAULT_PRODUCT_KEY = "premium_a1";
 
 type ReqBody = {
   productId?: string;
@@ -61,12 +57,32 @@ Deno.serve(async (req: Request) => {
     const userEmail = (authData?.user?.email ? String(authData.user.email) : "").trim();
 
     const body = (await req.json()) as ReqBody;
-    const rawProductId = String(body?.productId || body?.product_key || DEFAULT_PRODUCT_KEY || "").trim();
+    const rawProductId = String(body?.productId || "").trim();
+    const productKeyFromBody = String(body?.product_key || DEFAULT_PRODUCT_KEY).trim();
     const transactionId = String(body?.transactionId || body?.transaction_id || "").trim();
     if (!transactionId) return json(400, { ok: false, error: "transactionId is required", requestId });
 
-    const allowedProductKeys = new Set([DEFAULT_PRODUCT_KEY, ...IOS_IAP_PRODUCT_KEYS]);
-    const productKey = allowedProductKeys.has(rawProductId) ? rawProductId : DEFAULT_PRODUCT_KEY;
+    // Get product from database to validate product_key and get ios_product_id
+    const { data: product, error: productError } = await supabase
+      .from("billing_products")
+      .select("key,ios_product_id,active")
+      .eq("key", productKeyFromBody)
+      .maybeSingle();
+    
+    if (productError) throw productError;
+    if (!product || !product.active) {
+      return json(400, { ok: false, error: "Product not available", requestId });
+    }
+
+    const productKey = product.key;
+    
+    // Validate that rawProductId matches ios_product_id from DB
+    // If ios_product_id is not set, we allow any productId (for backward compatibility)
+    const expectedProductId = product.ios_product_id;
+    if (expectedProductId && rawProductId && rawProductId !== expectedProductId) {
+      console.warn(`[ios-iap-complete] Product ID mismatch: expected ${expectedProductId}, got ${rawProductId}`, { requestId, productKey });
+      // Still allow it for backward compatibility, but log warning
+    }
     const priceValueRaw = body?.priceValue;
     const priceValueNum = typeof priceValueRaw === "string" || typeof priceValueRaw === "number" ? Number(priceValueRaw) : null;
     const amountValue = Number.isFinite(priceValueNum) ? Number(priceValueNum) : null;
@@ -75,7 +91,14 @@ Deno.serve(async (req: Request) => {
     const purchaseDateMs = typeof body?.purchaseDateMs === "number" && Number.isFinite(body.purchaseDateMs) ? body.purchaseDateMs : null;
     const receiptData = typeof body?.receiptData === "string" ? body.receiptData : (typeof body?.receipt_data === "string" ? body.receipt_data : null);
 
-    const promoCode = typeof body?.promoCode === "string" ? body.promoCode.trim() : null;
+    // Extract promo code from request, or parse from receipt if available
+    // Note: For full promo code extraction from receipt, App Store Server API should be used
+    // Currently, promo code is saved if provided in the request
+    let promoCode = typeof body?.promoCode === "string" ? body.promoCode.trim() : null;
+    
+    // TODO: If promoCode is not provided, parse receipt using App Store Server API
+    // to extract offerCodeRefName from transaction details
+    // This requires App Store Server API credentials and JWT token generation
 
     const { data: existingPayment, error: existingPaymentError } = await supabase
       .from("payments")
