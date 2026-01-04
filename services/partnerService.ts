@@ -85,6 +85,8 @@ export interface AdminPromoCode {
   totalUses: number;
   revenue: number;
   currency: string;
+  payouts: number;
+  payoutsCurrency: string;
 }
 
 export interface AdminPromoCodesData {

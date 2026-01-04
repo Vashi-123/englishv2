@@ -157,6 +157,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Использований</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Успешных</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Выручка</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Выплачено</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Создан</th>
                   <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Истекает</th>
                 </tr>
@@ -219,6 +220,11 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                     <td className="px-3 py-3 whitespace-nowrap">
                       <span className="text-xs font-bold text-slate-900">
                         {formatCurrency(promo.revenue, promo.currency)}
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <span className="text-xs font-bold text-orange-600">
+                        {formatCurrency(promo.payouts, promo.payoutsCurrency)}
                       </span>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap text-xs text-gray-600">
@@ -308,6 +314,12 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                       <p className="text-xs text-gray-600 mb-1">Выручка</p>
                       <p className="text-lg font-black text-slate-900">
                         {formatCurrency(promo.revenue, promo.currency)}
+                      </p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs text-gray-600 mb-1">Выплачено</p>
+                      <p className="text-lg font-black text-orange-600">
+                        {formatCurrency(promo.payouts, promo.payoutsCurrency)}
                       </p>
                     </div>
                     <div className="col-span-2">

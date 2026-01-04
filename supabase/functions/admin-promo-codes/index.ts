@@ -90,6 +90,31 @@ Deno.serve(async (req: Request) => {
       p.status && successfulStatuses.includes(String(p.status).toLowerCase())
     );
 
+    // Получаем все выплаты партнерам
+    const { data: payouts, error: payoutsError } = await client
+      .from("partner_payouts")
+      .select("partner_email, amount_value, amount_currency")
+      .order("payment_date", { ascending: false });
+
+    if (payoutsError) throw payoutsError;
+
+    const payoutsList = Array.isArray(payouts) ? payouts : [];
+    
+    // Группируем выплаты по email партнера
+    const payoutsByEmail: Record<string, { total: number; currency: string }> = {};
+    payoutsList.forEach((payout) => {
+      const email = normalizeEmail(payout.partner_email);
+      if (!email) return;
+      
+      const amount = payout.amount_value ? Number(payout.amount_value) : 0;
+      if (!Number.isFinite(amount) || amount <= 0) return;
+      
+      if (!payoutsByEmail[email]) {
+        payoutsByEmail[email] = { total: 0, currency: String(payout.amount_currency || "RUB") };
+      }
+      payoutsByEmail[email].total += amount;
+    });
+
     // Статистика по каждому промокоду
     const stats = promoCodesList.map((promoCode) => {
       const code = String(promoCode.code).trim().toUpperCase();
@@ -116,6 +141,12 @@ Deno.serve(async (req: Request) => {
       const expiresAt = promoCode.expires_at ? Date.parse(String(promoCode.expires_at)) : null;
       const isExpired = expiresAt != null && Number.isFinite(expiresAt) && expiresAt <= Date.now();
 
+      // Получаем выплаты для партнера этого промокода
+      const partnerEmail = normalizeEmail(promoCode.email);
+      const partnerPayouts = partnerEmail ? payoutsByEmail[partnerEmail] : null;
+      const payoutAmount = partnerPayouts ? partnerPayouts.total : 0;
+      const payoutCurrency = partnerPayouts ? partnerPayouts.currency : currency;
+
       return {
         id: promoCode.id,
         code: promoCode.code,
@@ -132,6 +163,8 @@ Deno.serve(async (req: Request) => {
         totalUses: codePayments.length, // Все использования, включая неуспешные
         revenue: codeRevenue,
         currency,
+        payouts: payoutAmount,
+        payoutsCurrency: payoutCurrency,
       };
     });
 
