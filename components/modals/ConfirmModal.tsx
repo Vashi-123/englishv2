@@ -5,7 +5,7 @@ import { AlertTriangle } from 'lucide-react';
 interface ConfirmModalProps {
   isOpen: boolean;
   isVisible: boolean;
-  action: 'reset' | 'signout' | null;
+  action: 'reset' | 'signout' | 'deleteAccount' | null;
   onConfirm: () => Promise<void>;
   onCancel: () => void;
   isProcessing?: boolean;
@@ -22,11 +22,18 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   if (!isOpen || !action) return null;
 
   const isReset = action === 'reset';
-  const title = isReset ? 'Начать уровень сначала?' : 'Выйти из аккаунта?';
+  const isDeleteAccount = action === 'deleteAccount';
+  const title = isReset 
+    ? 'Начать уровень сначала?' 
+    : isDeleteAccount 
+    ? 'Удалить аккаунт?' 
+    : 'Выйти из аккаунта?';
   const message = isReset
     ? 'Прогресс по уровню будет сброшен. Это действие нельзя отменить.'
+    : isDeleteAccount
+    ? 'Все ваши данные будут безвозвратно удалены. Это действие нельзя отменить.'
     : 'Вы можете войти снова в любой момент.';
-  const confirmLabel = isReset ? 'Сбросить' : 'Выйти';
+  const confirmLabel = isReset ? 'Сбросить' : isDeleteAccount ? 'Удалить' : 'Выйти';
 
   return createPortal(
     <div
@@ -45,7 +52,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         <div className="flex items-start gap-3">
           <div
             className={`mt-0.5 h-10 w-10 rounded-2xl flex items-center justify-center ${
-              isReset ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
+              isReset ? 'bg-amber-50 text-amber-700' : isDeleteAccount ? 'bg-red-50 text-red-700' : 'bg-rose-50 text-rose-700'
             }`}
           >
             <AlertTriangle className="w-5 h-5" />
@@ -74,6 +81,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             className={`h-11 rounded-2xl text-white font-bold shadow-lg transition hover:opacity-90 disabled:opacity-70 disabled:cursor-not-allowed ${
               isReset
                 ? 'bg-gradient-to-r from-amber-500 to-rose-500 shadow-amber-500/20'
+                : isDeleteAccount
+                ? 'bg-gradient-to-r from-red-600 to-red-500 shadow-red-600/20'
                 : 'bg-gradient-to-r from-rose-600 to-rose-500 shadow-rose-600/20'
             }`}
           >

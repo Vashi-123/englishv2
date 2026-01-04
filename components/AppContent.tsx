@@ -53,6 +53,7 @@ import { ExerciseView } from './exercise/ExerciseView';
 import { useUIStore, useLessonsStore } from '../stores';
 import { logError } from '../services/errorLogger';
 import { useSupabaseConnectivity } from '../hooks/useSupabaseConnectivity';
+import { supabase } from '../services/supabaseClient';
 
 export const AppContent: React.FC<{
   userId?: string;
@@ -275,7 +276,7 @@ export const AppContent: React.FC<{
     }, 220);
   }, []);
 
-  const openConfirm = useCallback((kind: 'reset' | 'signout') => {
+  const openConfirm = useCallback((kind: 'reset' | 'signout' | 'deleteAccount') => {
     if (typeof window === 'undefined') return;
     if (confirmCloseTimerRef.current != null) {
       window.clearTimeout(confirmCloseTimerRef.current);
@@ -948,6 +949,28 @@ export const AppContent: React.FC<{
     }
   };
 
+  const handleDeleteAccount = async () => {
+    try {
+      // Вызываем edge function для удаления аккаунта
+      // Supabase клиент автоматически добавит токен из текущей сессии
+      const { data, error } = await supabase.functions.invoke('delete-account');
+
+      if (error) {
+        throw error;
+      }
+
+      if (!data?.ok) {
+        throw new Error(data?.error || 'Не удалось удалить аккаунт');
+      }
+
+      // После успешного удаления выходим из аккаунта
+      await onSignOut();
+    } catch (err) {
+      console.error('[DeleteAccount] Error:', err);
+      throw err;
+    }
+  };
+
   const handleNextStep = async () => {
     // Add current step to completed if not already
     if (!completedTasks.includes(activityStep)) {
@@ -1144,6 +1167,7 @@ export const AppContent: React.FC<{
           }}
           onResetProgress={() => openConfirm('reset')}
           onSignOut={() => openConfirm('signout')}
+          onDeleteAccount={() => openConfirm('deleteAccount')}
           totalCompletedCount={totalCompletedCount}
           totalSprintTasks={TOTAL_SPRINT_TASKS}
           sprintProgressPercent={sprintProgressPercent}
@@ -1224,6 +1248,8 @@ export const AppContent: React.FC<{
           try {
             if (confirmAction === 'reset') {
               await handleResetProgress();
+            } else if (confirmAction === 'deleteAccount') {
+              await handleDeleteAccount();
             } else {
               // Таймаут для выхода - принудительно закрываем через 6 секунд
               const signOutPromise = onSignOut();
@@ -1238,6 +1264,8 @@ export const AppContent: React.FC<{
             }
           } catch (err) {
             console.error('[ConfirmModal] action failed:', err);
+            // Показываем ошибку пользователю (можно добавить toast или alert)
+            alert(err instanceof Error ? err.message : 'Произошла ошибка');
           } finally {
             setConfirmProcessing(false);
             closeConfirm();

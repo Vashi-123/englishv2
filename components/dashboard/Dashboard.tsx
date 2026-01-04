@@ -26,6 +26,7 @@ interface DashboardProps {
   onManageSubscription: () => void;
   onResetProgress: () => void;
   onSignOut: () => void;
+  onDeleteAccount: () => void;
 
   // Course Progress props
   totalCompletedCount: number;
@@ -77,6 +78,7 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
   onManageSubscription,
   onResetProgress,
   onSignOut,
+  onDeleteAccount,
 
   // Course Progress
   totalCompletedCount,
@@ -138,6 +140,7 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
           onManageSubscription={onManageSubscription}
           onResetProgress={onResetProgress}
           onSignOut={onSignOut}
+          onDeleteAccount={onDeleteAccount}
         />
 
         {/* 2. Course Progress */}

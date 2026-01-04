@@ -21,6 +21,7 @@ interface DashboardHeaderProps {
   onManageSubscription: () => void;
   onResetProgress: () => void;
   onSignOut: () => void;
+  onDeleteAccount: () => void;
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
@@ -38,6 +39,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
   onManageSubscription,
   onResetProgress,
   onSignOut,
+  onDeleteAccount,
 }) => {
   const { showLangMenu, langMenuVisible, langMenuRef, langMenuPos, openLangMenu, closeLangMenu } = useLanguageMenu();
 
@@ -181,6 +183,18 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                     className="w-full text-left px-3 py-2 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 text-sm font-semibold"
                   >
                     Выйти
+                  </button>
+                </div>
+                <div className="h-px bg-gray-100" />
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      closeLangMenu();
+                      onDeleteAccount();
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg bg-gray-50 text-gray-600 hover:bg-gray-100 text-sm font-semibold"
+                  >
+                    Удалить аккаунт
                   </button>
                 </div>
               </div>
