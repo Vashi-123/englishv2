@@ -63,42 +63,64 @@ Deno.serve(async (req: Request) => {
     // Получаем статистику по каждому промокоду (успешные платежи)
     const promoCodeList = promoCodesList.map((pc) => String(pc.code).trim().toUpperCase());
     
-    if (promoCodeList.length === 0) {
-      return json(200, {
-        ok: true,
-        data: {
-          promoCodes: [],
-          stats: [],
-        },
-      });
-    }
-
-    // Получаем все платежи по этим промокодам
-    const { data: payments, error: paymentsError } = await client
-      .from("payments")
-      .select("id, status, amount_value, amount_currency, promo_code, created_at")
-      .in("promo_code", promoCodeList)
-      .order("created_at", { ascending: false });
-
-    if (paymentsError) throw paymentsError;
-
-    const paymentsList = Array.isArray(payments) ? payments : [];
-    
-    // Фильтруем успешные платежи
-    const successfulStatuses = ["succeeded", "paid", "success"];
-    const successfulPayments = paymentsList.filter((p) => 
-      p.status && successfulStatuses.includes(String(p.status).toLowerCase())
-    );
-
-    // Получаем все выплаты партнерам
+    // Получаем все выплаты партнерам (нужно для общей статистики даже если нет промокодов)
     const { data: payouts, error: payoutsError } = await client
       .from("partner_payouts")
-      .select("partner_email, amount_value, amount_currency")
+      .select("partner_email, amount_value, amount_currency, payment_date, created_at")
       .order("payment_date", { ascending: false });
 
     if (payoutsError) throw payoutsError;
 
     const payoutsList = Array.isArray(payouts) ? payouts : [];
+
+    if (promoCodeList.length === 0) {
+      // Подсчитываем общую статистику по выплатам
+      let totalPayouts = 0;
+      let totalPayoutsCurrency = "RUB";
+      payoutsList.forEach((payout) => {
+        const amount = payout.amount_value ? Number(payout.amount_value) : 0;
+        if (Number.isFinite(amount) && amount > 0) {
+          totalPayouts += amount;
+          if (payout.amount_currency) {
+            totalPayoutsCurrency = String(payout.amount_currency);
+          }
+        }
+      });
+
+      return json(200, {
+        ok: true,
+        data: {
+          promoCodes: [],
+          stats: [],
+          totalPayments: 0,
+          totalRevenue: 0,
+          totalRevenueCurrency: "RUB",
+          totalPayouts,
+          totalPayoutsCurrency,
+          monthlyStats: [],
+          payments: [],
+        },
+      });
+    }
+
+    // Получаем все платежи по этим промокодам (если есть промокоды)
+    let paymentsList: any[] = [];
+    if (promoCodeList.length > 0) {
+      const { data: payments, error: paymentsError } = await client
+        .from("payments")
+        .select("id, status, amount_value, amount_currency, promo_code, created_at")
+        .in("promo_code", promoCodeList)
+        .order("created_at", { ascending: false });
+
+      if (paymentsError) throw paymentsError;
+      paymentsList = Array.isArray(payments) ? payments : [];
+    }
+
+    // Фильтруем успешные платежи
+    const successfulStatuses = ["succeeded", "paid", "success"];
+    const successfulPayments = paymentsList.filter((p) => 
+      p.status && successfulStatuses.includes(String(p.status).toLowerCase())
+    );
     
     // Группируем выплаты по email партнера
     const payoutsByEmail: Record<string, { total: number; currency: string }> = {};
@@ -114,6 +136,127 @@ Deno.serve(async (req: Request) => {
       }
       payoutsByEmail[email].total += amount;
     });
+
+    // Функция для получения первого числа месяца из даты
+    const getMonthStart = (date: Date): Date => {
+      return new Date(date.getFullYear(), date.getMonth(), 1);
+    };
+
+    // Функция для получения ключа месяца (YYYY-MM)
+    const getMonthKey = (date: Date): string => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      return `${year}-${month}`;
+    };
+
+    // Группируем выплаты по месяцам
+    const monthlyPayouts: Record<string, number> = {};
+    payoutsList.forEach((payout) => {
+      // Используем payment_date если есть, иначе created_at
+      const payoutDateStr = (payout as any).payment_date || (payout as any).created_at;
+      if (!payoutDateStr) return;
+      const payoutDate = new Date(payoutDateStr);
+      const monthKey = getMonthKey(getMonthStart(payoutDate));
+      const amount = payout.amount_value ? Number(payout.amount_value) : 0;
+      if (Number.isFinite(amount) && amount > 0) {
+        monthlyPayouts[monthKey] = (monthlyPayouts[monthKey] || 0) + amount;
+      }
+    });
+
+    // Подсчитываем общую статистику
+    let totalRevenue = 0;
+    let totalRevenueCurrency = "RUB";
+    let totalPayouts = 0;
+    let totalPayoutsCurrency = "RUB";
+    
+    successfulPayments.forEach((payment) => {
+      const amount = payment.amount_value ? Number(payment.amount_value) : 0;
+      if (Number.isFinite(amount) && amount > 0) {
+        totalRevenue += amount;
+      }
+      if (payment.amount_currency) {
+        totalRevenueCurrency = String(payment.amount_currency);
+      }
+    });
+
+    payoutsList.forEach((payout) => {
+      const amount = payout.amount_value ? Number(payout.amount_value) : 0;
+      if (Number.isFinite(amount) && amount > 0) {
+        totalPayouts += amount;
+        if (payout.amount_currency) {
+          totalPayoutsCurrency = String(payout.amount_currency);
+        }
+      }
+    });
+
+    // Группируем платежи по месяцам
+    const monthlyStats: Record<string, {
+      month: string;
+      monthKey: string;
+      totalPayments: number;
+      revenue: number;
+      payouts: number;
+      currency: string;
+    }> = {};
+
+    paymentsList.forEach((payment) => {
+      if (!payment.created_at) return;
+      const paymentDate = new Date(payment.created_at);
+      const monthStart = getMonthStart(paymentDate);
+      const monthKey = getMonthKey(monthStart);
+      
+      if (!monthlyStats[monthKey]) {
+        const monthName = monthStart.toLocaleDateString('ru-RU', { 
+          year: 'numeric', 
+          month: 'long' 
+        });
+        monthlyStats[monthKey] = {
+          month: monthName,
+          monthKey,
+          totalPayments: 0,
+          revenue: 0,
+          payouts: monthlyPayouts[monthKey] || 0,
+          currency: payment.amount_currency || "RUB",
+        };
+      }
+      
+      const isSuccessful = payment.status && 
+        successfulStatuses.includes(String(payment.status).toLowerCase());
+      
+      if (isSuccessful) {
+        monthlyStats[monthKey].totalPayments++;
+        const amount = payment.amount_value ? Number(payment.amount_value) : 0;
+        if (Number.isFinite(amount) && amount > 0) {
+          monthlyStats[monthKey].revenue += amount;
+        }
+      }
+    });
+
+    // Добавляем выплаты к месяцам, которые есть только в выплатах
+    Object.keys(monthlyPayouts).forEach((monthKey) => {
+      if (!monthlyStats[monthKey]) {
+        const date = new Date(monthKey + '-01');
+        const monthName = date.toLocaleDateString('ru-RU', { 
+          year: 'numeric', 
+          month: 'long' 
+        });
+        monthlyStats[monthKey] = {
+          month: monthName,
+          monthKey,
+          totalPayments: 0,
+          revenue: 0,
+          payouts: monthlyPayouts[monthKey] || 0,
+          currency: totalPayoutsCurrency,
+        };
+      } else {
+        monthlyStats[monthKey].payouts = monthlyPayouts[monthKey] || 0;
+      }
+    });
+
+    // Сортируем месяцы по дате (от старых к новым)
+    const monthlyStatsArray = Object.values(monthlyStats).sort((a, b) => 
+      a.monthKey.localeCompare(b.monthKey)
+    );
 
     // Статистика по каждому промокоду
     const stats = promoCodesList.map((promoCode) => {
@@ -144,8 +287,8 @@ Deno.serve(async (req: Request) => {
       // Получаем выплаты для партнера этого промокода
       const partnerEmail = normalizeEmail(promoCode.email);
       const partnerPayouts = partnerEmail ? payoutsByEmail[partnerEmail] : null;
-      const payoutAmount = partnerPayouts ? partnerPayouts.total : 0;
-      const payoutCurrency = partnerPayouts ? partnerPayouts.currency : currency;
+      const payoutAmount = partnerPayouts && Number.isFinite(partnerPayouts.total) ? Number(partnerPayouts.total) : 0;
+      const payoutCurrency = partnerPayouts && partnerPayouts.currency ? String(partnerPayouts.currency) : currency;
 
       return {
         id: promoCode.id,
@@ -183,6 +326,20 @@ Deno.serve(async (req: Request) => {
           updated_at: pc.updated_at ? String(pc.updated_at) : null,
         })),
         stats,
+        totalPayments: successfulPayments.length,
+        totalRevenue,
+        totalRevenueCurrency,
+        totalPayouts,
+        totalPayoutsCurrency,
+        monthlyStats: monthlyStatsArray,
+        payments: successfulPayments.map((p) => ({
+          id: p.id,
+          status: p.status,
+          amount_value: p.amount_value,
+          amount_currency: p.amount_currency || "RUB",
+          promo_code: p.promo_code,
+          created_at: p.created_at ? String(p.created_at) : null,
+        })),
       },
     });
   } catch (error) {

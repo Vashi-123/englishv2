@@ -84,8 +84,8 @@ export interface AdminPromoCode {
   totalPayments: number;
   revenue: number;
   currency: string;
-  payouts: number;
-  payoutsCurrency: string;
+  payouts: number | null;
+  payoutsCurrency: string | null;
 }
 
 export interface AdminPromoCodesData {
@@ -102,6 +102,27 @@ export interface AdminPromoCodesData {
     updated_at: string | null;
   }>;
   stats: AdminPromoCode[];
+  totalPayments: number;
+  totalRevenue: number;
+  totalRevenueCurrency: string;
+  totalPayouts: number;
+  totalPayoutsCurrency: string;
+  monthlyStats: Array<{
+    month: string;
+    monthKey: string;
+    totalPayments: number;
+    revenue: number;
+    payouts: number;
+    currency: string;
+  }>;
+  payments: Array<{
+    id: string;
+    status: string;
+    amount_value: number | null;
+    amount_currency: string;
+    promo_code: string | null;
+    created_at: string | null;
+  }>;
 }
 
 export const getPartnerStats = async (email: string, retryCount = 0): Promise<PartnerStats> => {
