@@ -115,25 +115,45 @@ export function useStep4ProgressPersistence({
   // chat_progress removed: DB restore disabled (localStorage is the only persistence for step4 UI state).
 
   // Restore persisted grammar gate opens (so refresh doesn't hide already-unlocked messages)
+  // Also reset on lesson change/restart to ensure clean state
   useEffect(() => {
     setGrammarGateHydrated(false);
+    // Синхронно сбрасываем состояние при изменении урока, чтобы избежать гонки
+    gatedGrammarSectionIdsRef.current = new Set();
+    // Обновляем revision СРАЗУ, чтобы grammarGate пересчитался с пустым состоянием
+    setGrammarGateRevision((prev) => prev + 1);
+    
     scheduleIdle(() => {
       try {
         const raw = localStorage.getItem(grammarGateStorageKey);
         if (!raw) {
+          // localStorage пуст - состояние должно быть пустым, grammarGate.gated = true
           gatedGrammarSectionIdsRef.current = new Set();
+          // Обновляем revision, чтобы grammarGate пересчитался с пустым состоянием
+          setGrammarGateRevision((prev) => prev + 1);
           return;
         }
         const arr = JSON.parse(raw);
-        if (!Array.isArray(arr)) return;
-        gatedGrammarSectionIdsRef.current = new Set(arr.filter((x) => typeof x === 'string'));
+        if (!Array.isArray(arr)) {
+          gatedGrammarSectionIdsRef.current = new Set();
+          setGrammarGateRevision((prev) => prev + 1);
+          return;
+        }
+        const restored = new Set(arr.filter((x) => typeof x === 'string'));
+        gatedGrammarSectionIdsRef.current = restored;
+        // Обновляем revision после восстановления, чтобы grammarGate пересчитался
+        setGrammarGateRevision((prev) => prev + 1);
       } catch {
         // ignore
+        gatedGrammarSectionIdsRef.current = new Set();
+        setGrammarGateRevision((prev) => prev + 1);
       } finally {
         setGrammarGateHydrated(true);
+        // Финальное обновление revision после установки hydrated, чтобы grammarGate точно пересчитался
+        setGrammarGateRevision((prev) => prev + 1);
       }
     });
-  }, [grammarGateStorageKey, gatedGrammarSectionIdsRef, setGrammarGateHydrated]);
+  }, [grammarGateStorageKey, day, lesson, level, gatedGrammarSectionIdsRef, setGrammarGateHydrated, setGrammarGateRevision]);
 
   // Restore persisted vocabulary progress (so refresh doesn't reset "Далее" progress)
   useEffect(() => {

@@ -17,6 +17,7 @@ export type LessonScriptV2 = {
   words: LessonWords;
   grammar: {
     explanation: string;
+    drills?: Array<{ question: string; task: string; expected: string }>;
     audio_exercise?: { expected: string };
     text_exercise?: { expected: string; instruction: string };
     transition?: string;
@@ -322,6 +323,26 @@ export const advanceLesson = (params: {
       currentStepSnapshot: { type: "words", index: 0 },
     };
 
+    const drills = Array.isArray(script.grammar?.drills) ? script.grammar.drills : [];
+    const hasDrills = drills.length > 0;
+
+    // New format: drills are rendered inside a single "grammar" block (no chat Q/A).
+    if (hasDrills) {
+      const explanation = script.grammar?.explanation || "";
+      const msg: EngineMessage = {
+        role: "model",
+        text: JSON.stringify({
+          type: "grammar",
+          explanation,
+          successText: script.grammar?.successText || script.grammar?.transition,
+          drills,
+        }),
+        currentStepSnapshot: { type: "grammar", index: 0, subIndex: 0 },
+      };
+      return { messages: [successMsg, msg], nextStep: { type: "grammar", index: 0, subIndex: 0 } };
+    }
+
+    // Legacy fallback: grammar assignment is embedded into explanation via <h>Задание<h>
     const explanationWithoutAssignment =
       removeAssignmentSection(script.grammar?.explanation) || script.grammar?.explanation || "";
 

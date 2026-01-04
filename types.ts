@@ -161,6 +161,9 @@ export type GrammarPayload = {
   type: 'grammar';
   title?: string;
   content?: string;
+  explanation?: string;
+  successText?: string;
+  drills?: Array<{ question: string; task: string; expected: string }>;
 };
 
 export type AudioExercisePayload = {

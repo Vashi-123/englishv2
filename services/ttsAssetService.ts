@@ -200,6 +200,20 @@ export async function debugComputeTtsHash(params: { text: string; lang?: string;
   }
 }
 
+export async function computeTtsAssetHash(params: { text: string; lang?: string; voice?: string }): Promise<string | null> {
+  try {
+    const lang = params.lang || DEFAULT_LANG;
+    const voice = params.voice || DEFAULT_VOICE;
+    const text = normalizeText(params.text);
+    if (!text) return null;
+    if (lang !== 'en-US') return null;
+    if (!/[A-Za-z]/.test(text)) return null;
+    return await sha256Hex(`${lang}|${voice}|${text}`);
+  } catch {
+    return null;
+  }
+}
+
 function extractTtsPhrases(script: any): string[] {
   const phrases: string[] = [];
 

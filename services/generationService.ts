@@ -638,38 +638,16 @@ export const loadLessonInitData = async (
       writeLessonScriptToSession(scriptCacheKey, script);
     }
 
-    // Process progress
+    // Process progress - только статус завершения
     const progress = data.progress
       ? {
-          currentStepSnapshot: (data.progress as any).currentStepSnapshot ?? null,
+          currentStepSnapshot: null,
           completed: (data.progress as any).completed ?? false,
         }
       : null;
 
-    // Process messages
-    const messages: ChatMessage[] = Array.isArray(data.messages)
-      ? (data.messages as ApiChatMessage[])
-          .filter((msg) => !isTutorSnapshot(msg.currentStepSnapshot))
-          .map((msg) => ({
-            id: msg.id,
-            role: msg.role as 'user' | 'model',
-            text: msg.text,
-            translation: undefined,
-            moduleId: undefined,
-            messageOrder: msg.messageOrder || undefined,
-            createdAt: msg.createdAt || undefined,
-            currentStepSnapshot: msg.currentStepSnapshot,
-            local: { source: 'db' as const, saveStatus: 'saved' as const },
-          }))
-      : [];
-
-    // Cache messages
-    if (messages.length > 0 && userId) {
-      const cacheKey = getChatMessagesCacheKey(day, lesson, level, userId);
-      if (cacheKey) {
-        chatMessagesMemoryCache.set(cacheKey, messages);
-      }
-    }
+    // Не загружаем сообщения - они не сохраняются
+    const messages: ChatMessage[] = [];
 
     return { lessonId, script, progress, messages };
   } catch (error) {
@@ -689,7 +667,7 @@ export const loadLessonProgress = async (
 
     const { data, error } = await supabase
       .from('lesson_progress')
-      .select('current_step_snapshot, completed_at')
+      .select('completed_at')
       .eq(ident.column, ident.value)
       .eq('lesson_id', lessonId)
       .limit(1)
@@ -699,7 +677,7 @@ export const loadLessonProgress = async (
 
     const row = data as LessonProgressRow;
     return {
-      currentStepSnapshot: row?.current_step_snapshot ?? null,
+      currentStepSnapshot: null,
       completed: !!row?.completed_at,
     };
   } catch {
@@ -720,7 +698,7 @@ export const loadLessonProgressByLessonIds = async (
 
     const { data, error } = await supabase
       .from('lesson_progress')
-      .select('lesson_id, completed_at, current_step_snapshot')
+      .select('lesson_id, completed_at')
       .eq(ident.column, ident.value)
       .in('lesson_id', ids);
 
@@ -730,7 +708,7 @@ export const loadLessonProgressByLessonIds = async (
       if (!row?.lesson_id) continue;
       out[row.lesson_id] = {
         completed: !!row.completed_at,
-        currentStepSnapshot: row.current_step_snapshot ?? null,
+        currentStepSnapshot: null,
       };
     }
     return out;
@@ -769,7 +747,6 @@ export const upsertLessonProgress = async (params: {
   lesson: number;
   level?: string;
   lessonId?: string;
-  currentStepSnapshot?: any | null;
   completed?: boolean;
 }): Promise<void> => {
   try {
@@ -783,7 +760,7 @@ export const upsertLessonProgress = async (params: {
       level: resolvedLevel,
       updated_at: new Date().toISOString(),
     };
-    if (params.currentStepSnapshot !== undefined) payload.current_step_snapshot = params.currentStepSnapshot;
+    // Сохраняем только статус завершения
     if (params.completed === true) payload.completed_at = new Date().toISOString();
     if (params.completed === false) payload.completed_at = null;
 
@@ -808,6 +785,7 @@ export const upsertLessonProgress = async (params: {
 
 /**
  * Сохранить сообщение в чате
+ * Упрощено: не сохраняем сообщения, только проверяем завершение урока
  */
 export const saveChatMessage = async (
   day: number,
@@ -818,73 +796,13 @@ export const saveChatMessage = async (
   level: string = 'A1'
 ): Promise<ChatMessage | null> => {
   try {
-    // Валидация параметров
-    if (!day || !lesson) {
-      console.error("[saveChatMessage] Invalid parameters:", { day, lesson, role });
-      return null;
-    }
-
-    if (!text || text.trim().length === 0) {
-      console.error("[saveChatMessage] Empty text, skipping save");
-      return null;
-    }
-
-    const userId = await requireAuthUserId();
-
-    const lessonId = await getLessonIdForDayLesson(day, lesson, level);
-
-    console.log("[saveChatMessage] Attempting to save:", { 
-      userId,
-      lessonId,
-      role, 
-      textLength: text.length 
-    });
-
-    const { data: insertedData, error } = await supabase
-      .from('chat_messages')
-      .insert({
-        user_id: userId,
-        lesson_id: lessonId,
-        role,
-        text: text.trim(),
-        current_step_snapshot: currentStepSnapshot ?? null,
-      })
-      .select();
-
-    if (error) {
-      console.error("[saveChatMessage] Error saving chat message:", error);
-      console.error("[saveChatMessage] Error details:", {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      return null;
-    } else {
-      console.log("[saveChatMessage] Message saved successfully:", insertedData);
-    }
-
-    // Lightweight progress update: record completion without scanning history.
-    // We update current_step_snapshot from the Step4 client where we know the next step.
+    // Не сохраняем сообщения, только проверяем завершение урока
     if (text.includes('<lesson_complete>')) {
-      await upsertLessonProgress({ day, lesson, level, lessonId, completed: true });
+      await upsertLessonProgress({ day, lesson, level, completed: true });
     }
-
-    const row = Array.isArray(insertedData) ? (insertedData[0] as any) : null;
-    if (!row?.id) return null;
-    return {
-      id: String(row.id),
-      role,
-      text: String(row.text ?? text).trim(),
-      translation: undefined,
-      moduleId: undefined,
-      messageOrder: typeof row.message_order === 'number' ? row.message_order : undefined,
-      createdAt: typeof row.created_at === 'string' ? row.created_at : undefined,
-      currentStepSnapshot: row.current_step_snapshot ?? currentStepSnapshot ?? null,
-      local: { source: 'db', saveStatus: 'saved' as const },
-    };
+    return null;
   } catch (error) {
-    console.error("[saveChatMessage] Exception saving chat message:", error);
+    console.error("[saveChatMessage] Exception:", error);
     return null;
   }
 };
@@ -1042,10 +960,8 @@ export const prefetchLessonScript = async (
  */
 export const prefetchLessonInitData = async (day: number, lesson: number, level: string = 'A1'): Promise<void> => {
   try {
-    const init = await loadLessonInitData(day, lesson, level, { includeScript: true, includeMessages: true });
-    if (init?.messages && init.messages.length) {
-      cacheChatMessages(day, lesson, level, init.messages);
-    }
+    // Только загружаем скрипт, сообщения не загружаются
+    await loadLessonInitData(day, lesson, level, { includeScript: true, includeMessages: false });
   } catch {
     // ignore prefetch errors
   }

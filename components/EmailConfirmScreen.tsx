@@ -12,7 +12,6 @@ import {
   getCachedBillingProduct,
   formatPrice,
   BILLING_PRODUCT_KEY,
-  quoteBilling,
 } from '../services/billingService';
 
 export const EmailConfirmScreen: React.FC = () => {
@@ -124,7 +123,9 @@ export const EmailConfirmScreen: React.FC = () => {
     }
     setPromoLoading(true);
     try {
-      const res = await quoteBilling({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
+      // Dynamic import - web only, not in iOS bundle (EmailConfirmScreen is hidden on iOS anyway)
+      const { quoteBillingWithPromo } = await import("../services/billingServiceWeb");
+      const res = await quoteBillingWithPromo({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
       if (!res || res.ok !== true) {
         const msg = (res && 'error' in res && typeof res.error === 'string') ? res.error : 'Не удалось проверить промокод';
         setPromoMessage(msg);

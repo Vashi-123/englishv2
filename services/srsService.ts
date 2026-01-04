@@ -1,7 +1,18 @@
 import { supabase } from './supabaseClient';
 import { requireAuthUserId } from './userService';
+import { computeTtsAssetHash } from './ttsAssetService';
 
-type SrsCardRow = { id: number; word: string; translation: string };
+type SrsCardRow = {
+  id: number;
+  word: string;
+  translation: string;
+  context?: string;
+  context_translation?: string;
+  tts_lang?: string;
+  tts_voice?: string;
+  word_tts_hash?: string;
+  context_tts_hash?: string;
+};
 
 const normalizeWord = (value: string) =>
   String(value || '')
@@ -15,34 +26,84 @@ const normalizeWord = (value: string) =>
 export async function upsertSrsCardsFromVocab(params: {
   level: string;
   targetLang: string;
-  items: Array<{ word: string; translation: string }>;
+  items: Array<{ word: string; translation: string; context?: string; context_translation?: string }>;
 }) {
-  const userId = await requireAuthUserId();
   const level = String(params.level || 'A1');
   const targetLang = String(params.targetLang || 'ru');
-  const nowIso = new Date().toISOString();
+  const ttsLang = 'en-US';
+  const ttsVoice = (import.meta as any)?.env?.VITE_TTS_VOICE || 'cedar';
 
-  const rows = (params.items || [])
+  await requireAuthUserId();
+
+  const items = (params.items || [])
+    .map((it) => ({
+      word: String(it.word || '').trim(),
+      word_norm: normalizeWord(String(it.word || '')),
+      translation: String(it.translation || '').trim(),
+      context: typeof it.context === 'string' ? it.context.trim() : '',
+      context_translation: typeof it.context_translation === 'string' ? it.context_translation.trim() : '',
+    }))
+    .filter((r) => r.word && r.word_norm && r.translation);
+
+  if (!items.length) return;
+
+  // Compute stable audio references (hash) for word + example.
+  const payloadItems: Array<Record<string, any>> = [];
+  for (const it of items) {
+    const wordHash = await computeTtsAssetHash({ text: it.word, lang: ttsLang, voice: ttsVoice });
+    const contextHash = it.context ? await computeTtsAssetHash({ text: it.context, lang: ttsLang, voice: ttsVoice }) : null;
+    payloadItems.push({
+      word: it.word,
+      word_norm: it.word_norm,
+      translation: it.translation,
+      context: it.context || null,
+      context_translation: it.context_translation || null,
+      tts_lang: ttsLang,
+      tts_voice: ttsVoice,
+      word_tts_hash: wordHash,
+      context_tts_hash: contextHash,
+    });
+  }
+
+  // Prefer RPC that increments seen_count without clobbering SRS stats.
+  const { error: rpcError } = await supabase.rpc('upsert_srs_cards_from_vocab', {
+    p_level: level,
+    p_source_lang: 'en',
+    p_target_lang: targetLang,
+    p_items: payloadItems,
+  });
+
+  if (!rpcError) return;
+
+  // Fallback for older DB: plain upsert (best-effort; does not increment seen_count on conflict).
+  // We intentionally do NOT include SRS scheduling fields here to avoid resetting progress.
+  const { data: user } = await supabase.auth.getUser();
+  const userId = user?.user?.id;
+  if (!userId) throw rpcError;
+
+  const rows = payloadItems
     .map((it) => ({
       user_id: userId,
       level,
       source_lang: 'en',
       target_lang: targetLang,
-      word: String(it.word || '').trim(),
-      word_norm: normalizeWord(String(it.word || '')),
-      translation: String(it.translation || '').trim(),
-      last_seen_at: nowIso,
-      seen_count: 1,
+      word: it.word,
+      word_norm: it.word_norm,
+      translation: it.translation,
+      context: it.context,
+      context_translation: it.context_translation,
+      tts_lang: it.tts_lang,
+      tts_voice: it.tts_voice,
+      word_tts_hash: it.word_tts_hash,
+      context_tts_hash: it.context_tts_hash,
     }))
     .filter((r) => r.word && r.word_norm && r.translation);
-
-  if (!rows.length) return;
 
   const { error } = await supabase
     .from('user_srs_cards')
     .upsert(rows, { onConflict: 'user_id,source_lang,target_lang,word_norm' });
 
-  if (error) throw error;
+  if (error) throw error ?? rpcError;
 }
 
 export async function getSrsReviewBatch(params: {
@@ -70,7 +131,17 @@ export async function getSrsReviewBatch(params: {
       const word = String(row?.word || '').trim();
       const translation = String(row?.translation || '').trim();
       if (!Number.isFinite(id) || !word || !translation) continue;
-      out.push({ id, word, translation });
+      out.push({
+        id,
+        word,
+        translation,
+        context: typeof row?.context === 'string' ? row.context : undefined,
+        context_translation: typeof row?.context_translation === 'string' ? row.context_translation : undefined,
+        tts_lang: typeof row?.tts_lang === 'string' ? row.tts_lang : undefined,
+        tts_voice: typeof row?.tts_voice === 'string' ? row.tts_voice : undefined,
+        word_tts_hash: typeof row?.word_tts_hash === 'string' ? row.word_tts_hash : undefined,
+        context_tts_hash: typeof row?.context_tts_hash === 'string' ? row.context_tts_hash : undefined,
+      });
     }
   }
   return out;
@@ -100,7 +171,7 @@ export async function getAllUserWords(params: {
 
   const { data, error } = await supabase
     .from('user_srs_cards')
-    .select('id, word, translation')
+    .select('id, word, translation, context, context_translation, tts_lang, tts_voice, word_tts_hash, context_tts_hash')
     .eq('level', level)
     .eq('source_lang', 'en')
     .eq('target_lang', targetLang)
@@ -114,7 +185,17 @@ export async function getAllUserWords(params: {
       const word = String(row?.word || '').trim();
       const translation = String(row?.translation || '').trim();
       if (!Number.isFinite(id) || !word || !translation) continue;
-      out.push({ id, word, translation });
+      out.push({
+        id,
+        word,
+        translation,
+        context: typeof row?.context === 'string' ? row.context : undefined,
+        context_translation: typeof row?.context_translation === 'string' ? row.context_translation : undefined,
+        tts_lang: typeof row?.tts_lang === 'string' ? row.tts_lang : undefined,
+        tts_voice: typeof row?.tts_voice === 'string' ? row.tts_voice : undefined,
+        word_tts_hash: typeof row?.word_tts_hash === 'string' ? row.word_tts_hash : undefined,
+        context_tts_hash: typeof row?.context_tts_hash === 'string' ? row.context_tts_hash : undefined,
+      });
     }
   }
   return out;
@@ -188,4 +269,3 @@ export async function getAllUserGrammarCards(params: {
   }
   return out;
 }
-

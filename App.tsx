@@ -43,7 +43,7 @@ const AuthScreen = lazyWithErrorHandling(() => import('./components/AuthScreen')
 const IntroScreen = lazyWithErrorHandling(() => import('./components/IntroScreen').then(m => ({ default: m.IntroScreen })));
 const ResetPasswordScreen = lazyWithErrorHandling(() => import('./components/ResetPasswordScreen').then(m => ({ default: m.ResetPasswordScreen })));
 const CheckStatusScreen = lazyWithErrorHandling(() => import('./components/CheckStatusScreen').then(m => ({ default: m.CheckStatusScreen })));
-const EmailConfirmScreen = lazyWithErrorHandling(() => import('./components/EmailConfirmScreen').then(m => ({ default: m.EmailConfirmScreen })));
+// EmailConfirmScreen НЕ загружается на уровне модуля - только динамический импорт на веб (см. EmailConfirmPage)
 const AppContent = lazyWithErrorHandling(() => import('./components/AppContent').then(m => ({ default: m.AppContent })));
 const PartnerAuthScreen = lazyWithErrorHandling(() => import('./components/partners/PartnerAuthScreen').then(m => ({ default: m.PartnerAuthScreen })));
 const PartnerDashboard = lazyWithErrorHandling(() => import('./components/partners/PartnerDashboard').then(m => ({ default: m.PartnerDashboard })));
@@ -257,10 +257,33 @@ const ResetPasswordPage: React.FC = () => {
 const EmailConfirmPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+  const [EmailConfirmScreen, setEmailConfirmScreen] = useState<React.ComponentType | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // На iOS редиректим сразу в /app - EmailConfirmScreen только для веб
+  useEffect(() => {
+    if (isNativeIos) {
+      navigate('/app', { replace: true });
+      return;
+    }
+    
+    // Динамический импорт только на веб - EmailConfirmScreen не попадет в iOS бандл
+    setIsLoading(true);
+    import('./components/EmailConfirmScreen')
+      .then(m => {
+        setEmailConfirmScreen(() => m.EmailConfirmScreen);
+        setIsLoading(false);
+      })
+      .catch(err => {
+        console.error('[EmailConfirmPage] Failed to load EmailConfirmScreen:', err);
+        setIsLoading(false);
+      });
+  }, [isNativeIos, navigate]);
 
   // Восстанавливаем правильный pathname для React роутинга (для совместимости с 404.html)
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (isNativeIos || typeof window === 'undefined') return;
     
     if (location.pathname !== '/auth/confirm' && location.pathname !== '/auth/confirm/') {
       try {
@@ -278,7 +301,17 @@ const EmailConfirmPage: React.FC = () => {
         // ignore
       }
     }
-  }, [location, navigate]);
+  }, [isNativeIos, location, navigate]);
+
+  // На iOS не показываем EmailConfirmScreen
+  if (isNativeIos) {
+    return <LoadingScreen />;
+  }
+
+  // На веб показываем загрузку пока компонент не загрузился
+  if (isLoading || !EmailConfirmScreen) {
+    return <LoadingScreen />;
+  }
 
   return <EmailConfirmScreen />;
 };
@@ -438,6 +471,7 @@ const VersionChecker: React.FC = () => {
 const AppRouter: React.FC = () => {
   const { needsPasswordReset } = useAuth();
   const location = useLocation();
+  const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
 
   // Если нужен сброс пароля - показываем экран сброса
   if (needsPasswordReset) {
@@ -453,7 +487,8 @@ const AppRouter: React.FC = () => {
             {/* Публичные маршруты */}
             <Route path="/" element={<LandingPage />} />
             <Route path="/app" element={<AppPage />} />
-            <Route path="/auth/confirm" element={<EmailConfirmPage />} />
+            {/* EmailConfirmScreen только для веб, на iOS редирект в /app */}
+            {!isNativeIos && <Route path="/auth/confirm" element={<EmailConfirmPage />} />}
             <Route path="/check" element={<CheckStatusScreen />} />
             <Route path="/partners" element={<PartnerPage />} />
 

@@ -123,9 +123,13 @@ export function DialogueInputBar({
                 type="button"
                 onClick={cta.onClick}
                 disabled={Boolean(cta.disabled || isLoading)}
-                className="w-full h-14 rounded-xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                className="w-full h-14 rounded-xl border border-brand-primary/40 bg-brand-primary/10 text-brand-primary font-semibold hover:bg-brand-primary/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {cta.label}
+                {isLoading && cta.label === 'Проверить' ? (
+                  <span className="h-5 w-5 border-2 border-brand-primary/50 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  cta.label
+                )}
               </button>
             ) : null}
           </div>

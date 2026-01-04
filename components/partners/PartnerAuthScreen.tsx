@@ -97,6 +97,15 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
         return;
       }
       
+      // Проверяем флаг OAuth - если он сброшен и прошло достаточно времени, значит была отмена
+      const stillInProgress = checkOAuthFlag();
+      if (!stillInProgress && elapsed > 2000) {
+        // Флаг сброшен более 2 секунд назад, но сессии нет - вероятно была отмена
+        state.completed = true;
+        setOauthLoading(null);
+        return;
+      }
+      
       try {
         const { data } = await supabase.auth.getSession();
         const hasSession = Boolean(data?.session?.user?.id);

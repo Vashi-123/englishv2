@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { AudioQueueItem, ChatMessage, LessonScript, VocabWord } from '../../types';
 import { extractIntroText, deriveFindMistakeKey } from './messageUtils';
 import { VocabularyCard } from './VocabularyCard';
@@ -7,8 +7,58 @@ import { WordPayloadCard } from './WordPayloadCard';
 import { ConstructorCard, formatConstructorSentence } from './ConstructorCard';
 import { FindTheMistakeCard } from './FindTheMistakeCard';
 import { SituationThreadCard } from './SituationThreadCard';
+import { GrammarDrillsCard, type GrammarDrillsUiState } from './GrammarDrillsCard';
 import { parseSituationMessage } from './situationParsing';
 import { CardHeading } from './CardHeading';
+import { ModuleSeparatorHeading } from './ModuleSeparatorHeading';
+
+// Wrapper component for VocabularyCard with delayed appearance
+const DelayedVocabularyCard: React.FC<{
+  show: boolean;
+  words: VocabWord[];
+  vocabIndex: number;
+  currentAudioItem: AudioQueueItem | null;
+  onRegisterWordEl: (index: number, el: HTMLDivElement | null) => void;
+  onPlayWord: (wordItem: VocabWord, wordIndex: number) => void;
+  onPlayExample: (wordItem: VocabWord, wordIndex: number) => void;
+  onNextWord: () => void;
+}> = ({ show, words, vocabIndex, currentAudioItem, onRegisterWordEl, onPlayWord, onPlayExample, onNextWord }) => {
+  const [showCard, setShowCard] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowCard(true);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (showCard && cardRef.current) {
+      const timeoutId = setTimeout(() => {
+        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [showCard]);
+
+  if (!showCard) return null;
+
+  return (
+    <div ref={cardRef}>
+      <VocabularyCard
+        show={show}
+        words={words}
+        vocabIndex={vocabIndex}
+        currentAudioItem={currentAudioItem}
+        onRegisterWordEl={onRegisterWordEl}
+        onPlayWord={onPlayWord}
+        onPlayExample={onPlayExample}
+        onNextWord={onNextWord}
+      />
+    </div>
+  );
+};
 
 // Situation auto-play is deduped inside `useTtsQueue` by messageId, but only after a successful play.
 // Avoid global "played by text" dedupe here, since it can suppress legitimate plays (and block retries after autoplay errors).
@@ -53,6 +103,10 @@ type Props = {
     React.SetStateAction<Record<string, { pickedWordIndices?: number[]; completed?: boolean }>>
   >;
 
+  grammarGateLocked?: boolean;
+  grammarDrillsUI?: Record<string, GrammarDrillsUiState>;
+  setGrammarDrillsUI?: React.Dispatch<React.SetStateAction<Record<string, GrammarDrillsUiState>>>;
+
   isLoading: boolean;
   setIsLoading: (v: boolean) => void;
   handleStudentAnswer: (
@@ -65,6 +119,10 @@ type Props = {
       forceAdvance?: boolean;
     }
   ) => Promise<void>;
+  // For grammar drills validation
+  lessonId?: string | null;
+  userId?: string | null;
+  language?: string;
 
   extractStructuredSections: (text: string) => Array<{ title: string; body: string }>;
   stripModuleTag: (text: string) => string;
@@ -104,6 +162,9 @@ function MessageContentComponent({
   findMistakeStorageKey,
   constructorUI,
   setConstructorUI,
+  grammarGateLocked,
+  grammarDrillsUI,
+  setGrammarDrillsUI,
   isLoading,
   setIsLoading,
   handleStudentAnswer,
@@ -111,6 +172,9 @@ function MessageContentComponent({
   stripModuleTag,
   grammarExerciseCompleted,
   startedSituations,
+  lessonId,
+  userId,
+  language,
 }: Props) {
   const persistFindMistakePatch = (patch: Record<string, any>) => {
     try {
@@ -260,28 +324,37 @@ function MessageContentComponent({
       );
     }
 
-		    if (parsed.type === 'words_list') {
-		      // Если vocabWords уже установлен из состояния и это не последнее сообщение,
-		      // не рендерим блок слов из истории, чтобы избежать дублирования
-		      if (vocabWords.length > 0 && !isLastModelMessage) {
-		        return null;
-		      }
-		      const words = vocabWords.length ? vocabWords : parsed.words || [];
+		    // Показываем блок слов если:
+		    // 1. Текущее сообщение содержит words_list, ИЛИ
+		    // 2. Это последнее сообщение модели, showVocab === true и vocabWords не пустой
+		    //    (чтобы блок слов не исчезал при переходе на грамматику)
+		    if (parsed.type === 'words_list' || (isLastModelMessage && showVocab && vocabWords.length > 0)) {
+		      // Всегда показываем блок слов, если текущее сообщение содержит words_list
+		      // Это гарантирует, что блок не исчезнет после прохождения заданий
+		      // Для последнего сообщения используем vocabWords (сохраняет состояние индекса),
+		      // для остальных - слова из текущего сообщения
+		      // Если vocabWords пустой (например, при возврате в урок), используем parsed.words
+		      // Приоритет: parsed.words (если есть) > vocabWords (если не пустой и последнее сообщение) > []
+		      const words = (parsed.type === 'words_list' && parsed.words && parsed.words.length > 0)
+		        ? parsed.words
+		        : (vocabWords.length > 0) 
+		          ? vocabWords 
+		          : [];
 		      const currentIdx = Math.min(vocabIndex, Math.max(words.length - 1, 0));
 
 		      return (
-		        <VocabularyCard
+		        <DelayedVocabularyCard
 		          show={showVocab}
 		          words={words}
 		          vocabIndex={vocabIndex}
 		          currentAudioItem={currentAudioItem}
-	          onRegisterWordEl={(index, el) => {
-	            if (el) vocabRefs.current.set(index, el);
-	            else vocabRefs.current.delete(index);
+		          onRegisterWordEl={(index, el) => {
+		            if (el) vocabRefs.current.set(index, el);
+		            else vocabRefs.current.delete(index);
 		          }}
 		          onPlayWord={(wordItem, wordIndex) => {
 		            // Передаем текст как есть, без нормализации (как в старой системе)
-		            const queue = [{ text: wordItem.word, lang: 'en', kind: 'word', meta: { vocabIndex: wordIndex, vocabKind: 'word' } }].filter(
+		            const queue: AudioQueueItem[] = [{ text: wordItem.word, lang: 'en', kind: 'word', meta: { vocabIndex: wordIndex, vocabKind: 'word' as const } }].filter(
 		              (x) => String(x.text || '').trim().length > 0
 		            );
 		            // eslint-disable-next-line no-console
@@ -297,7 +370,7 @@ function MessageContentComponent({
 		            // eslint-disable-next-line no-console
 		            console.log('[TTS] onPlayExample -> processAudioQueue', { text: exampleText.slice(0, 80), wordIndex });
 		            playVocabAudio([
-		              { text: exampleText, lang: 'en', kind: 'example', meta: { vocabIndex: wordIndex, vocabKind: 'example' } },
+		              { text: exampleText, lang: 'en', kind: 'example', meta: { vocabIndex: wordIndex, vocabKind: 'example' as const } },
 		            ]);
 		          }}
 		          onNextWord={() => {
@@ -309,9 +382,9 @@ function MessageContentComponent({
 		              // Передаем текст как есть, без нормализации (как в старой системе)
 		              const wordText = String(nextWord.word || '').trim();
 		              const exampleText = String(nextWord.context || '').trim();
-		              const queue: Array<{ text: string; lang: string; kind: string }> = [];
+		              const queue: AudioQueueItem[] = [];
 		              if (wordText) {
-		                queue.push({ text: wordText, lang: 'en', kind: 'word', meta: { vocabIndex: nextIdx, vocabKind: 'word' } });
+		                queue.push({ text: wordText, lang: 'en', kind: 'word', meta: { vocabIndex: nextIdx, vocabKind: 'word' as const } });
 		              }
 		              // Add example after word if it exists and is different from word
 		              if (exampleText && exampleText !== wordText) {
@@ -319,7 +392,7 @@ function MessageContentComponent({
 		                  text: exampleText,
 		                  lang: 'en',
 		                  kind: 'example',
-		                  meta: { vocabIndex: nextIdx, vocabKind: 'example' },
+		                  meta: { vocabIndex: nextIdx, vocabKind: 'example' as const },
 		                });
 		              }
 		              if (queue.length) {
@@ -432,6 +505,155 @@ function MessageContentComponent({
             : undefined
         }
       />
+    );
+  }
+
+  if (parsed && parsed.type === 'grammar') {
+    const explanation = typeof (parsed as any).explanation === 'string' ? String((parsed as any).explanation) : String((parsed as any).content || '');
+    const drillsRaw = Array.isArray((parsed as any).drills) ? ((parsed as any).drills as any[]) : [];
+    const drills = drillsRaw
+      .map((d) => ({
+        question: String(d?.question || '').trim(),
+        task: String(d?.task || '').trim(),
+        expected: String(d?.expected || '').trim(),
+      }))
+      .filter((d) => d.question && d.task && d.expected);
+    const successText =
+      typeof (parsed as any).successText === 'string' && String((parsed as any).successText).trim()
+        ? String((parsed as any).successText).trim()
+        : undefined;
+
+    const ui = (grammarDrillsUI && grammarDrillsUI[msgStableId]) || undefined;
+    const unlocked = !grammarGateLocked;
+
+    // Handler to start drills (show first drill)
+    const handleStartDrills = React.useCallback(() => {
+      if (!setGrammarDrillsUI) return;
+      setGrammarDrillsUI((prev) => {
+        const base = prev || {};
+        const existing = base[msgStableId] || {};
+        const nextState: GrammarDrillsUiState = {
+          ...existing,
+          currentDrillIndex: 0, // Start with first drill
+        };
+        return { ...base, [msgStableId]: nextState };
+      });
+    }, [msgStableId, setGrammarDrillsUI]);
+
+    // Create validation function for drills
+    const onValidateDrill = React.useCallback(
+      async (params: { drillIndex: number; answer: string }) => {
+        if (!lessonId || !userId || !currentStep) {
+          return { isCorrect: false, feedback: 'Не удалось проверить ответ' };
+        }
+
+        const { validateDialogueAnswerV2 } = await import('../../services/generationService');
+        const stepForValidation = {
+          ...currentStep,
+          type: 'grammar' as const,
+          subIndex: params.drillIndex, // Use subIndex to indicate which drill
+        };
+
+        try {
+          const result = await validateDialogueAnswerV2({
+            lessonId,
+            userId,
+            currentStep: stepForValidation,
+            studentAnswer: params.answer,
+            uiLang: language || 'ru',
+          });
+          return { isCorrect: result.isCorrect, feedback: result.feedback || '' };
+        } catch (err) {
+          console.error('[MessageContent] Drill validation error:', err);
+          return { isCorrect: false, feedback: 'Не удалось проверить ответ. Попробуй еще раз.' };
+        }
+      },
+      [lessonId, userId, currentStep, language]
+    );
+
+    // State to control delayed appearance of grammar card
+    const [showGrammarCard, setShowGrammarCard] = useState(false);
+    const headingRef = useRef<HTMLDivElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    // Show heading immediately, then card after delay
+    useEffect(() => {
+      // Scroll to heading when it appears
+      if (headingRef.current) {
+        const timeoutId = setTimeout(() => {
+          headingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+        return () => clearTimeout(timeoutId);
+      }
+    }, []);
+
+    // Show card after delay
+    useEffect(() => {
+      const timer = setTimeout(() => {
+        setShowGrammarCard(true);
+      }, 500);
+      return () => clearTimeout(timer);
+    }, []);
+
+    // Scroll to card when it appears
+    useEffect(() => {
+      if (showGrammarCard && cardRef.current) {
+        const timeoutId = setTimeout(() => {
+          cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+        return () => clearTimeout(timeoutId);
+      }
+    }, [showGrammarCard]);
+
+    return (
+      <div className="space-y-4">
+        <div ref={headingRef}>
+          <ModuleSeparatorHeading title="Грамматика" />
+        </div>
+        {showGrammarCard && (
+          <div ref={cardRef}>
+            <GrammarDrillsCard
+              explanation={stripModuleTag(explanation)}
+              drills={drills}
+              successText={successText}
+              unlocked={unlocked}
+              extractStructuredSections={extractStructuredSections}
+              renderMarkdown={renderMarkdown}
+              isLoading={isLoading}
+              initialState={ui}
+              onStateChange={
+                setGrammarDrillsUI
+                  ? (next) => {
+                      setGrammarDrillsUI((prev) => ({ ...(prev || {}), [msgStableId]: next }));
+                    }
+                  : undefined
+              }
+              onComplete={
+                unlocked
+                  ? async () => {
+                      setIsLoading(true);
+                      try {
+                        const stepForAnswer = msg.currentStepSnapshot ?? currentStep;
+                        await handleStudentAnswer('__grammar_drills_complete__', {
+                          stepOverride: stepForAnswer,
+                          silent: true,
+                          bypassValidation: true,
+                        });
+                      } finally {
+                        setIsLoading(false);
+                      }
+                    }
+                  : undefined
+              }
+              onStartDrills={unlocked ? handleStartDrills : undefined}
+              lessonId={lessonId}
+              userId={userId}
+              currentStep={currentStep}
+              onValidateDrill={onValidateDrill}
+            />
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -921,6 +1143,20 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
     const nextCtor = next.constructorUI[key];
     if (prevCtor?.completed !== nextCtor?.completed) return false;
     if (prevCtor?.pickedWordIndices?.length !== nextCtor?.pickedWordIndices?.length) return false;
+  }
+  
+  // Grammar Drills: re-render when grammarDrillsUI changes
+  const prevGrammarKeys = Object.keys(prev.grammarDrillsUI || {});
+  const nextGrammarKeys = Object.keys(next.grammarDrillsUI || {});
+  if (prevGrammarKeys.length !== nextGrammarKeys.length) return false;
+  for (const key of prevGrammarKeys) {
+    const prevGrammar = prev.grammarDrillsUI?.[key];
+    const nextGrammar = next.grammarDrillsUI?.[key];
+    if (prevGrammar?.currentDrillIndex !== nextGrammar?.currentDrillIndex) return false;
+    if (prevGrammar?.completed !== nextGrammar?.completed) return false;
+    if (prevGrammar?.answers?.length !== nextGrammar?.answers?.length) return false;
+    if (prevGrammar?.checked?.length !== nextGrammar?.checked?.length) return false;
+    if (prevGrammar?.correct?.length !== nextGrammar?.correct?.length) return false;
   }
 
   // Situations: re-render when start state changes so the dialogue opens/hides correctly

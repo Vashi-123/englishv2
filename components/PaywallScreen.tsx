@@ -3,12 +3,10 @@ import { Capacitor } from "@capacitor/core";
 import { Browser } from "@capacitor/browser";
 import { Crown, GraduationCap, Loader2, X } from "lucide-react";
 import {
-  createYooKassaPayment,
   fetchBillingProduct,
   getCachedBillingProduct,
   formatPrice,
   BILLING_PRODUCT_KEY,
-  quoteBilling,
 } from "../services/billingService";
 import { fetchIosIapProduct, purchaseIosIap } from "../services/iapService";
 import { formatFirstLessonsRu } from "../services/ruPlural";
@@ -43,6 +41,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const isNativeIos = useMemo(() => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios", []);
   const [paying, setPaying] = useState(false);
   const [iapPaying, setIapPaying] = useState(false);
+  // Promo codes only on web - iOS uses Apple Offer Codes via StoreKit
   const [promoCode, setPromoCode] = useState("");
   const [priceValue, setPriceValue] = useState<string>("1490.00");
   const [priceCurrency, setPriceCurrency] = useState<string>("RUB");
@@ -164,7 +163,9 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     return formatPrice(String(diff), String(basePriceCurrency || "RUB"));
   }, [basePriceCurrency, basePriceValue, priceValue, promoOk]);
 
+  // Promo code handlers - web only (iOS uses Apple Offer Codes via StoreKit)
   const onPromoInputChange = (value: string) => {
+    if (isNativeIos) return; // No custom promo codes on iOS
     setPromoCode(value.toUpperCase());
     setPromoMessage(null);
     setPromoOk(null);
@@ -173,6 +174,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   };
 
   const handleCheckPromo = async () => {
+    if (isNativeIos) return; // No custom promo codes on iOS
     setPromoMessage(null);
     setPromoOk(null);
     promoAppliedRef.current = false;
@@ -184,7 +186,9 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     }
     setPromoLoading(true);
     try {
-      const res = await quoteBilling({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
+      // Dynamic import - web only, not in iOS bundle
+      const { quoteBillingWithPromo } = await import("../services/billingServiceWeb");
+      const res = await quoteBillingWithPromo({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
       if (!res || res.ok !== true) {
         const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось проверить промокод";
         setPromoMessage(msg);
@@ -206,10 +210,13 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   };
 
   const handlePay = async () => {
-    if (paying || iapPaying) return;
+    if (paying || iapPaying || isNativeIos) return; // Web payment only
     setPaying(true);
     try {
-      const normalizedPromo = promoCode.trim();
+      // Динамический импорт только на веб - не попадет в iOS бандл
+      const { createYooKassaPayment } = await import("../services/billingServiceWeb");
+      // Promo codes only on web
+      const normalizedPromo = !isNativeIos ? promoCode.trim() : "";
       const res = await createYooKassaPayment({
         returnUrl: buildReturnUrl(),
         description: "Premium доступ к урокам EnglishV2",
@@ -244,10 +251,10 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     if (iapPaying || paying) return;
     setIapPaying(true);
     try {
-      const normalizedPromo = promoCode.trim();
+      // iOS uses only Apple Offer Codes via StoreKit - no custom promo codes
       const res = await purchaseIosIap({
         productId: BILLING_PRODUCT_KEY,
-        promoCode: normalizedPromo || undefined,
+        // promoCode removed - iOS should use Apple Offer Codes only
         priceValue: Number(priceValue),
         priceCurrency: priceCurrency,
       });
@@ -356,32 +363,35 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 	            </div>
 	          </div>
 
-	          <div className="mt-6">
-	            <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Промокод</div>
-	            <div className="mt-2 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
-	              <input
-	                value={promoCode}
-                onChange={(e) => onPromoInputChange(e.target.value)}
-                className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900"
-	                placeholder="Введите промокод"
-                autoComplete="off"
-                inputMode="text"
-              />
-              <button
-                type="button"
-                onClick={handleCheckPromo}
-                disabled={promoLoading || paying || iapPaying || iapLoading || isLoading || isPremium}
-                className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60"
-              >
-                {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Проверить"}
-              </button>
-            </div>
-            {promoMessage && (
-              <div className={`mt-2 text-xs font-bold ${promoOk ? "text-emerald-700" : "text-rose-700"}`}>
-                {promoMessage}
+          {/* Promo code field - web only, iOS uses Apple Offer Codes via StoreKit */}
+          {!isNativeIos && (
+            <div className="mt-6">
+              <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Промокод</div>
+              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
+                <input
+                  value={promoCode}
+                  onChange={(e) => onPromoInputChange(e.target.value)}
+                  className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900"
+                  placeholder="Введите промокод"
+                  autoComplete="off"
+                  inputMode="text"
+                />
+                <button
+                  type="button"
+                  onClick={handleCheckPromo}
+                  disabled={promoLoading || paying || iapPaying || iapLoading || isLoading || isPremium}
+                  className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60"
+                >
+                  {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Проверить"}
+                </button>
               </div>
-            )}
-          </div>
+              {promoMessage && (
+                <div className={`mt-2 text-xs font-bold ${promoOk ? "text-emerald-700" : "text-rose-700"}`}>
+                  {promoMessage}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-6 grid gap-3">
             <button

@@ -164,6 +164,13 @@ export function useMessageDrivenUi({
     }
 
     if (parsed?.type === 'words_list' && Array.isArray(parsed.words)) {
+      console.log('[useMessageDrivenUi] Processing words_list message:', {
+        wordsCount: parsed.words?.length,
+        goalGatePending,
+        goalGateAcknowledged,
+        hasWords: Array.isArray(parsed.words) && parsed.words.length > 0,
+      });
+      
       setVocabWords(parsed.words || []);
       const hasAppliedRestore = appliedVocabRestoreKeyRef.current === vocabProgressStorageKey;
       const restoredIdx = typeof restoredVocabIndexRef.current === 'number' ? restoredVocabIndexRef.current : null;
@@ -183,12 +190,18 @@ export function useMessageDrivenUi({
         vocabFirstPlayQueuedRef.current.add(vocabProgressStorageKey);
         setPendingVocabPlay(true);
       }
+      // Если goalGate еще не подтвержден, скрываем слова
+      // Если goalGateAcknowledged === true, значит пользователь уже нажал "Начинаем", показываем слова
       if (goalGatePending && !goalGateAcknowledged) {
+        console.log('[useMessageDrivenUi] Goal gate not acknowledged yet, hiding vocab');
         setShowVocab(false);
         setInputMode('hidden');
         return;
       }
-      // Ensure the vocab block is visible if we are not gated.
+      
+      // Если goalGateAcknowledged === true, показываем слова независимо от goalGatePending
+      // (goalGatePending может быть еще true из-за асинхронного обновления состояния)
+      console.log('[useMessageDrivenUi] Setting showVocab=true for words_list, goalGatePending:', goalGatePending, 'goalGateAcknowledged:', goalGateAcknowledged);
       setShowVocab(true);
       setInputMode('hidden');
       return;
@@ -250,7 +263,8 @@ export function useMessageDrivenUi({
           setPendingVocabPlay(false);
           // If the user already acknowledged the goal gate, ensure the vocab block is visible on re-entry.
           // Otherwise keep it hidden until the goal message is acknowledged.
-          setShowVocab(goalGateAcknowledged && !goalGatePending);
+          // Если goalGateAcknowledged === true, показываем слова независимо от goalGatePending
+          setShowVocab(goalGateAcknowledged);
           break;
         }
       } catch {
@@ -269,6 +283,49 @@ export function useMessageDrivenUi({
     setVocabIndex,
     setVocabWords,
     vocabProgressStorageKey,
+    goalGateAcknowledged,
+    goalGatePending,
+  ]);
+
+  // Восстанавливаем vocabWords из истории, даже если последнее сообщение - не words_list
+  // (например, когда пользователь переходит на грамматику)
+  useEffect(() => {
+    if (!messages.length) return;
+    // Если слова уже установлены, не восстанавливаем
+    if (vocabWords.length > 0) return;
+    // Пропускаем во время инициализации (это обрабатывается другим эффектом)
+    if (isInitializing) return;
+
+    // Ищем words_list в истории сообщений
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== 'model') continue;
+      const raw = m.text || '';
+      try {
+        const p = tryParseJsonMessage(raw);
+        if (!p) continue;
+        if (p?.type === 'words_list' && Array.isArray(p.words) && p.words.length > 0) {
+          setVocabWords(p.words || []);
+          const desired = restoredVocabIndexRef.current;
+          const maxIdx = Math.max((p.words?.length || 0) - 1, 0);
+          setVocabIndex(typeof desired === 'number' ? Math.min(Math.max(desired, 0), maxIdx) : 0);
+          // Восстанавливаем showVocab только если goal gate уже подтвержден
+          // Если goalGateAcknowledged === true, показываем слова независимо от goalGatePending
+          setShowVocab(goalGateAcknowledged);
+          break;
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }, [
+    messages,
+    vocabWords.length,
+    isInitializing,
+    restoredVocabIndexRef,
+    setVocabWords,
+    setVocabIndex,
+    setShowVocab,
     goalGateAcknowledged,
     goalGatePending,
   ]);

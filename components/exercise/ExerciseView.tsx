@@ -21,6 +21,7 @@ interface ExerciseViewProps {
   nextLessonIsPremium: boolean;
   nextDayPlan?: DayPlan;
   dialogueCopy: DialogueCopy;
+  initialLessonProgress?: any | null;
   onFinish: () => Promise<void>;
   onNextLesson: () => Promise<void>;
   onBack: () => Promise<void>;
@@ -34,6 +35,7 @@ export const ExerciseView: React.FC<ExerciseViewProps> = ({
   nextLessonIsPremium,
   nextDayPlan,
   dialogueCopy,
+  initialLessonProgress,
   onFinish,
   onNextLesson,
   onBack,
@@ -58,6 +60,7 @@ export const ExerciseView: React.FC<ExerciseViewProps> = ({
                 lesson={currentDayPlan.lesson}
                 level={level}
                 startMode={startMode}
+                initialLessonProgress={initialLessonProgress}
                 onFinish={onFinish}
                 onNextLesson={onNextLesson}
                 nextLessonNumber={nextLessonNumber}

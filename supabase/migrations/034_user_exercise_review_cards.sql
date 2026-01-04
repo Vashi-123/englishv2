@@ -73,6 +73,9 @@ CREATE POLICY "Delete constructor cards"
   USING (auth.uid() = user_id);
 
 -- RPC: upsert constructor cards from lesson script (increment seen_count on conflict)
+-- Note: Postgres cannot `CREATE OR REPLACE` a function if OUT/RETURN columns changed.
+-- If you previously deployed an older version of this RPC, we must drop it first.
+DROP FUNCTION IF EXISTS public.upsert_constructor_cards(text, text, jsonb);
 CREATE OR REPLACE FUNCTION public.upsert_constructor_cards(
   p_level TEXT,
   p_target_lang TEXT,
@@ -328,6 +331,9 @@ CREATE POLICY "Delete find mistake cards"
   USING (auth.uid() = user_id);
 
 -- RPC: upsert find-the-mistake cards from lesson script (increment seen_count on conflict)
+-- Note: Postgres cannot `CREATE OR REPLACE` a function if OUT/RETURN columns changed.
+-- If you previously deployed an older version of this RPC, we must drop it first.
+DROP FUNCTION IF EXISTS public.upsert_find_mistake_cards(text, text, jsonb);
 CREATE OR REPLACE FUNCTION public.upsert_find_mistake_cards(
   p_level TEXT,
   p_target_lang TEXT,

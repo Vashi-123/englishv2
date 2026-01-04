@@ -6,12 +6,10 @@ import { Sparkles, ArrowRight, Crown, Loader2, X } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
 import { ChatDemo } from './ChatDemo';
 import {
-  createYooKassaPayment,
   fetchBillingProduct,
   getCachedBillingProduct,
   formatPrice,
   BILLING_PRODUCT_KEY,
-  quoteBilling,
 } from '../services/billingService';
 import { supabase } from '../services/supabaseClient';
 
@@ -163,6 +161,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   };
 
   const handleCheckPromo = async () => {
+    // Promo codes only on web - iOS uses Apple Offer Codes via StoreKit
+    const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+    if (isNativeIos) return;
+    
     setPromoMessage(null);
     setPromoOk(null);
     const code = promoCode.trim();
@@ -173,7 +175,9 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     }
     setPromoLoading(true);
     try {
-      const res = await quoteBilling({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
+      // Dynamic import - web only, not in iOS bundle
+      const { quoteBillingWithPromo } = await import('../services/billingServiceWeb');
+      const res = await quoteBillingWithPromo({ productKey: BILLING_PRODUCT_KEY, promoCode: code });
       if (!res || res.ok !== true) {
         const msg = (res && 'error' in res && typeof res.error === 'string') ? res.error : 'Не удалось проверить промокод';
         setPromoMessage(msg);
@@ -197,8 +201,12 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     if (paying) return;
     setPaying(true);
     try {
-      const returnUrl = window.location.origin + '/app?paid=1'; // Для внешнего редиректа на YooKassa
-      const normalizedPromo = promoCode.trim();
+      // Динамический импорт только на веб - не попадет в iOS бандл
+      const { createYooKassaPayment } = await import('../services/billingServiceWeb');
+      const returnUrl = window.location.origin + '/app?paid=1';
+      // Promo codes only on web
+      const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+      const normalizedPromo = !isNativeIos ? promoCode.trim() : "";
       const res = await createYooKassaPayment({
         returnUrl,
         description: 'Premium доступ к урокам EnglishV2',
@@ -294,13 +302,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
               </div>
             </div>
 
-            {/* Промокод */}
-            <div className="pt-5 border-t border-gray-100">
-              <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500 mb-2">Промокод</div>
-              <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
-                <input
-                  value={promoCode}
-                  onChange={(e) => onPromoInputChange(e.target.value)}
+            {/* Promo code field - web only, iOS uses Apple Offer Codes via StoreKit */}
+            {!Capacitor.isNativePlatform() && (
+              <div className="pt-5 border-t border-gray-100">
+                <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500 mb-2">Промокод</div>
+                <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
+                  <input
+                    value={promoCode}
+                    onChange={(e) => onPromoInputChange(e.target.value)}
                   disabled={paying || promoLoading}
                   className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900 disabled:opacity-50"
                   placeholder="Введите промокод"
@@ -316,12 +325,13 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
                   {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Проверить'}
                 </button>
               </div>
-              {promoMessage && (
-                <div className={`mt-2 text-xs font-bold ${promoOk ? 'text-emerald-700' : 'text-rose-700'}`}>
-                  {promoMessage}
-                </div>
-              )}
-            </div>
+                {promoMessage && (
+                  <div className={`mt-2 text-xs font-bold ${promoOk ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {promoMessage}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Форма ввода email */}
             <div className="pt-5 border-t border-gray-100 space-y-4">

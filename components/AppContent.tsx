@@ -152,6 +152,7 @@ export const AppContent: React.FC<{
   const refreshEntitlements = reloadDashboard;
   const [isInitializing, setIsInitializing] = useState(true);
   const [exerciseStartMode, setExerciseStartMode] = useState<'normal' | 'next'>('normal');
+  const [initialLessonProgress, setInitialLessonProgress] = useState<any | null>(null);
   const currentDayPlan = dayPlans.find(d => d.day === selectedDayId) || dayPlans[0];
 
   // Refs for timers (still local as they're component-specific)
@@ -170,9 +171,11 @@ export const AppContent: React.FC<{
   const CONFIRM_ANIM_MS = 220;
   const supabaseConnectivity = useSupabaseConnectivity();
   const prefetchedAheadRef = useRef<Set<string>>(new Set());
+  const lastPrefetchedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     prefetchedAheadRef.current = new Set();
+    lastPrefetchedForRef.current = null;
   }, [level]);
 
   const openInsightPopup = useCallback(() => {
@@ -355,7 +358,7 @@ export const AppContent: React.FC<{
   const statusStorageKey = userEmail ? getCacheKeyWithCurrentUser(`englishv2:dayCompletedStatus:${level}`) : null;
   const selectedDayStorageKey = userEmail ? getCacheKeyWithCurrentUser(`englishv2:selectedDayId:${level}`) : null;
 
-  // If YooKassa returns the user to the app, refresh entitlements once.
+  // If payment returns the user to the app, refresh entitlements once.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
@@ -450,6 +453,7 @@ export const AppContent: React.FC<{
 
   // Keep a small buffer of upcoming lessons warm in cache (scripts + init payload),
   // so "Next lesson" navigation doesn't wait on RPC.
+  // Always maintain at least 3 lessons ahead of the current lesson.
   useEffect(() => {
     if (isInitializing) return;
     if (!currentDayPlan) return;
@@ -458,6 +462,13 @@ export const AppContent: React.FC<{
 
     const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
     if (currentIndex < 0) return;
+
+    // Очищаем prefetchedAheadRef при изменении текущего урока, чтобы всегда загружать актуальные 3 урока вперед
+    const currentLessonKey = `${level || 'A1'}:${currentDayPlan.day}:${currentDayPlan.lesson}`;
+    if (lastPrefetchedForRef.current !== currentLessonKey) {
+      prefetchedAheadRef.current.clear();
+      lastPrefetchedForRef.current = currentLessonKey;
+    }
 
     const freeLimit = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
     const plansAhead = dayPlans.slice(currentIndex + 1, currentIndex + 1 + 3).filter(Boolean);
@@ -858,9 +869,17 @@ export const AppContent: React.FC<{
 
     if (isLocked) return;
     
+    // Проверяем завершенность урока ДО открытия, чтобы сразу показать экран завершения без загрузки
+    let lessonProgress: any = null;
+    if (type === ActivityType.DIALOGUE) {
+      lessonProgress = await loadLessonProgress(currentDayPlan.day, currentDayPlan.lesson, level).catch(() => null);
+    }
+    
     setExerciseStartMode('normal');
     setActivityStep(type);
     setView(ViewState.EXERCISE);
+    // Сохраняем progress для передачи в Step4Dialogue
+    setInitialLessonProgress(lessonProgress);
 
     // Once the user starts the current lesson, prefetch the next lesson script in the background.
     if (type === ActivityType.DIALOGUE) {
@@ -1010,6 +1029,7 @@ export const AppContent: React.FC<{
   const handleBackFromExercise = async () => {
     // Return instantly; refresh completion status in the background.
     setView(ViewState.DASHBOARD);
+    setInitialLessonProgress(null); // Сбрасываем при возврате
     void checkLessonCompletion(false);
   };
 
@@ -1164,6 +1184,7 @@ export const AppContent: React.FC<{
           nextLessonIsPremium={nextLessonMeta.nextLessonIsPremium}
           nextDayPlan={nextLessonMeta.nextDayPlan}
           dialogueCopy={copy.dialogue}
+          initialLessonProgress={initialLessonProgress}
           onFinish={handleNextStep}
           onNextLesson={handleNextLesson}
           onBack={handleBackFromExercise}

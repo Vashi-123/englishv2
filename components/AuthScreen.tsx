@@ -120,6 +120,15 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
         return;
       }
       
+      // Проверяем флаг OAuth - если он сброшен и прошло достаточно времени, значит была отмена
+      const stillInProgress = checkOAuthFlag();
+      if (!stillInProgress && elapsed > 2000) {
+        // Флаг сброшен более 2 секунд назад, но сессии нет - вероятно была отмена
+        state.completed = true;
+        setOauthLoading(null);
+        return;
+      }
+      
       // Проверяем сессию независимо от флага, так как она может установиться с задержкой
       try {
         const { data } = await supabase.auth.getSession();
@@ -138,13 +147,6 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
         }
       } catch {
         // ignore
-      }
-      
-      // Если прошло больше 2 секунд и флаг сброшен, но сессии нет - возможно ошибка
-      const stillInProgress = checkOAuthFlag();
-      if (!stillInProgress && elapsed > 5000) {
-        // Флаг сброшен более 5 секунд назад, но сессии нет - возможно ошибка
-        // Но продолжаем проверять сессию до таймаута
       }
     }, 650);
     return () => {

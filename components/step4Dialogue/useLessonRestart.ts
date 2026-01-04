@@ -153,10 +153,12 @@ export function useLessonRestart({
       // Reset anki done state
       setAnkiDone(false);
 
+      // Reset grammar gate state BEFORE clearing localStorage to ensure clean state
       setGrammarGateSectionId(null);
       setGrammarGateOpen(true);
-      setGrammarGateRevision(0);
+      // Сбрасываем состояние синхронно, чтобы grammarGate пересчитался сразу
       gatedGrammarSectionIdsRef.current.clear();
+      setGrammarGateRevision((prev) => prev + 1); // Увеличиваем revision для принудительного пересчета
 
       try {
         const keys = [
@@ -168,11 +170,16 @@ export function useLessonRestart({
           storageKeys.constructorStorageKey,
           storageKeys.ankiDoneStorageKey,
         ];
+        // Clear localStorage FIRST to prevent useEffect from restoring old state
         for (const k of keys) {
           localStorage.removeItem(k);
           const legacy = legacyKeyFor(k);
           if (legacy !== k) localStorage.removeItem(legacy);
         }
+        // Ensure grammar gate state is cleared after localStorage cleanup
+        gatedGrammarSectionIdsRef.current.clear();
+        // Еще раз обновляем revision после очистки, чтобы гарантировать пересчет grammarGate
+        setGrammarGateRevision((prev) => prev + 1);
 
         // Extra safety: remove any goal-ack key for this day/lesson (across level/lang variants),
         // so the "Начинаем" button always reappears after restart.

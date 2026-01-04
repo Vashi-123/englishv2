@@ -296,18 +296,19 @@ export function MatchingGameCard({
 	          100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.0); }
 	        }
 	      `}</style>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between min-w-0">
         <CardHeading
+          className="min-w-0 flex-shrink"
           icon={
-            <div className="p-2 rounded-full bg-brand-primary/10 text-brand-primary">
+            <div className="p-2 rounded-full bg-brand-primary/10 text-brand-primary flex-shrink-0">
               <Bot className="w-4 h-4" />
             </div>
           }
         >
-          Соедини слово с переводом
+          <span className="truncate">Соедини слово с переводом</span>
         </CardHeading>
         <span
-          className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
+          className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold flex-shrink-0 ${
             matchesComplete
               ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
               : 'border-gray-300 bg-white text-gray-300'
@@ -380,7 +381,7 @@ export function MatchingGameCard({
                   }}
                   disabled={!showMatching || matchesComplete || t.matched}
                   style={wrongStyle as any}
-                  className={`w-full min-w-0 text-left px-3 py-2 rounded-lg border transition-colors whitespace-normal break-words ${
+                  className={`w-full min-w-0 text-left px-3 py-2 rounded-lg border-2 box-border whitespace-normal break-words min-h-[2.75rem] ${
                     t.matched
                       ? 'bg-green-50 border-green-200 text-green-700'
                       : isWrong
@@ -414,7 +415,7 @@ export function MatchingGameCard({
                   }}
                   disabled={!showMatching || matchesComplete || w.matched}
                   style={wrongStyle as any}
-                  className={`w-full min-w-0 text-left px-3 py-2 rounded-lg border transition-colors whitespace-normal break-words ${
+                  className={`w-full min-w-0 text-left px-3 py-2 rounded-lg border-2 box-border whitespace-normal break-words min-h-[2.75rem] ${
                     w.matched
                       ? 'bg-green-50 border-green-200 text-green-700'
                       : isWrong

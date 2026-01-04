@@ -11,6 +11,7 @@ import { Bot, Crown } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useIsIOS } from '../../utils/platform';
+import type { GrammarDrillsUiState } from './GrammarDrillsCard';
 
 type MatchingOption = { id: string; text: string; pairId: string; matched: boolean };
 
@@ -63,11 +64,17 @@ export function DialogueMessages({
   findMistakeStorageKey,
   constructorUI,
   setConstructorUI,
+  grammarDrillsUI,
+  setGrammarDrillsUI,
 
   isLoading,
   setIsLoading,
 
   handleStudentAnswer,
+  
+  lessonId,
+  userId,
+  language,
   extractStructuredSections,
   renderMarkdown,
 
@@ -140,8 +147,16 @@ export function DialogueMessages({
   constructorUI: Record<string, { pickedWordIndices?: number[]; completed?: boolean }>;
   setConstructorUI: Dispatch<SetStateAction<Record<string, { pickedWordIndices?: number[]; completed?: boolean }>>>;
 
+  grammarDrillsUI: Record<string, GrammarDrillsUiState>;
+  setGrammarDrillsUI: Dispatch<SetStateAction<Record<string, GrammarDrillsUiState>>>;
+
   isLoading: boolean;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
+  
+  // For grammar drills validation
+  lessonId?: string | null;
+  userId?: string | null;
+  language?: string;
 
   handleStudentAnswer: (
     studentText: string,
@@ -280,7 +295,7 @@ export function DialogueMessages({
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto pt-12 pb-32 bg-white w-full">
       <div className={shouldVirtualize ? '' : 'space-y-6'}>
-        {visibleMessages.length === 0 && isLoading && (
+        {visibleMessages.length === 0 && isLoading && !lessonCompletedPersisted && (
           <div className="min-h-[45vh] flex items-center justify-center">
             <div className="px-5 py-4 rounded-2xl bg-gray-50 border border-gray-200 shadow-sm">
               <div className="text-sm font-semibold text-gray-700">Загружаю урок</div>
@@ -345,6 +360,7 @@ export function DialogueMessages({
           const isTaskPayload =
             msg.role === 'model' &&
             (parsed?.type === 'words_list' ||
+              parsed?.type === 'grammar' ||
               parsed?.type === 'audio_exercise' ||
               parsed?.type === 'text_exercise' ||
               parsed?.type === 'word' ||
@@ -572,6 +588,9 @@ export function DialogueMessages({
                   findMistakeStorageKey={findMistakeStorageKey}
                   constructorUI={constructorUI}
                   setConstructorUI={setConstructorUI}
+                  grammarGateLocked={Boolean(showGrammarGateButton)}
+                  grammarDrillsUI={grammarDrillsUI}
+                  setGrammarDrillsUI={setGrammarDrillsUI}
                   isLoading={isLoading}
                   setIsLoading={setIsLoading}
                   handleStudentAnswer={handleStudentAnswer}
@@ -579,6 +598,9 @@ export function DialogueMessages({
                   stripModuleTag={stripModuleTag}
                   renderMarkdown={renderMarkdown}
                   startedSituations={startedSituations}
+                  lessonId={lessonId}
+                  userId={userId}
+                  language={language}
                 />
               </MessageRow>
             </div>
@@ -627,7 +649,7 @@ export function DialogueMessages({
           </div>
         )}
 
-        {lessonCompletedPersisted && messages.length > 0 && !isLoading && (
+        {lessonCompletedPersisted && !isLoading && (
           <>
             <div className="w-full flex justify-center">
               <div className="w-full max-w-[480px] sm:max-w-[520px]">

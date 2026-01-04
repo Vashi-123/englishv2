@@ -21,6 +21,11 @@ interface LessonScript {
   words: LessonWords | LessonWordItem[];
   grammar: {
     explanation: string;
+    drills?: Array<{
+      question: string;
+      task: string;
+      expected: string;
+    }>;
     audio_exercise?: {
       expected: string;
     };
@@ -294,6 +299,23 @@ Deno.serve(async (req: Request) => {
     if (tutorMode) {
       const safeText = (value: unknown) => String(value ?? "").trim();
 
+      const insertTutorMessage = async (role: "user" | "model", text: string) => {
+        const trimmed = safeText(text);
+        if (!trimmed) return;
+        const { error } = await supabase.from("chat_messages").insert({
+          lesson_id: lessonId,
+          user_id: userId,
+          role,
+          text: trimmed,
+          day: (script as any).day || 0,
+          lesson: (script as any).lesson || 0,
+          current_step_snapshot: { type: "completion", index: 0, tutor: true },
+        });
+        if (error) {
+          console.error("[groq-lesson-v2] Failed to save tutor message:", error.message, "payload:", { lessonId, userId, role });
+        }
+      };
+
       const lessonContext = (() => {
         const goal = safeText(script?.goal);
 
@@ -481,6 +503,7 @@ Lesson context (for you):\n\n${lessonContext}`;
           userLang.toLowerCase().startsWith("ru")
             ? "Мы уже разобрали 5 вопросов по этому уроку. Если хочешь — начнем следующий урок."
             : "We've already covered 5 questions for this lesson. If you want, let's start the next lesson.";
+        await insertTutorMessage("model", limitReached);
         return new Response(
           JSON.stringify({
             response: limitReached,
@@ -495,6 +518,7 @@ Lesson context (for you):\n\n${lessonContext}`;
 
       // If the user just opened tutor mode (no question yet), return a greeting and persist it so it shows on re-entry.
       if (!userQuestion) {
+        await insertTutorMessage("model", greeting);
         return new Response(
           JSON.stringify({
             response: greeting,
@@ -520,12 +544,16 @@ Lesson context (for you):\n\n${lessonContext}`;
         const fallback = userLang.toLowerCase().startsWith("ru")
           ? "Не получилось ответить прямо сейчас. Попробуй еще раз."
           : "Couldn't answer right now. Please try again.";
+        await insertTutorMessage("user", userQuestion);
+        await insertTutorMessage("model", fallback);
         return new Response(
           JSON.stringify({ response: fallback, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
+      await insertTutorMessage("user", userQuestion);
+      await insertTutorMessage("model", result.text.trim());
       return new Response(
         JSON.stringify({
           response: result.text.trim(),
@@ -582,6 +610,15 @@ Lesson context (for you):\n\n${lessonContext}`;
 - мелкие опечатки и пунктуация сами по себе не делают ответ неправильным.` 
         : "";
 
+      const grammarDrillRules = params.step === "grammar_drill"
+        ? `Правила проверки грамматического задания:
+- проверяй правильность грамматической конструкции согласно правилу из урока;
+- учитывай контекст задания и вопроса;
+- игнорируй регистр, пунктуацию в конце предложения (точка, восклицательный знак, вопросительный знак);
+- принимай синонимы и вариации, если грамматика правильная;
+- не принимай ответы, которые нарушают грамматическое правило из урока.`
+        : "";
+
       const globalLeniencyRules = `Общие правила (важно):
 - НЕ требуй заглавную букву, точку, запятую или восклицательный знак — это не критерии правильности.
 - Игнорируй различия в регистре, пунктуации и лишних пробелах.
@@ -597,7 +634,7 @@ Lesson context (for you):\n\n${lessonContext}`;
       const validatorUserPrompt = `Шаг: ${params.step}
 ${globalLeniencyRules}
 ${expectedRules}
-${constructorRules ? `\n${constructorRules}\n` : "\n"}Ожидается: ${params.expected}
+${constructorRules ? `\n${constructorRules}\n` : ""}${grammarDrillRules ? `\n${grammarDrillRules}\n` : ""}Ожидается: ${params.expected}
 Ответ ученика: ${params.studentAnswer}
 ${params.extra ? `Контекст: ${params.extra}` : ""}`;
 
@@ -642,8 +679,9 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     };
 
     if (!currentStep?.type) {
+      // Never hard-fail validation: keep the lesson unblocked.
       return new Response(JSON.stringify({ isCorrect: false, feedback: "Missing currentStep for validation" }), {
-        status: 400,
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -666,24 +704,46 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     let extra = "";
 
     if (currentStep.type === "grammar") {
-      if (script.grammar?.audio_exercise?.expected) {
+      // Check if this is a grammar drill (has subIndex for drill index)
+      const drillIndexRaw = (currentStep as any)?.subIndex;
+      const drillIndex = typeof drillIndexRaw === "number" && Number.isFinite(drillIndexRaw) && drillIndexRaw >= 0 ? drillIndexRaw : null;
+      const drills = Array.isArray(script.grammar?.drills) ? script.grammar.drills : [];
+      
+      if (drillIndex !== null && drills.length > drillIndex) {
+        // This is a grammar drill validation
+        const drill = drills[drillIndex];
+        expected = String(drill?.expected || "").trim();
+        stepType = "grammar_drill";
+        extra = `Задание: ${String(drill?.task || "").trim()}\nВопрос: ${String(drill?.question || "").trim()}\nПравило: ${script.grammar?.explanation || ""}`;
+      } else if (script.grammar?.audio_exercise?.expected) {
         expected = script.grammar.audio_exercise.expected;
         stepType = "grammar_audio_exercise";
+        extra = `Задание/правило: ${script.grammar?.explanation || ""}`;
       } else if (script.grammar?.text_exercise?.expected) {
         expected = script.grammar.text_exercise.expected;
         stepType = "grammar_text_exercise";
+        extra = `Задание/правило: ${script.grammar?.explanation || ""}`;
       } else {
-        return new Response(JSON.stringify({ isCorrect: false, feedback: "No grammar exercise in script" }), {
-          status: 400,
+        console.warn("[groq-lesson-v2] No grammar exercise or drill in script; skipping validation", {
+          lessonId,
+          currentStep,
+          drillIndex,
+          drillsCount: drills.length,
+        });
+        return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      extra = `Задание/правило: ${script.grammar?.explanation || ""}`;
     } else if (currentStep.type === "constructor") {
       const task = script.constructor?.tasks?.[currentStep.index];
       if (!task?.correct) {
-        return new Response(JSON.stringify({ isCorrect: false, feedback: "Invalid constructor task" }), {
-          status: 400,
+        console.warn("[groq-lesson-v2] Invalid constructor task; skipping validation", {
+          lessonId,
+          currentStep,
+        });
+        return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -696,8 +756,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
       const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
       if (!scenario || !normalized) {
-        return new Response(JSON.stringify({ isCorrect: false, feedback: "Invalid situation scenario" }), {
-          status: 400,
+        console.warn("[groq-lesson-v2] Invalid situation scenario; skipping validation", {
+          lessonId,
+          currentStep,
+        });
+        return new Response(JSON.stringify({ isCorrect: true, feedback: "" }), {
+          status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
@@ -726,3 +790,4 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     return new Response(`Internal error: ${err.message}`, { status: 500, headers: corsHeaders });
   }
 });
+  

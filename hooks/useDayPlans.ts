@@ -40,6 +40,7 @@ export const useDayPlans = (level: string = 'A1') => {
   const [planLoading, setPlanLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const prevThemeByLessonIdRef = useRef<Record<string, string>>({});
+  const prevUpdatedAtByLessonIdRef = useRef<Record<string, string>>({});
   const themeStoragePrefix = 'englishv2:lessonTheme:';
   const retryTimerRef = useRef<number | null>(null);
   const retryAttemptRef = useRef<number>(0);
@@ -59,36 +60,48 @@ export const useDayPlans = (level: string = 'A1') => {
     try {
       const { data, error: fetchError } = await supabase
         .from('lesson_scripts')
-        .select('lesson_id, day, lesson, theme, level')
+        .select('lesson_id, day, lesson, theme, level, updated_at')
         .eq('level', level)
         .order('day', { ascending: true })
         .order('lesson', { ascending: true });
         
       if (fetchError) throw fetchError;
 
-      // If a lesson's theme changes, invalidate cached lesson_script for that day/lesson/level
-      // so Step4 doesn't keep a stale script after realtime updates.
+      // Invalidate cached lesson_script if theme or updated_at changes
+      // This ensures users get fresh scripts when admin updates lesson_scripts in DB
       const prevThemeByLessonId = prevThemeByLessonIdRef.current;
+      const prevUpdatedAtByLessonId = prevUpdatedAtByLessonIdRef.current;
       const nextThemeByLessonId: Record<string, string> = {};
+      const nextUpdatedAtByLessonId: Record<string, string> = {};
+      
       for (const row of data || []) {
         const lessonId = row.lesson_id as string;
         const theme = (row.theme || `Lesson #${row.lesson}`) as string;
+        const updatedAt = row.updated_at ? String(row.updated_at) : '';
+        
         nextThemeByLessonId[lessonId] = theme;
+        nextUpdatedAtByLessonId[lessonId] = updatedAt;
 
-        const prev = prevThemeByLessonId[lessonId];
-        const shouldClearFromRuntime = !!(prev && prev !== theme);
+        const prevTheme = prevThemeByLessonId[lessonId];
+        const prevUpdatedAt = prevUpdatedAtByLessonId[lessonId];
+        const shouldClearFromRuntime = !!(prevTheme && prevTheme !== theme) || !!(prevUpdatedAt && prevUpdatedAt !== updatedAt);
 
-        // Persist last-seen theme across reloads so cache invalidation works even after a hard refresh.
+        // Persist last-seen theme and updated_at across reloads so cache invalidation works even after a hard refresh.
         // We key by day/lesson/level because lesson_script cache uses the same key.
         let shouldClearFromStorage = false;
         try {
           if (typeof window !== 'undefined') {
-            const key = `${themeStoragePrefix}${level}:${row.day}:${row.lesson}`;
-            const stored = window.sessionStorage.getItem(key);
-            if (stored && stored !== theme) {
+            const themeKey = `${themeStoragePrefix}${level}:${row.day}:${row.lesson}`;
+            const updatedAtKey = `${themeStoragePrefix}${level}:${row.day}:${row.lesson}:updated_at`;
+            const storedTheme = window.sessionStorage.getItem(themeKey);
+            const storedUpdatedAt = window.sessionStorage.getItem(updatedAtKey);
+            
+            if ((storedTheme && storedTheme !== theme) || (storedUpdatedAt && storedUpdatedAt !== updatedAt)) {
               shouldClearFromStorage = true;
             }
-            window.sessionStorage.setItem(key, theme);
+            
+            window.sessionStorage.setItem(themeKey, theme);
+            if (updatedAt) window.sessionStorage.setItem(updatedAtKey, updatedAt);
           }
         } catch {
           // ignore
@@ -99,6 +112,7 @@ export const useDayPlans = (level: string = 'A1') => {
         }
       }
       prevThemeByLessonIdRef.current = nextThemeByLessonId;
+      prevUpdatedAtByLessonIdRef.current = nextUpdatedAtByLessonId;
 
       const plans: DayPlan[] = (data || []).map((row) => ({
         day: row.day,
@@ -163,7 +177,17 @@ export const useDayPlans = (level: string = 'A1') => {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'lesson_scripts', filter: `level=eq.${level}` },
-        () => loadPlans()
+        (payload) => {
+          // Invalidate cache immediately on UPDATE/INSERT to ensure fresh scripts
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+            const newRow = payload.new as { day?: number; lesson?: number; level?: string };
+            if (newRow?.day && newRow?.lesson && newRow?.level === level) {
+              clearLessonScriptCacheFor(newRow.day, newRow.lesson, level);
+            }
+          }
+          // Reload plans to update UI
+          loadPlans();
+        }
       )
       .subscribe();
 

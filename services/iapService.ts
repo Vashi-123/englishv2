@@ -17,7 +17,7 @@ type IapPurchasePayload = {
   purchaseDateMs?: number;
   priceValue?: number | string | null;
   priceCurrency?: string | null;
-  promoCode?: string;
+  // promoCode removed - iOS should use Apple Offer Codes via StoreKit only
 };
 
 type IapCompleteResponse = {
@@ -94,7 +94,7 @@ export const purchaseIosIap = async (payload?: IapPurchasePayload): Promise<IapC
       purchaseDateMs: Number.isFinite(purchaseDateMs) ? purchaseDateMs : undefined,
       priceValue: payload?.priceValue ?? null,
       priceCurrency: payload?.priceCurrency ?? null,
-      promoCode: payload?.promoCode,
+      // promoCode removed - iOS uses Apple Offer Codes via StoreKit only
     },
   });
   if (error) throw error;

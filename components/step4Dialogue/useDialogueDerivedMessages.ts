@@ -31,8 +31,12 @@ export function useDialogueDerivedMessages({
   tryParseJsonMessage: (text?: string) => any;
   stripModuleTag: (text: string) => string;
 }) {
-  const isGrammarSection = (parsed: any) =>
-    parsed?.type === 'section' && typeof parsed.title === 'string' && /граммат|grammar/i.test(parsed.title);
+  const isGrammarSection = (parsed: any) => {
+    if (!parsed) return false;
+    if (parsed?.type === 'section' && typeof parsed.title === 'string' && /граммат|grammar/i.test(parsed.title)) return true;
+    if (parsed?.type === 'grammar') return true;
+    return false;
+  };
 
   const grammarGate = useMemo<GrammarGate>(() => {
     const unlocked = gatedGrammarSectionIdsRef.current;
@@ -40,6 +44,14 @@ export function useDialogueDerivedMessages({
       const msg = messages[i];
       const parsed = tryParseJsonMessage(msg.text);
       if (!isGrammarSection(parsed)) continue;
+      
+      // If this is a direct grammar message (type: 'grammar'), it should be unlocked by default
+      // Only section-type grammar messages need gating
+      if (parsed?.type === 'grammar') {
+        // Auto-unlock grammar type messages (they contain drills that should be visible immediately)
+        continue;
+      }
+      
       const stableId = getMessageStableId(msg, i);
 
       let ordinal = -1;
@@ -53,10 +65,7 @@ export function useDialogueDerivedMessages({
       const ordinalKey = ordinal >= 0 ? `grammar-ordinal-${ordinal}` : null;
 
       if (unlocked.has(stableId) || (ordinalKey && unlocked.has(ordinalKey))) break;
-      if (i < messages.length - 1) {
-        return { gated: true, sectionId: stableId, sectionIndex: i, ordinalKey };
-      }
-      break;
+      return { gated: true, sectionId: stableId, sectionIndex: i, ordinalKey };
     }
     return { gated: false, sectionId: null, sectionIndex: null, ordinalKey: null };
   }, [getMessageStableId, grammarGateHydrated, grammarGateRevision, messages, tryParseJsonMessage, gatedGrammarSectionIdsRef]);

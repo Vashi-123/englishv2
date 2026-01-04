@@ -116,24 +116,24 @@ export const primeBillingProductCache = async (key: string = BILLING_PRODUCT_KEY
   return cached;
 };
 
-export const createYooKassaPayment = async (params: { returnUrl: string; description?: string; promoCode?: string; productKey?: string; email?: string }) => {
-  const { data, error } = await supabase.functions.invoke("yookassa-create-payment", {
-    body: {
-      returnUrl: params.returnUrl,
-      description: params.description,
-      promoCode: params.promoCode,
-      productKey: params.productKey,
-      email: params.email,
-    },
-  });
-  if (error) throw error;
-  return data as CreatePaymentResponse;
+// Web-only payment flow is implemented in `billingServiceWeb.ts`.
+// Keep a thin dynamic-import wrapper here so web builds can call it, while iOS bundles avoid a hard dependency.
+export const createYooKassaPayment = async (params: {
+  returnUrl: string;
+  description?: string;
+  promoCode?: string;
+  productKey?: string;
+  email?: string;
+}): Promise<CreatePaymentResponse> => {
+  const mod = await import('./billingServiceWeb');
+  return mod.createYooKassaPayment(params);
 };
 
-export const quoteBilling = async (params: { promoCode?: string; productKey?: string }) => {
+// quoteBilling with promo codes moved to billingServiceWeb.ts for web-only use
+// iOS should not use custom promo codes - only Apple Offer Codes via StoreKit
+export const quoteBilling = async (params: { productKey?: string }) => {
   const { data, error } = await supabase.functions.invoke("billing-quote", {
     body: {
-      promoCode: params.promoCode,
       productKey: params.productKey,
     },
   });

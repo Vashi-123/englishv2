@@ -4,13 +4,14 @@ import type { LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { advanceLesson } from '../../services/lessonV2ClientEngine';
 import {
   askTutorV2,
-  cacheChatMessages,
   getAuthUserIdFromSession,
   getLessonIdForDayLesson,
+  loadLessonProgress,
   loadLessonScript,
   prefetchLessonInitData,
   peekCachedChatMessages,
   peekCachedLessonScript,
+  resetLessonDialogue,
   upsertLessonProgress,
 } from '../../services/generationService';
 import { useLanguage } from '../../hooks/useLanguage';
@@ -30,7 +31,9 @@ import { DialogueHeader } from './DialogueHeader';
 import { DialogueInputBar } from './DialogueInputBar';
 import { DialogueMessages } from './DialogueMessages';
 import { RestartConfirmModal } from './RestartConfirmModal';
+import { IncompleteLessonModal } from './IncompleteLessonModal';
 import { TutorMiniChat } from './TutorMiniChat';
+import type { GrammarDrillsUiState } from './GrammarDrillsCard';
 import { useChatInitialization } from './useChatInitialization';
 import { useDialogueDerivedMessages } from './useDialogueDerivedMessages';
 import { useLessonCompletion } from './useLessonCompletion';
@@ -113,12 +116,17 @@ export function Step4DialogueScreen({
   const [input, setInput] = useState('');
   const [inputMode, setInputMode] = useState<InputMode>('hidden');
   const [isLoading, setIsLoading] = useState(() => {
+    // Если урок завершен, не показываем индикатор загрузки
+    if (initialLessonProgress?.completed === true) {
+      return false;
+    }
     if (!day || !lesson) return true;
     const cached = peekCachedChatMessages(day, lesson, resolvedLevel);
     return !(cached && cached.length > 0);
   });
   const [isAwaitingModelReply, setIsAwaitingModelReply] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  const [showIncompleteLessonModal, setShowIncompleteLessonModal] = useState(false);
 
   const [lessonScript, setLessonScript] = useState<any | null>(() => {
     if (!day || !lesson) return null;
@@ -143,8 +151,20 @@ export function Step4DialogueScreen({
     }
     return null;
   });
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [lessonCompletedPersisted, setLessonCompletedPersisted] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(() => {
+    // Если урок завершен, не показываем индикатор инициализации
+    if (initialLessonProgress?.completed === true) {
+      return false;
+    }
+    return true;
+  });
+  const [lessonCompletedPersisted, setLessonCompletedPersisted] = useState(() => {
+    // Проверяем initialLessonProgress при инициализации
+    if (initialLessonProgress?.completed === true) {
+      return true;
+    }
+    return false;
+  });
   const [initError, setInitError] = useState<string | null>(null);
 
   const [showTranslations, setShowTranslations] = useState<Record<number, boolean>>({});
@@ -230,9 +250,28 @@ export function Step4DialogueScreen({
   const goalSeenRef = useRef<boolean>(false);
   const hasRecordedLessonCompleteRef = useRef<boolean>(false);
   const isInitializingRef = useRef<boolean>(true);
+  const incompleteLessonCheckedRef = useRef<string | null>(null);
+  const lessonRestartedRef = useRef<string | null>(null);
+  const chatInitializedRef = useRef<string | null>(null);
+  
+  // Сбрасываем refs при смене урока
+  useEffect(() => {
+    const checkKey = `${day || 1}_${lesson || 1}_${resolvedLevel}`;
+    if (incompleteLessonCheckedRef.current !== checkKey) {
+      incompleteLessonCheckedRef.current = null;
+      lessonRestartedRef.current = null;
+      chatInitializedRef.current = null;
+    }
+  }, [day, lesson, resolvedLevel]);
   useEffect(() => {
     isInitializingRef.current = isInitializing;
   }, [isInitializing]);
+
+  // Сбрасываем флаги при смене урока
+  useEffect(() => {
+    incompleteLessonCheckedRef.current = null;
+    lessonRestartedRef.current = null;
+  }, [day, lesson, resolvedLevel]);
 
   const didInitialScrollKeyRef = useRef<string | null>(null);
   useEffect(() => {
@@ -269,7 +308,8 @@ export function Step4DialogueScreen({
       cacheTimerRef.current = null;
     }
     cacheTimerRef.current = window.setTimeout(() => {
-      cacheChatMessages(day || 1, lesson || 1, resolvedLevel, messages);
+      // Не кэшируем сообщения - они не сохраняются
+      // cacheChatMessages(day || 1, lesson || 1, resolvedLevel, messages);
       cacheTimerRef.current = null;
     }, 120);
     return () => {
@@ -949,12 +989,7 @@ export function Step4DialogueScreen({
         const out = advanceLesson({ script, currentStep: { type: 'words', index: 0 } });
         await appendEngineMessagesWithDelay(out.messages);
         setCurrentStep(out.nextStep || null);
-        upsertLessonProgress({
-          day: day || 1,
-          lesson: lesson || 1,
-          level: resolvedLevel,
-          currentStepSnapshot: out.nextStep || null,
-        }).catch((err) => console.error('[Step4Dialogue] Matching background save error:', err));
+        // Не сохраняем currentStepSnapshot - сохраняем только статус завершения
       } catch (err) {
         console.error('[Step4Dialogue] Error completing matching:', err);
       } finally {
@@ -984,6 +1019,37 @@ export function Step4DialogueScreen({
     const baseKey = `step4dialogue:constructorUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
     return getCacheKeyWithCurrentUser(baseKey);
   }, [day, lesson, resolvedLanguage, resolvedLevel]);
+  const grammarDrillsStorageKey = useMemo(() => {
+    const baseKey = `step4dialogue:grammarDrillsUI:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+    return getCacheKeyWithCurrentUser(baseKey);
+  }, [day, lesson, resolvedLanguage, resolvedLevel]);
+
+  const [grammarDrillsUI, setGrammarDrillsUI] = useState<Record<string, GrammarDrillsUiState>>({});
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(grammarDrillsStorageKey);
+      if (!raw) {
+        setGrammarDrillsUI({});
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        setGrammarDrillsUI(parsed);
+      } else {
+        setGrammarDrillsUI({});
+      }
+    } catch {
+      setGrammarDrillsUI({});
+    }
+  }, [grammarDrillsStorageKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(grammarDrillsStorageKey, JSON.stringify(grammarDrillsUI || {}));
+    } catch {
+      // ignore
+    }
+  }, [grammarDrillsStorageKey, grammarDrillsUI]);
 
   const { persistGrammarGateOpened } = useStep4ProgressPersistence({
     day,
@@ -1040,6 +1106,25 @@ export function Step4DialogueScreen({
 	      stripModuleTag,
 	    });
 
+	  // Обновляем grammarGateRevision после загрузки сообщений, чтобы grammarGate пересчитался
+	  // Это гарантирует, что кнопка "Проверить" появится после перезапуска урока
+	  useEffect(() => {
+	    if (isInitializing) return;
+	    if (messages.length === 0) return;
+	    // Проверяем, есть ли сообщения с грамматикой
+	    const hasGrammarMessage = messages.some((msg) => {
+	      if (msg.role !== 'model') return false;
+	      const parsed = tryParseJsonMessage(msg.text);
+	      if (!parsed) return false;
+	      if (parsed?.type === 'section' && typeof parsed.title === 'string' && /граммат|grammar/i.test(parsed.title)) return true;
+	      return false;
+	    });
+	    if (hasGrammarMessage && gatedGrammarSectionIdsRef.current.size === 0) {
+	      // Если есть сообщения с грамматикой и состояние пустое, обновляем revision для пересчета grammarGate
+	      setGrammarGateRevision((prev) => prev + 1);
+	    }
+	  }, [messages.length, isInitializing, tryParseJsonMessage]);
+
 	  const ankiDoneStorageKey = useMemo(() => {
 	    const baseKey = `step4dialogue:ankiDone:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
 	    return getCacheKeyWithCurrentUser(baseKey);
@@ -1074,6 +1159,8 @@ export function Step4DialogueScreen({
           .map((w) => ({
             word: String(w?.word || '').trim(),
             translation: String(w?.translation || '').trim(),
+            context: String(w?.context || '').trim(),
+            context_translation: String(w?.context_translation || '').trim(),
           }))
           .filter((x) => x.word && x.translation);
         if (!items.length) return;
@@ -1450,12 +1537,7 @@ export function Step4DialogueScreen({
     situationsIntegritySignatureRef.current = signature;
 
     setCurrentStep(target);
-    upsertLessonProgress({
-      day: day || 1,
-      lesson: lesson || 1,
-      level: resolvedLevel,
-      currentStepSnapshot: target,
-    }).catch((err) => console.error('[Step4Dialogue] situations progress reconcile error:', err));
+    // Не сохраняем currentStepSnapshot - сохраняем только статус завершения
   }, [
     currentStep,
     day,
@@ -1542,18 +1624,19 @@ export function Step4DialogueScreen({
     if (pendingVocabPlay) return;
     if (!showVocab) return;
     if (vocabIndex === prevVocabIndexRef.current) return;
+    // Не воспроизводим для индекса 0, так как первое слово воспроизводится через pendingVocabPlay
     if (vocabIndex === 0) {
       prevVocabIndexRef.current = vocabIndex;
       return;
     }
 
-	    prevVocabIndexRef.current = vocabIndex;
+    prevVocabIndexRef.current = vocabIndex;
 
-	    const word = vocabWords[vocabIndex];
-	    if (!word) return;
-	    // Передаем текст как есть, без нормализации (как в старой системе)
-	    const wordText = String(word.word || '').trim();
-	    const exampleText = String(word.context || '').trim();
+    const word = vocabWords[vocabIndex];
+    if (!word) return;
+    // Передаем текст как есть, без нормализации (как в старой системе)
+    const wordText = String(word.word || '').trim();
+    const exampleText = String(word.context || '').trim();
     const queue: Array<{ text: string; lang: string; kind: string }> = [];
     if (wordText) {
       queue.push({
@@ -1572,10 +1655,10 @@ export function Step4DialogueScreen({
         meta: { vocabIndex, vocabKind: 'example' },
       } as any);
     }
-	    if (queue.length) {
-	      enqueueVocabAudio(queue);
-	    }
-		  }, [vocabIndex, showVocab, vocabWords, enqueueVocabAudio, isInitializing, pendingVocabPlay]);
+    if (queue.length) {
+      enqueueVocabAudio(queue);
+    }
+  }, [vocabIndex, showVocab, vocabWords, enqueueVocabAudio, isInitializing, pendingVocabPlay]);
 
 	  const autoPlayedVocabExampleRef = useRef<Set<string>>(new Set());
 	  useEffect(() => {
@@ -1641,7 +1724,7 @@ export function Step4DialogueScreen({
     });
   }, [grammarHeadingScrollToken, shouldScrollToGrammarHeading]);
 
-  useVocabScroll({ showVocab, vocabIndex, vocabRefs });
+  useVocabScroll({ showVocab, vocabIndex, vocabRefs, isInitializing, vocabProgressStorageKey });
 
 	  const { restartLesson } = useLessonRestart({
 	    day,
@@ -1688,6 +1771,128 @@ export function Step4DialogueScreen({
 	    setAnkiDone,
 	    initializeChat,
 	  });
+
+  // Обработка подтверждения перезапуска незавершенного урока
+  const handleIncompleteLessonConfirm = useCallback(async () => {
+    if (!day || !lesson) return;
+    
+    const checkKey = `${day}_${lesson}_${resolvedLevel}`;
+    // Помечаем, что урок был перезапущен
+    lessonRestartedRef.current = checkKey;
+    incompleteLessonCheckedRef.current = checkKey;
+    
+    setShowIncompleteLessonModal(false);
+    
+    // Очищаем сообщения перед перезапуском
+    setMessages([]);
+    setCurrentStep(null);
+    
+    // Сбрасываем goalGateAcknowledged в localStorage, чтобы кнопка "Начинаем" появилась
+    try {
+      window.localStorage.removeItem(goalAckStorageKey);
+      setGoalGateAcknowledged(false);
+      setGoalGatePending(false);
+    } catch {
+      // ignore
+    }
+    
+    // Перезапускаем урок
+    await restartLesson();
+    
+    // Сбрасываем флаг инициализации, чтобы чат инициализировался заново
+    chatInitializedRef.current = null;
+    
+    // После перезапуска инициализируем чат
+    initializeChat(false, {
+      allowSeedFromCachedScript: startMode === 'next',
+    });
+  }, [day, lesson, resolvedLevel, restartLesson, setMessages, setCurrentStep, goalAckStorageKey, setGoalGateAcknowledged, setGoalGatePending, initializeChat, startMode]);
+
+  // Автоматический перезапуск незавершенного урока при входе
+  // Проверяем ДО инициализации чата, чтобы контент не успел появиться
+  // Должен быть после useLessonRestart, чтобы restartLesson был доступен
+  useEffect(() => {
+    if (!day || !lesson) return;
+
+    const checkKey = `${day}_${lesson}_${resolvedLevel}`;
+    if (incompleteLessonCheckedRef.current === checkKey) return; // Уже проверили этот урок
+    if (lessonRestartedRef.current === checkKey) return; // Урок уже был перезапущен
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const progress = await loadLessonProgress(day, lesson, resolvedLevel);
+        if (cancelled) return;
+        
+        // Если урок не завершен, но есть запись в БД (значит был начат ранее)
+        // значит урок был начат, но не завершен - автоматически перезапускаем
+        const isCompleted = progress?.completed === true;
+        const hasProgress = progress !== null; // Есть запись в БД
+        
+        // Проверяем только если есть прогресс и урок не завершен
+        // Если progress === null, значит урок новый и не нужно показывать модал
+        if (hasProgress && !isCompleted) {
+          incompleteLessonCheckedRef.current = checkKey;
+          
+          console.log('[Step4Dialogue] Incomplete lesson detected, showing warning...', {
+            hasProgress,
+            isCompleted,
+          });
+          
+          // Сбрасываем goalGateAcknowledged, чтобы кнопка "Начинаем" появилась после перезапуска
+          try {
+            window.localStorage.removeItem(goalAckStorageKey);
+            setGoalGateAcknowledged(false);
+            setGoalGatePending(false);
+          } catch {
+            // ignore
+          }
+          
+          // Показываем предупреждающее окно ДО инициализации чата
+          setShowIncompleteLessonModal(true);
+          // НЕ инициализируем чат, пока модальное окно открыто
+        } else {
+          incompleteLessonCheckedRef.current = checkKey;
+        }
+      } catch (err) {
+        console.error('[Step4Dialogue] Error checking incomplete lesson:', err);
+        incompleteLessonCheckedRef.current = checkKey;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [day, lesson, resolvedLevel, restartLesson, goalAckStorageKey, setGoalGateAcknowledged, setGoalGatePending]);
+
+  // Инициализируем чат только если урок не незавершен (модальное окно не показывается)
+  // Используем ref для отслеживания, была ли уже вызвана инициализация для этого урока
+  useEffect(() => {
+    if (!day || !lesson) return;
+    if (showIncompleteLessonModal) return; // Не инициализируем, если показывается модальное окно
+    if (isInitializing) return; // Уже инициализируется
+    
+    const checkKey = `${day}_${lesson}_${resolvedLevel}`;
+    if (chatInitializedRef.current === checkKey) return; // Уже инициализировали для этого урока
+    
+    // Проверяем, что урок уже был проверен
+    if (incompleteLessonCheckedRef.current !== checkKey) {
+      // Еще не проверили урок, ждем
+      return;
+    }
+    
+    // Если урок завершен (передан через initialLessonProgress), не инициализируем чат
+    if (initialLessonProgress?.completed === true) {
+      chatInitializedRef.current = checkKey;
+      return; // Уже установлено в useState выше
+    }
+    
+    // Инициализируем чат только если урок не завершен
+    chatInitializedRef.current = checkKey;
+    initializeChat(false, {
+      allowSeedFromCachedScript: startMode === 'next',
+    });
+  }, [day, lesson, resolvedLevel, showIncompleteLessonModal, isInitializing, initializeChat, startMode, setLessonCompletedPersisted, setIsLoading, setIsInitializing]);
 
   const matchingInsertIndexSafe = useMemo(() => {
     if (matchingInsertIndex === null) return null;
@@ -1862,25 +2067,56 @@ export function Step4DialogueScreen({
 	    } catch {
 	      // ignore
 	    }
+	    // Сначала обновляем состояние goalGate, чтобы useMessageDrivenUi правильно обработал words_list
+	    // Важно: сначала устанавливаем goalGateAcknowledged в true, потом goalGatePending в false
+	    // Это гарантирует, что при обработке words_list goalGateAcknowledged уже будет true
 	    setGoalGateAcknowledged(true);
+	    // Небольшая задержка, чтобы состояние обновилось
+	    await new Promise(resolve => setTimeout(resolve, 10));
 	    setGoalGatePending(false);
+	    
 	    setIsLoading(true);
 	    let advancedIntoWordsList = false;
 	    try {
+	      // Проверяем, есть ли скрипт в state
+	      if (!lessonScript) {
+	        console.log('[Step4Dialogue] lessonScript is null, loading via ensureLessonScript...');
+	      } else {
+	        console.log('[Step4Dialogue] lessonScript exists in state:', !!lessonScript?.words);
+	      }
+	      
 	      const script = (await ensureLessonScript()) as LessonScriptV2;
+	      console.log('[Step4Dialogue] ensureLessonScript returned:', !!script, !!script?.words);
+	      
+	      if (!script || !script.words) {
+	        console.error('[Step4Dialogue] Lesson script not loaded or invalid:', script);
+	        setIsLoading(false);
+	        return;
+	      }
+	      
+	      // Убеждаемся, что скрипт установлен в state
+	      if (!lessonScript || lessonScript !== script) {
+	        setLessonScript(script);
+	        console.log('[Step4Dialogue] Set lessonScript in state');
+	      }
 	      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
+	      console.log('[Step4Dialogue] advanceLesson returned:', {
+	        messagesCount: out.messages?.length,
+        hasWordsList: out.messages?.some(m => {
+          const parsed = tryParseJsonMessage(m.text);
+          return parsed?.type === 'words_list';
+        }),
+        nextStep: out.nextStep,
+      });
+	      
 	      if (out.messages?.length) {
 	        await appendEngineMessagesWithDelay(out.messages, 0);
 	      }
 	      setCurrentStep(out.nextStep || null);
-	      upsertLessonProgress({
-	        day: day || 1,
-	        lesson: lesson || 1,
-	        level: resolvedLevel,
-	        currentStepSnapshot: out.nextStep || null,
-	      }).catch((err) => console.error('[Step4Dialogue] Goal background save error:', err));
+	      // Не сохраняем currentStepSnapshot - сохраняем только статус завершения
 	      // Make the transition feel immediate even if effects run later.
-	      setShowVocab(true);
+	      // setShowVocab будет установлен в useMessageDrivenUi при обработке words_list сообщения
+	      // setShowVocab(true);
 	      advancedIntoWordsList = Boolean(
 	        out.messages?.some((msg) => {
 	          if (!msg || msg.role !== 'model') return false;
@@ -1950,12 +2186,12 @@ export function Step4DialogueScreen({
           const step = activeSituation.step;
           if (step && currentStep?.type !== 'situations') {
             setCurrentStep(step);
-            upsertLessonProgress({
-              day: day || 1,
-              lesson: lesson || 1,
-              level: resolvedLevel,
-              currentStepSnapshot: step,
-            }).catch(() => {});
+              // Не сохраняем currentStepSnapshot - сохраняем только статус завершения
+              // upsertLessonProgress({
+              //   day: day || 1,
+              //   lesson: lesson || 1,
+              //   level: resolvedLevel,
+              // }).catch(() => {});
           }
           startSituation(activeSituationKeys.length ? activeSituationKeys : firstPendingSituationKey);
         },
@@ -1983,6 +2219,154 @@ export function Step4DialogueScreen({
         onClick: handleCheckVocabulary,
         disabled: false,
       };
+    }
+
+    // 4.5. Grammar Drills
+    // Check if there's a grammar drills card that needs "Проверить" or "Продолжить" button
+    if (currentStep?.type === 'grammar') {
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (msg.role !== 'model') continue;
+        
+        const parsed = tryParseJsonMessage(msg.text);
+        if (parsed?.type !== 'grammar') continue;
+        
+        const stableId = getMessageStableId(msg, i);
+        const ui = grammarDrillsUI?.[stableId];
+        const drills = Array.isArray((parsed as any).drills) ? ((parsed as any).drills as any[]) : [];
+        
+        // If UI doesn't exist yet or drills haven't started (currentDrillIndex is null), show "Проверить" to start drills
+        if (!ui || ui.currentDrillIndex === null || ui.currentDrillIndex === undefined) {
+          return {
+            label: 'Проверить',
+            onClick: () => {
+              if (isLoading) return;
+              const count = drills.length;
+              setGrammarDrillsUI((prev) => ({
+                ...prev,
+                [stableId]: {
+                  answers: Array.from({ length: count }, () => ''),
+                  checked: Array.from({ length: count }, () => false),
+                  correct: Array.from({ length: count }, () => false),
+                  completed: false,
+                  currentDrillIndex: 0, // Start with first drill
+                },
+              }));
+            },
+            disabled: isLoading,
+          };
+        }
+        
+        // Check if all drills are completed and correct
+        const allCorrect = drills.length > 0 && 
+          ui.correct?.length === drills.length && 
+          ui.correct.every(Boolean) &&
+          ui.checked?.length === drills.length &&
+          ui.checked.every(Boolean) &&
+          typeof ui.currentDrillIndex === 'number' &&
+          ui.currentDrillIndex >= drills.length - 1;
+        
+        if (allCorrect && !ui.completed) {
+          return {
+            label: 'Продолжить',
+            onClick: async () => {
+              setIsLoading(true);
+              try {
+                const stepForAnswer = msg.currentStepSnapshot ?? currentStep;
+                await handleStudentAnswer('__grammar_drills_complete__', {
+                  stepOverride: stepForAnswer,
+                  silent: true,
+                  bypassValidation: true,
+                });
+              } finally {
+                setIsLoading(false);
+              }
+            },
+            disabled: isLoading,
+          };
+        }
+        
+        // Check if drills haven't started yet (currentDrillIndex is null)
+        if (ui.currentDrillIndex === null || ui.currentDrillIndex === undefined) {
+          return {
+            label: 'Проверить',
+            onClick: () => {
+              if (isLoading) return;
+              const count = drills.length;
+              setGrammarDrillsUI((prev) => ({
+                ...prev,
+                [stableId]: {
+                  answers: Array.isArray(ui.answers) && ui.answers.length === count ? ui.answers : Array.from({ length: count }, () => ''),
+                  checked: Array.isArray(ui.checked) && ui.checked.length === count ? ui.checked : Array.from({ length: count }, () => false),
+                  correct: Array.isArray(ui.correct) && ui.correct.length === count ? ui.correct : Array.from({ length: count }, () => false),
+                  completed: Boolean(ui.completed),
+                  currentDrillIndex: 0, // Start with first drill
+                },
+              }));
+            },
+            disabled: isLoading,
+          };
+        }
+        
+        // Check if there's a current drill that needs to be checked
+        const currentDrillIndex = typeof ui.currentDrillIndex === 'number' ? ui.currentDrillIndex : 0;
+        const currentAnswer = ui.answers?.[currentDrillIndex] || '';
+        const isCurrentChecked = ui.checked?.[currentDrillIndex] === true;
+        const isCurrentCorrect = ui.correct?.[currentDrillIndex] === true;
+        
+        // Show "Проверить" button if there's an answer and it's not checked yet, or if it's checked but incorrect
+        if (currentDrillIndex < drills.length && currentAnswer.trim() && (!isCurrentChecked || (isCurrentChecked && !isCurrentCorrect))) {
+            return {
+              label: 'Проверить',
+              onClick: async () => {
+                if (isLoading) return;
+                
+                setIsLoading(true);
+                try {
+                  const stepForValidation = {
+                    ...currentStep,
+                    type: 'grammar' as const,
+                    subIndex: currentDrillIndex,
+                  };
+                  
+                  const { validateDialogueAnswerV2 } = await import('../../services/generationService');
+                  const result = await validateDialogueAnswerV2({
+                    lessonId: lessonIdRef.current || '',
+                    userId: userIdRef.current || '',
+                    currentStep: stepForValidation,
+                    studentAnswer: currentAnswer,
+                    uiLang: resolvedLanguage || 'ru',
+                  });
+                  
+                  // Update UI state
+                  const nextChecked = [...(ui.checked || Array(drills.length).fill(false))];
+                  const nextCorrect = [...(ui.correct || Array(drills.length).fill(false))];
+                  nextChecked[currentDrillIndex] = true;
+                  nextCorrect[currentDrillIndex] = result.isCorrect;
+                  
+                  let nextDrillIndex = currentDrillIndex;
+                  // Move to next drill if correct, or stay on current if incorrect
+                  if (result.isCorrect && currentDrillIndex < drills.length - 1) {
+                    nextDrillIndex = currentDrillIndex + 1;
+                  }
+                  
+                  setGrammarDrillsUI((prev) => ({
+                    ...prev,
+                    [stableId]: {
+                      ...ui,
+                      checked: nextChecked,
+                      correct: nextCorrect,
+                      currentDrillIndex: nextDrillIndex,
+                    },
+                  }));
+                } finally {
+                  setIsLoading(false);
+                }
+              },
+              disabled: isLoading || !currentAnswer.trim(),
+            };
+        }
+      }
     }
 
     // 5. Find The Mistake Next
@@ -2115,6 +2499,12 @@ export function Step4DialogueScreen({
     startedSituations,
     startSituation,
     setCurrentStep,
+    grammarDrillsUI,
+    setGrammarDrillsUI,
+    getMessageStableId,
+    tryParseJsonMessage,
+    setIsLoading,
+    resolvedLanguage,
   ]);
 
   const lessonProgress = useMemo(() => {
@@ -2142,7 +2532,11 @@ export function Step4DialogueScreen({
     const vocabUnitCount = vocabWordsCount > 0 ? vocabWordsCount : 0;
     const matchingUnitCount = vocabWordsCount > 0 ? vocabWordsCount : 0;
     const grammarUnitCount =
-      lessonScript?.grammar?.audio_exercise?.expected || lessonScript?.grammar?.text_exercise?.expected ? 1 : 0;
+      (Array.isArray((lessonScript as any)?.grammar?.drills) && (lessonScript as any).grammar.drills.length > 0) ||
+      (lessonScript as any)?.grammar?.audio_exercise?.expected ||
+      (lessonScript as any)?.grammar?.text_exercise?.expected
+        ? 1
+        : 0;
     const constructorCount = lessonScript?.constructor?.tasks?.length || 0;
     const findMistakeCount = lessonScript?.find_the_mistake?.tasks?.length || 0;
     const situationsCount = (() => {
@@ -2189,7 +2583,11 @@ export function Step4DialogueScreen({
           : 0;
       completed = vocabWithin + matchingWithin;
     } else if (stepType === 'grammar') {
-      completed = prefixAfterWords + (grammarUnitCount ? 1 : 0);
+      const hasDrills = Array.isArray((lessonScript as any)?.grammar?.drills) && (lessonScript as any).grammar.drills.length > 0;
+      const drillsCompleted = hasDrills
+        ? Object.values(grammarDrillsUI || {}).some((st: any) => Boolean(st?.completed))
+        : false;
+      completed = prefixAfterWords + (grammarUnitCount ? (hasDrills ? (drillsCompleted ? 1 : 0) : 1) : 0);
     } else if (stepType === 'constructor') {
       const within = Math.min(Math.max(0, stepIndex) + 1, constructorCount);
       completed = prefixAfterGrammar + within;
@@ -2233,9 +2631,12 @@ export function Step4DialogueScreen({
     vocabIndex,
     vocabWords,
     wordOptions,
+    grammarDrillsUI,
   ]);
 
-  const overlayVisible = isInitializing || (isLoading && messages.length === 0);
+  const overlayVisible = (isInitializing || (isLoading && messages.length === 0)) && !lessonCompletedPersisted;
+  // Скрываем весь контент урока, когда показывается модальное окно о незавершенном уроке
+  const shouldHideContent = showIncompleteLessonModal;
 
   return (
     <>
@@ -2266,17 +2667,18 @@ export function Step4DialogueScreen({
             </div>
           </div>
         )}
-        <div ref={layoutContainerRef} className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
-          <DialogueHeader
-            progressPercent={lessonProgress.percent}
-            progressLabel={lessonProgress.label}
-            lessonNumber={lesson ?? day ?? null}
-            onBack={onBack}
-            onRestart={() => setShowRestartConfirm(true)}
-            isLoading={isLoading}
-          />
+        {!showIncompleteLessonModal && (
+          <div ref={layoutContainerRef} className="w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full">
+            <DialogueHeader
+              progressPercent={lessonProgress.percent}
+              progressLabel={lessonProgress.label}
+              lessonNumber={lesson ?? day ?? null}
+              onBack={onBack}
+              onRestart={() => setShowRestartConfirm(true)}
+              isLoading={isLoading}
+            />
 
-          <DialogueMessages
+            <DialogueMessages
             scrollContainerRef={scrollContainerRef}
             messagesEndRef={messagesEndRef}
             messageRefs={messageRefs}
@@ -2307,9 +2709,14 @@ export function Step4DialogueScreen({
             findMistakeStorageKey={findMistakeStorageKey}
             constructorUI={constructorUI}
             setConstructorUI={setConstructorUI}
+            grammarDrillsUI={grammarDrillsUI}
+            setGrammarDrillsUI={setGrammarDrillsUI}
             isLoading={isLoading}
             setIsLoading={setIsLoading}
             handleStudentAnswer={handleStudentAnswer}
+            lessonId={lessonIdRef.current}
+            userId={userIdRef.current}
+            language={resolvedLanguage}
             extractStructuredSections={extractStructuredSections}
             renderMarkdown={renderMarkdown}
             shouldRenderMatchingBlock={shouldRenderMatchingBlock}
@@ -2340,23 +2747,24 @@ export function Step4DialogueScreen({
             startedSituations={startedSituations}
           />
 
-          {overlayVisible || tutorMiniOpen ? null : (
-            <DialogueInputBar
-              inputMode={effectiveInputMode}
-              input={input}
-              onInputChange={setInput}
-              onSend={handleSend}
-              placeholder={copy.placeholder}
-              isLoading={isLoading}
-              isRecording={isRecording}
-              isTranscribing={isTranscribing}
-              onToggleRecording={onToggleRecording}
-              hiddenTopContent={null}
-              cta={ankiGateActive && !situationAwaitingStart ? null : activeCta}
-              autoFocus={!suppressInputAutofocus}
-            />
-          )}
-        </div>
+            {overlayVisible || tutorMiniOpen || lessonCompletedPersisted ? null : (
+              <DialogueInputBar
+                inputMode={effectiveInputMode}
+                input={input}
+                onInputChange={setInput}
+                onSend={handleSend}
+                placeholder={copy.placeholder}
+                isLoading={isLoading}
+                isRecording={isRecording}
+                isTranscribing={isTranscribing}
+                onToggleRecording={onToggleRecording}
+                hiddenTopContent={null}
+                cta={ankiGateActive && !situationAwaitingStart ? null : activeCta}
+                autoFocus={!suppressInputAutofocus}
+              />
+            )}
+          </div>
+        )}
       </div>
 
       {overlayVisible ? null : (
@@ -2383,6 +2791,10 @@ export function Step4DialogueScreen({
           setShowRestartConfirm(false);
           await restartLesson();
         }}
+      />
+      <IncompleteLessonModal
+        open={showIncompleteLessonModal}
+        onConfirm={handleIncompleteLessonConfirm}
       />
     </>
   );

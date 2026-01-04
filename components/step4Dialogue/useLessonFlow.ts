@@ -110,54 +110,19 @@ export function useLessonFlow({
       if (!day || !lesson) return;
       const trimmed = String(text || '').trim();
       if (!trimmed) return;
+      // Упрощено: не сохраняем сообщения, только проверяем завершение урока
       const saveSpan = startSpan('saveChatMessage', { role, hasSnapshot: !!stepSnapshot });
       saveChainRef.current = saveChainRef.current
         .then(async () => {
-          const saved = await saveChatMessage(day || 1, lesson || 1, role, trimmed, stepSnapshot, level || 'A1');
-          saveSpan?.('ok', { persisted: !!saved?.id });
-          if (!optimisticId) return;
-          if (saved?.id) {
-            setMessages((prev) => {
-              const idx = prev.findIndex((m) => m.id === optimisticId);
-              if (idx === -1) return prev;
-              const next = [...prev];
-              next[idx] = {
-                ...next[idx],
-                ...saved,
-                local: { source: 'db', saveStatus: 'saved', updatedAt: Date.now() },
-              };
-              return next;
-            });
-            return;
-          }
-          setMessages((prev) => {
-            const idx = prev.findIndex((m) => m.id === optimisticId);
-            if (idx === -1) return prev;
-            const next = [...prev];
-            next[idx] = {
-              ...next[idx],
-              local: { ...(next[idx].local || {}), saveStatus: 'failed', updatedAt: Date.now() },
-            };
-            return next;
-          });
+          await saveChatMessage(day || 1, lesson || 1, role, trimmed, stepSnapshot, level || 'A1');
+          saveSpan?.('ok', { persisted: false });
         })
         .catch((err) => {
           console.error('[Step4Dialogue] saveChatMessage error:', err);
           saveSpan?.('error', { error: String(err?.message || err) });
-          if (!optimisticId) return;
-          setMessages((prev) => {
-            const idx = prev.findIndex((m) => m.id === optimisticId);
-            if (idx === -1) return prev;
-            const next = [...prev];
-            next[idx] = {
-              ...next[idx],
-              local: { ...(next[idx].local || {}), saveStatus: 'failed', error: String(err?.message || err), updatedAt: Date.now() },
-            };
-            return next;
-          });
         });
     },
-    [day, lesson, level, setMessages]
+    [day, lesson, level]
   );
 
   const MESSAGE_BLOCK_PAUSE_MS = isStep4DebugEnabled('instant') ? 0 : 1000;
@@ -447,19 +412,22 @@ export function useLessonFlow({
           }
         }
         setCurrentStep(out.nextStep || null);
-        const upsertSpan = startSpan('upsertLessonProgress', { stepType: stepForInput.type, branch: 'main' });
-        upsertLessonProgress({
-          day,
-          lesson,
-          level,
-          currentStepSnapshot: out.nextStep || null,
-          completed: out.messages?.some((m) => String(m.text || '').includes('<lesson_complete>')) ? true : undefined,
-        })
-          .then(() => upsertSpan?.('ok'))
-          .catch((err) => {
-            console.error('[Step4Dialogue] upsertLessonProgress bg error:', err);
-            upsertSpan?.('error', { error: String(err?.message || err) });
-          });
+        // Сохраняем только статус завершения урока
+        const hasCompleted = out.messages?.some((m) => String(m.text || '').includes('<lesson_complete>'));
+        if (hasCompleted) {
+          const upsertSpan = startSpan('upsertLessonProgress', { stepType: stepForInput.type, branch: 'main' });
+          upsertLessonProgress({
+            day,
+            lesson,
+            level,
+            completed: true,
+          })
+            .then(() => upsertSpan?.('ok'))
+            .catch((err) => {
+              console.error('[Step4Dialogue] upsertLessonProgress bg error:', err);
+              upsertSpan?.('error', { error: String(err?.message || err) });
+            });
+        }
         totalSpan?.('ok', {
           branch: String(stepForInput.type),
           messagesAdded: messagesWithSnapshot.length,
