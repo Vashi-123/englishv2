@@ -83,7 +83,7 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                     [
                         "productId": p.id,
                         "price": p.price.description,
-                        "currency": p.priceFormatStyle.currencyCode ?? "",
+                        "currency": p.priceFormatStyle.currencyCode,
                         "localizedPrice": p.displayPrice
                     ]
                 }
@@ -115,10 +115,10 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                     // Note: offerCodeRefName is not directly available in StoreKit 2 Transaction
                     // Promo codes are applied automatically by Apple and can be extracted from receipt
                     // via App Store Server API on the server side
-                    var purchaseData: [String: Any] = [
+                    let purchaseData: [String: Any] = [
                         "transactionId": transaction.id,
                         "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
-                        "receiptData": receipt ?? NSNull()
+                        "receiptData": (receipt as Any?) ?? NSNull()
                     ]
                     // Try to extract offerCodeRefName if available (may not be accessible in StoreKit 2)
                     // Server will parse receipt to extract promo code information
@@ -140,33 +140,49 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func restorePurchases(_ call: CAPPluginCall) {
         Task {
-            do {
-                for await result in Transaction.currentEntitlements {
-                    if case .verified(let transaction) = result {
-                        let receipt = self.loadReceipt()
-                        call.resolve([
-                            "purchase": [
-                                "transactionId": transaction.id,
-                                "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
-                                "receiptData": receipt ?? NSNull()
-                            ]
-                        ])
-                        await transaction.finish()
-                        return
-                    }
+            for await result in Transaction.currentEntitlements {
+                if case .verified(let transaction) = result {
+                    let receipt = self.loadReceipt()
+                    call.resolve([
+                        "purchase": [
+                            "transactionId": transaction.id,
+                            "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
+                            "receiptData": (receipt as Any?) ?? NSNull()
+                        ]
+                    ])
+                    await transaction.finish()
+                    return
                 }
-                call.resolve(["purchase": NSNull()])
-            } catch {
-                call.reject(error.localizedDescription)
             }
+            call.resolve(["purchase": NSNull()])
         }
     }
 
     @objc func presentOfferCode(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             if #available(iOS 14.0, *) {
-                SKPaymentQueue.default().presentCodeRedemptionSheet()
-                call.resolve([:])
+                // Use StoreKit 2 API for iOS 16+
+                if #available(iOS 16.0, *) {
+                    Task { @MainActor in
+                        do {
+                            guard let windowScene = UIApplication.shared.connectedScenes
+                                .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene
+                                ?? UIApplication.shared.connectedScenes.first as? UIWindowScene else {
+                                call.reject("No active window scene found")
+                                return
+                            }
+                            try await AppStore.presentOfferCodeRedeemSheet(in: windowScene)
+                            call.resolve([:])
+                        } catch {
+                            NSLog("[NativeIap] presentOfferCodeRedeemSheet error: %@", error.localizedDescription)
+                            call.reject("Failed to present offer code sheet: \(error.localizedDescription)")
+                        }
+                    }
+                } else {
+                    // Fallback to StoreKit 1 API for iOS 14-15
+                    SKPaymentQueue.default().presentCodeRedemptionSheet()
+                    call.resolve([:])
+                }
             } else {
                 call.reject("Offer codes are only available on iOS 14.0 or later")
             }
@@ -185,11 +201,30 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
 
 class MyBridgeViewController: CAPBridgeViewController {
     
+    private var transactionUpdateTask: Task<Void, Never>?
+    
     override open func capacitorDidLoad() {
         NSLog("[MyBridgeViewController] capacitorDidLoad - registering AuthSessionPlugin")
         bridge?.registerPluginInstance(AuthSessionPlugin())
         NSLog("[MyBridgeViewController] capacitorDidLoad - registering NativeIapPlugin")
         bridge?.registerPluginInstance(NativeIapPlugin())
+        
+        // Listen for transaction updates to avoid missing successful purchases
+        if #available(iOS 15.0, *) {
+            transactionUpdateTask = Task {
+                for await result in Transaction.updates {
+                    if case .verified(let transaction) = result {
+                        // Transaction is already handled in purchase() method
+                        // This listener ensures we don't miss any transactions
+                        await transaction.finish()
+                    }
+                }
+            }
+        }
+    }
+    
+    deinit {
+        transactionUpdateTask?.cancel()
     }
 
     // Убираем стандартный accessory bar (Prev/Next/Done), чтобы не плодить auto-layout warnings

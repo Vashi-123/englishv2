@@ -11,7 +11,7 @@ interface UIState {
   showCourseTopics: boolean;
   
   // Confirm modal
-  confirmAction: 'reset' | 'signout' | null;
+  confirmAction: 'reset' | 'signout' | 'deleteAccount' | 'restorePurchases' | null;
   confirmVisible: boolean;
   
   // Premium gate
@@ -32,7 +32,7 @@ interface UIState {
   setShowGrammarModal: (show: boolean) => void;
   setGrammarModalActive: (active: boolean) => void;
   setShowCourseTopics: (show: boolean) => void;
-  setConfirmAction: (action: 'reset' | 'signout' | null) => void;
+  setConfirmAction: (action: 'reset' | 'signout' | 'deleteAccount' | 'restorePurchases' | null) => void;
   setConfirmVisible: (visible: boolean) => void;
   setPremiumGateLesson: (lesson: number | null) => void;
   setPremiumGateVisible: (visible: boolean) => void;

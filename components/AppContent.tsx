@@ -54,6 +54,8 @@ import { useUIStore, useLessonsStore } from '../stores';
 import { logError } from '../services/errorLogger';
 import { useSupabaseConnectivity } from '../hooks/useSupabaseConnectivity';
 import { supabase } from '../services/supabaseClient';
+import { Capacitor } from '@capacitor/core';
+import { restoreIosPurchases } from '../services/iapService';
 
 export const AppContent: React.FC<{
   userId?: string;
@@ -281,7 +283,7 @@ export const AppContent: React.FC<{
     }, 220);
   }, []);
 
-  const openConfirm = useCallback((kind: 'reset' | 'signout' | 'deleteAccount') => {
+  const openConfirm = useCallback((kind: 'reset' | 'signout' | 'deleteAccount' | 'restorePurchases') => {
     if (typeof window === 'undefined') return;
     if (confirmCloseTimerRef.current != null) {
       window.clearTimeout(confirmCloseTimerRef.current);
@@ -954,6 +956,43 @@ export const AppContent: React.FC<{
     }
   };
 
+  const handleRestorePurchases = async () => {
+    const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+    if (!isNativeIos) {
+      alert('Восстановление покупок доступно только на iOS');
+      return;
+    }
+
+    try {
+      const result = await restoreIosPurchases();
+      
+      // result всегда должен быть определен после исправления restoreIosPurchases
+      if (!result) {
+        alert('Не удалось восстановить покупки');
+        return;
+      }
+      
+      if (result.ok && result.granted) {
+        // Обновляем данные дашборда для отображения обновленного статуса premium
+        await reloadDashboard();
+        alert('Покупки успешно восстановлены');
+      } else if (result.ok && !result.granted) {
+        // Покупок нет - это нормальная ситуация, не ошибка
+        alert('Не найдено покупок для восстановления');
+      } else if (!result.ok && 'error' in result) {
+        // result.ok === false, значит это тип с error
+        alert(result.error || 'Не удалось восстановить покупки');
+      } else {
+        alert('Не удалось восстановить покупки');
+      }
+    } catch (err) {
+      console.error('[RestorePurchases] Error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Не удалось восстановить покупки';
+      alert(errorMessage);
+      throw err;
+    }
+  };
+
   const handleDeleteAccount = async () => {
     try {
       // Вызываем edge function для удаления аккаунта
@@ -1172,6 +1211,7 @@ export const AppContent: React.FC<{
           }}
           onResetProgress={() => openConfirm('reset')}
           onSignOut={() => openConfirm('signout')}
+          onRestorePurchases={() => openConfirm('restorePurchases')}
           onDeleteAccount={() => openConfirm('deleteAccount')}
           totalCompletedCount={totalCompletedCount}
           totalSprintTasks={TOTAL_SPRINT_TASKS}
@@ -1253,8 +1293,13 @@ export const AppContent: React.FC<{
           try {
             if (confirmAction === 'reset') {
               await handleResetProgress();
+              closeConfirm();
             } else if (confirmAction === 'deleteAccount') {
               await handleDeleteAccount();
+              // closeConfirm не нужен, т.к. происходит выход
+            } else if (confirmAction === 'restorePurchases') {
+              await handleRestorePurchases();
+              closeConfirm();
             } else {
               // Таймаут для выхода - принудительно закрываем через 6 секунд
               const signOutPromise = onSignOut();
@@ -1266,11 +1311,13 @@ export const AppContent: React.FC<{
               });
               
               await Promise.race([signOutPromise, timeoutPromise]);
+              closeConfirm();
             }
           } catch (err) {
             console.error('[ConfirmModal] action failed:', err);
             // Показываем ошибку пользователю (можно добавить toast или alert)
             alert(err instanceof Error ? err.message : 'Произошла ошибка');
+            // Не закрываем модальное окно при ошибке, чтобы пользователь мог попробовать снова
           } finally {
             setConfirmProcessing(false);
             closeConfirm();

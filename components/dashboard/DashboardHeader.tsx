@@ -1,10 +1,11 @@
-import React, { memo } from 'react';
+import React, { memo, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Crown, GraduationCap } from 'lucide-react';
 import { ViewState } from '../../types';
 import { useLanguageMenu } from '../../hooks/useLanguageMenu';
 import { formatFirstLessonsRu } from '../../services/ruPlural';
 import { FREE_LESSON_COUNT } from '../../services/billingService';
+import { Capacitor } from '@capacitor/core';
 
 interface DashboardHeaderProps {
   userEmail?: string;
@@ -21,6 +22,7 @@ interface DashboardHeaderProps {
   onManageSubscription: () => void;
   onResetProgress: () => void;
   onSignOut: () => void;
+  onRestorePurchases?: () => void;
   onDeleteAccount: () => void;
 }
 
@@ -39,9 +41,11 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
   onManageSubscription,
   onResetProgress,
   onSignOut,
+  onRestorePurchases,
   onDeleteAccount,
 }) => {
   const { showLangMenu, langMenuVisible, langMenuRef, langMenuPos, openLangMenu, closeLangMenu } = useLanguageMenu();
+  const isNativeIos = useMemo(() => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios', []);
 
   return (
     <div className="flex flex-col gap-1.5 z-10 flex-none">
@@ -187,6 +191,19 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                 </div>
                 <div className="h-px bg-gray-100" />
                 <div className="space-y-2">
+                  {isNativeIos && (
+                    <button
+                      onClick={() => {
+                        closeLangMenu();
+                        if (onRestorePurchases) {
+                          onRestorePurchases();
+                        }
+                      }}
+                      className="w-full text-left px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-sm font-semibold"
+                    >
+                      Восстановить покупки
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       closeLangMenu();

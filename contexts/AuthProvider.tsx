@@ -16,7 +16,7 @@ interface AuthContextType {
   refreshSession: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+export const AuthContext = createContext<AuthContextType | null>(null);
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -181,6 +181,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             safeClearFlag();
           }
         } else if (code && code !== lastHandledAuthCodeRef.current) {
+          // Only process OAuth code if OAuth was actually initiated (flag is set)
+          // This prevents false positives from other URL parameters
+          const oauthWasInitiated = localStorage.getItem(OAUTH_IN_PROGRESS_KEY) === '1';
+          if (!oauthWasInitiated) {
+            console.log('[Auth] Code found in URL but OAuth was not initiated, ignoring (may be from other source)');
+            return;
+          }
+          
           console.log('[Auth] Processing code exchange');
           lastHandledAuthCodeRef.current = code;
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);

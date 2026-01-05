@@ -61,6 +61,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   const retryAttemptRef = useRef<number>(0);
   const isMountedRef = useRef<boolean>(true);
   const forceTimeoutRef = useRef<number | null>(null);
+  const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const [chartReady, setChartReady] = useState(false);
 
   // Проверяем, является ли пользователь админом
   useEffect(() => {
@@ -445,6 +447,49 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
       }
     }
   }, [allMonths.length, selectedMonthIndex]);
+
+  // Проверка готовности контейнера для графика
+  useEffect(() => {
+    if (!chartData || chartData.length === 0) {
+      setChartReady(false);
+      return;
+    }
+
+    const container = chartContainerRef.current;
+    if (!container) {
+      setChartReady(false);
+      return;
+    }
+
+    const checkSize = () => {
+      const rect = container.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setChartReady(true);
+      }
+    };
+
+    // Проверяем сразу
+    checkSize();
+
+    // Используем ResizeObserver для отслеживания изменений размера
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        checkSize();
+      });
+      resizeObserver.observe(container);
+    } else {
+      // Fallback для браузеров без ResizeObserver
+      const interval = setInterval(checkSize, 100);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
+  }, [chartData]);
 
   // Получаем выбранный месяц
   const selectedMonth = selectedMonthIndex !== null && allMonths.length > 0
@@ -1067,8 +1112,13 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
               <h2 className="text-base sm:text-lg font-black text-slate-900">График по всем месяцам</h2>
             </div>
             
-            <div className="w-full" style={{ minHeight: '300px', height: '300px' }}>
-              <ResponsiveContainer width="100%" height={300} minHeight={300}>
+            <div 
+              ref={chartContainerRef}
+              className="w-full" 
+              style={{ minHeight: '300px', height: '300px', position: 'relative' }}
+            >
+              {chartReady ? (
+                <ResponsiveContainer width="100%" height={300} minHeight={300}>
                 <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis 
@@ -1128,6 +1178,11 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
                   />
                 </LineChart>
               </ResponsiveContainer>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+                </div>
+              )}
             </div>
           </div>
         )}

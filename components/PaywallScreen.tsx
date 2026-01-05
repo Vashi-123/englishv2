@@ -9,7 +9,7 @@ import {
   BILLING_PRODUCT_KEY,
   quoteBilling,
 } from "../services/billingService";
-import { fetchIosIapProduct, fetchIosIapProductById, purchaseIosIap } from "../services/iapService";
+import { fetchIosIapProduct, fetchIosIapProductById, purchaseIosIap, presentOfferCode } from "../services/iapService";
 import { formatFirstLessonsRu } from "../services/ruPlural";
 const STATUS_URL = import.meta.env.VITE_PAYMENT_STATUS_URL || "/check";
 const SITE_URL = import.meta.env.VITE_SITE_URL || "https://go-practice.com";
@@ -351,6 +351,41 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     }
   };
 
+  const handlePresentOfferCode = async () => {
+    if (!isNativeIos) return;
+    
+    // Check if OAuth is in progress - don't interfere with OAuth flow
+    try {
+      const oauthInProgress = localStorage.getItem('englishv2:oauthInProgress');
+      if (oauthInProgress === '1') {
+        console.warn("[PaywallScreen] OAuth in progress, skipping offer code presentation");
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    
+    try {
+      console.log("[PaywallScreen] Presenting offer code sheet");
+      await presentOfferCode();
+      console.log("[PaywallScreen] Offer code sheet presented successfully");
+      // After user enters offer code, Apple will handle the purchase flow
+      // The purchase will be processed automatically by StoreKit
+      // We should refresh entitlements after a short delay to check if purchase was completed
+      setTimeout(() => {
+        onEntitlementsRefresh();
+      }, 2000);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[PaywallScreen] presentOfferCode error", msg);
+      // Don't show error to user - Apple's UI handles errors
+      // But log it for debugging
+      if (msg.includes('bad_code_verifier') || msg.includes('OAuth')) {
+        console.warn("[PaywallScreen] OAuth-related error during offer code presentation - this may be a false positive");
+      }
+    }
+  };
+
   const payButtonLabel = isPremium ? "Premium активен" : "Оплатить";
   const useIosIap = isNativeIos;
   const anyPaying = paying || iapPaying || iapLoading || Boolean(isLoading);
@@ -441,39 +476,41 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
 	            </div>
 	          </div>
 
-          {/* Promo code field */}
-          <div className="mt-6">
-            <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Промокод</div>
-            <div className="mt-2 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
-              <input
-                value={promoCode}
-                onChange={(e) => onPromoInputChange(e.target.value)}
-                className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900"
-                placeholder={isNativeIos ? "Введите промокод" : "Введите промокод"}
-                autoComplete="off"
-                inputMode="text"
-                style={{ fontSize: '16px' }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !promoLoading && promoCode.trim()) {
-                    handleCheckPromo();
-                  }
-                }}
-              />
-              <button
-                type="button"
-                onClick={handleCheckPromo}
-                disabled={promoLoading || paying || iapPaying || iapLoading || isLoading || isPremium}
-                className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60"
-              >
-                {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Проверить"}
-              </button>
-            </div>
-            {promoMessage && (
-              <div className={`mt-2 text-xs font-bold ${promoOk ? "text-emerald-700" : "text-rose-700"}`}>
-                {promoMessage}
+          {/* Promo code field - only on web */}
+          {!isNativeIos && (
+            <div className="mt-6">
+              <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Промокод</div>
+              <div className="mt-2 flex items-center gap-2 rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
+                <input
+                  value={promoCode}
+                  onChange={(e) => onPromoInputChange(e.target.value)}
+                  className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900"
+                  placeholder="Введите промокод"
+                  autoComplete="off"
+                  inputMode="text"
+                  style={{ fontSize: '16px' }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !promoLoading && promoCode.trim()) {
+                      handleCheckPromo();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleCheckPromo}
+                  disabled={promoLoading || paying || iapPaying || iapLoading || isLoading || isPremium}
+                  className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60"
+                >
+                  {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Проверить"}
+                </button>
               </div>
-            )}
-          </div>
+              {promoMessage && (
+                <div className={`mt-2 text-xs font-bold ${promoOk ? "text-emerald-700" : "text-rose-700"}`}>
+                  {promoMessage}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-6 grid gap-3">
             <button

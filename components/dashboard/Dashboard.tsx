@@ -26,6 +26,7 @@ interface DashboardProps {
   onManageSubscription: () => void;
   onResetProgress: () => void;
   onSignOut: () => void;
+  onRestorePurchases?: () => void;
   onDeleteAccount: () => void;
 
   // Course Progress props
@@ -78,6 +79,7 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
   onManageSubscription,
   onResetProgress,
   onSignOut,
+  onRestorePurchases,
   onDeleteAccount,
 
   // Course Progress
@@ -140,6 +142,7 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
           onManageSubscription={onManageSubscription}
           onResetProgress={onResetProgress}
           onSignOut={onSignOut}
+          onRestorePurchases={onRestorePurchases}
           onDeleteAccount={onDeleteAccount}
         />
 

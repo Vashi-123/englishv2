@@ -1,11 +1,11 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface ConfirmModalProps {
   isOpen: boolean;
   isVisible: boolean;
-  action: 'reset' | 'signout' | 'deleteAccount' | null;
+  action: 'reset' | 'signout' | 'deleteAccount' | 'restorePurchases' | null;
   onConfirm: () => Promise<void>;
   onCancel: () => void;
   isProcessing?: boolean;
@@ -23,17 +23,22 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
 
   const isReset = action === 'reset';
   const isDeleteAccount = action === 'deleteAccount';
+  const isRestorePurchases = action === 'restorePurchases';
   const title = isReset 
     ? 'Начать уровень сначала?' 
     : isDeleteAccount 
     ? 'Удалить аккаунт?' 
+    : isRestorePurchases
+    ? 'Восстановить покупки?'
     : 'Выйти из аккаунта?';
   const message = isReset
     ? 'Прогресс по уровню будет сброшен. Это действие нельзя отменить.'
     : isDeleteAccount
     ? 'Все ваши данные будут безвозвратно удалены. Это действие нельзя отменить.'
+    : isRestorePurchases
+    ? 'Будет выполнена попытка восстановить ваши предыдущие покупки из App Store.'
     : 'Вы можете войти снова в любой момент.';
-  const confirmLabel = isReset ? 'Сбросить' : isDeleteAccount ? 'Удалить' : 'Выйти';
+  const confirmLabel = isReset ? 'Сбросить' : isDeleteAccount ? 'Удалить' : isRestorePurchases ? 'Восстановить' : 'Выйти';
 
   return createPortal(
     <div
@@ -52,10 +57,20 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         <div className="flex items-start gap-3">
           <div
             className={`mt-0.5 h-10 w-10 rounded-2xl flex items-center justify-center ${
-              isReset ? 'bg-amber-50 text-amber-700' : isDeleteAccount ? 'bg-red-50 text-red-700' : 'bg-rose-50 text-rose-700'
+              isReset 
+                ? 'bg-amber-50 text-amber-700' 
+                : isDeleteAccount 
+                ? 'bg-red-50 text-red-700' 
+                : isRestorePurchases
+                ? 'bg-blue-50 text-blue-700'
+                : 'bg-rose-50 text-rose-700'
             }`}
           >
-            <AlertTriangle className="w-5 h-5" />
+            {isRestorePurchases ? (
+              <RefreshCw className="w-5 h-5" />
+            ) : (
+              <AlertTriangle className="w-5 h-5" />
+            )}
           </div>
           <div className="min-w-0">
             <div className="text-base font-black text-slate-900">{title}</div>
@@ -83,6 +98,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                 ? 'bg-gradient-to-r from-amber-500 to-rose-500 shadow-amber-500/20'
                 : isDeleteAccount
                 ? 'bg-gradient-to-r from-red-600 to-red-500 shadow-red-600/20'
+                : isRestorePurchases
+                ? 'bg-gradient-to-r from-blue-600 to-blue-500 shadow-blue-600/20'
                 : 'bg-gradient-to-r from-rose-600 to-rose-500 shadow-rose-600/20'
             }`}
           >

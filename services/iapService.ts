@@ -146,11 +146,19 @@ export const purchaseIosIap = async (payload?: IapPurchasePayload): Promise<IapC
 
 export const restoreIosPurchases = async (): Promise<IapCompleteResponse | null> => {
   const ready = await ensureInitialized();
-  if (!ready || !nativeIap) return null;
+  if (!ready || !nativeIap) {
+    return { ok: false, error: 'Покупки через App Store недоступны' };
+  }
   try {
     const restored = await nativeIap.restorePurchases?.();
     const purchase = restored?.purchase;
-    if (!purchase) return null;
+    
+    // Если purchase === null, это означает что покупок нет (не ошибка)
+    // Swift код возвращает ["purchase": NSNull()] когда покупок нет
+    if (!purchase || purchase === null) {
+      return { ok: true, granted: false };
+    }
+    
     const productId = await getIosProductId();
     return purchaseIosIap({
       productId,
@@ -162,7 +170,8 @@ export const restoreIosPurchases = async (): Promise<IapCompleteResponse | null>
     });
   } catch (err) {
     console.error("[iapService] restore error", err);
-    return null;
+    const errorMessage = err instanceof Error ? err.message : 'Не удалось восстановить покупки';
+    return { ok: false, error: errorMessage };
   }
 };
 
