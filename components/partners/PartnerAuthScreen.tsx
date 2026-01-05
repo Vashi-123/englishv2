@@ -191,6 +191,46 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
           return;
         }
 
+        // Проверяем, существует ли пользователь с таким email
+        try {
+          const normalizedEmail = email.trim().toLowerCase();
+          const { data: checkData, error: checkError } = await supabase.functions.invoke('check-account-status', {
+            body: { email: normalizedEmail },
+          });
+
+          console.log('[PARTNER AUTH] User check result:', { 
+            hasData: !!checkData, 
+            hasError: !!checkError, 
+            ok: checkData?.ok, 
+            userId: checkData?.data?.userId,
+            errorMessage: checkError?.message 
+          });
+
+          // Если функция вернула успешный ответ и пользователь найден
+          if (checkData && checkData.ok === true && checkData.data && checkData.data.userId) {
+            console.log('[PARTNER AUTH] User already exists, blocking registration');
+            setError('Пользователь с таким email уже зарегистрирован. Войди в аккаунт или используй сброс пароля.');
+            setLoading(false);
+            return;
+          }
+
+          // Если есть ошибка вызова функции, но это не "User not found" (404)
+          // то продолжаем регистрацию (лучше попробовать, чем заблокировать)
+          if (checkError) {
+            // Если это 404 (User not found) - это нормально, продолжаем регистрацию
+            const isNotFound = checkError.message?.includes('not found') || 
+                              checkError.message?.includes('404') ||
+                              (checkData && checkData.ok === false && checkData.error?.includes('not found'));
+            if (!isNotFound) {
+              console.warn('[PARTNER AUTH] Failed to check user existence, proceeding with signup:', checkError);
+            }
+          }
+          // Если checkData.ok === false (пользователь не найден) - это нормально, продолжаем регистрацию
+        } catch (checkErr) {
+          // При ошибке проверки продолжаем регистрацию (не блокируем пользователя)
+          console.warn('[PARTNER AUTH] Error checking user existence, proceeding with signup:', checkErr);
+        }
+
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,

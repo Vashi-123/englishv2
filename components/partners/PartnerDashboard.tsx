@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '../../services/supabaseClient';
-import { getPartnerStats, PartnerStats } from '../../services/partnerService';
+import { getPartnerStats, PartnerStats, getAdminPromoCodes, AdminPromoCodesData } from '../../services/partnerService';
 import { AdminPromoCodesPanel } from './AdminPromoCodesPanel';
 import { 
   TrendingUp, 
@@ -21,7 +21,8 @@ import {
   ChevronRight,
   FileText,
   Download,
-  AlertCircle
+  AlertCircle,
+  Filter
 } from 'lucide-react';
 import {
   LineChart,
@@ -53,6 +54,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [payoutsPage, setPayoutsPage] = useState(1);
   const [userIsAdmin, setUserIsAdmin] = useState<boolean>(false);
+  const [adminData, setAdminData] = useState<AdminPromoCodesData | null>(null);
+  const [selectedPromoCodes, setSelectedPromoCodes] = useState<Set<string>>(new Set());
   
   const retryTimerRef = useRef<number | null>(null);
   const retryAttemptRef = useRef<number>(0);
@@ -66,7 +69,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
         if (!supabaseUrl) return;
 
-        // Пробуем загрузить админ-данные - если получили 403, значит не админ
+        // Пробуем загрузить админ-данные - если получили 403, значит не админ (это нормально)
         const response = await fetch(`${supabaseUrl}/functions/v1/admin-promo-codes`, {
           method: 'POST',
           headers: {
@@ -76,6 +79,12 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
           body: JSON.stringify({ email: userEmail }),
         });
 
+        if (response.status === 403) {
+          // 403 - это нормально, пользователь не админ
+          setUserIsAdmin(false);
+          return;
+        }
+
         if (response.ok) {
           const result = await response.json();
           if (result.ok) {
@@ -83,8 +92,9 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
           }
         }
       } catch (err) {
-        // Игнорируем ошибки - просто не показываем админ-панель
+        // Игнорируем ошибки сети - просто не показываем админ-панель
         console.debug('[PartnerDashboard] Admin check failed:', err);
+        setUserIsAdmin(false);
       }
     };
 
@@ -133,8 +143,20 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
       
       if (!isMountedRef.current) return;
 
+      // Проверяем, является ли ошибка ошибкой авторизации (не нужно ретраить)
+      const isAuthError = err instanceof Error && (
+        err.message.includes('403') || 
+        err.message.includes('401') ||
+        err.message.includes('Access denied')
+      );
+
       const errorMessage = err instanceof Error ? err.message : 'Не удалось загрузить статистику';
       setError(errorMessage);
+
+      // Не ретраим на ошибки авторизации
+      if (isAuthError) {
+        return;
+      }
 
       // Retry логика с exponential backoff
       // Пробуем до 4 раз с увеличивающейся задержкой
@@ -295,14 +317,115 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
 
   const allMonths = getAllMonths();
 
+  // Для админа: фильтруем платежи по выбранным промокодам и пересчитываем статистику
+  const filteredMonthlyStatsForAdmin = useMemo(() => {
+    if (!userIsAdmin || !adminData || !adminData.payments) return null;
+    
+    const allPromoCodes = adminData.promoCodes.map(pc => pc.code);
+    if (selectedPromoCodes.size === 0 || selectedPromoCodes.size === allPromoCodes.length) {
+      // Если выбраны все промокоды, используем исходные данные
+      return adminData.monthlyStats;
+    }
+
+    // Фильтруем платежи по выбранным промокодам
+    const filteredPayments = adminData.payments.filter(payment => {
+      if (!payment.promo_code) return false;
+      return selectedPromoCodes.has(payment.promo_code.toUpperCase());
+    });
+
+    // Пересчитываем месячную статистику
+    const statsByMonth: Record<string, {
+      revenue: number;
+      totalPayments: number;
+      currency: string;
+    }> = {};
+
+    filteredPayments.forEach(payment => {
+      if (!payment.created_at) return;
+      const paymentDate = new Date(payment.created_at);
+      const monthKey = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!statsByMonth[monthKey]) {
+        statsByMonth[monthKey] = {
+          revenue: 0,
+          totalPayments: 0,
+          currency: payment.amount_currency || 'RUB',
+        };
+      }
+      
+      const amount = payment.amount_value ? Number(payment.amount_value) : 0;
+      if (Number.isFinite(amount) && amount > 0) {
+        statsByMonth[monthKey].revenue += amount;
+        statsByMonth[monthKey].totalPayments += 1;
+      }
+    });
+
+    // Добавляем выплаты (фильтруем по выбранным промокодам)
+    const payoutsByMonth: Record<string, { payouts: number; currency: string }> = {};
+    (adminData.payouts || []).forEach(payout => {
+      if (!payout.payment_date) return;
+      
+      // Если выбраны все промокоды, показываем все выплаты
+      if (selectedPromoCodes.size !== allPromoCodes.length) {
+        if (payout.promo_codes && payout.promo_codes.length > 0) {
+          const hasMatchingPromo = payout.promo_codes.some(code => selectedPromoCodes.has(code.toUpperCase()));
+          if (!hasMatchingPromo) return;
+        } else {
+          return;
+        }
+      }
+      
+      const payoutDate = new Date(payout.payment_date);
+      const monthKey = `${payoutDate.getFullYear()}-${String(payoutDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!payoutsByMonth[monthKey]) {
+        payoutsByMonth[monthKey] = { payouts: 0, currency: payout.amount_currency || 'RUB' };
+      }
+      
+      const amount = payout.amount_value ? Number(payout.amount_value) : 0;
+      if (Number.isFinite(amount) && amount > 0) {
+        payoutsByMonth[monthKey].payouts += amount;
+      }
+    });
+
+    // Объединяем статистику
+    return Object.keys(statsByMonth)
+      .sort()
+      .map(monthKey => {
+        const monthStats = statsByMonth[monthKey];
+        const monthPayouts = payoutsByMonth[monthKey] || { payouts: 0, currency: monthStats.currency };
+        const monthName = new Date(monthKey + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+        
+        return {
+          month: monthName,
+          monthKey,
+          revenue: monthStats.revenue,
+          totalPayments: monthStats.totalPayments,
+          payouts: monthPayouts.payouts,
+          currency: monthStats.currency,
+        };
+      });
+  }, [userIsAdmin, adminData, selectedPromoCodes]);
+
   // Подготовка данных для графика
-  const chartData = allMonths.map(month => ({
-    month: new Date(month.monthKey + '-01').toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }),
-    monthKey: month.monthKey,
-    revenue: month.revenue,
-    totalPayments: month.totalPayments,
-    payouts: month.payouts || 0,
-  }));
+  const chartData = useMemo(() => {
+    if (userIsAdmin && filteredMonthlyStatsForAdmin) {
+      return filteredMonthlyStatsForAdmin.map(month => ({
+        month: new Date(month.monthKey + '-01').toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }),
+        monthKey: month.monthKey,
+        revenue: month.revenue,
+        totalPayments: month.totalPayments,
+        payouts: month.payouts || 0,
+      }));
+    }
+    return allMonths.map(month => ({
+      month: new Date(month.monthKey + '-01').toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }),
+      monthKey: month.monthKey,
+      revenue: month.revenue,
+      totalPayments: month.totalPayments,
+      payouts: month.payouts || 0,
+    }));
+  }, [userIsAdmin, filteredMonthlyStatsForAdmin, allMonths]);
 
   // Инициализация выбранного месяца (текущий месяц)
   useEffect(() => {
@@ -459,12 +582,18 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
         {/* Admin Panel */}
         {userIsAdmin && (
           <div className="mb-6 sm:mb-8">
-            <AdminPromoCodesPanel userEmail={userEmail} />
+            <AdminPromoCodesPanel 
+              userEmail={userEmail} 
+              onFilterChange={(selectedPromoCodes) => {
+                setSelectedPromoCodes(selectedPromoCodes);
+              }}
+            />
           </div>
         )}
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
+        {/* Summary Cards - скрываем для админа, т.к. у него уже есть полная статистика */}
+        {!userIsAdmin && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
           <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
             <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-emerald-100/50 rounded-full blur-xl pointer-events-none"></div>
             <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
@@ -521,6 +650,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
             </div>
           </div>
         </div>
+        )}
 
         {/* Monthly Navigation & Details */}
         {allMonths.length > 0 && selectedMonth && (
@@ -741,6 +871,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Дата выплаты</th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Промокоды</th>
                             <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Сумма</th>
                             <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Описание</th>
                             <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Чек</th>
@@ -752,6 +883,19 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
                               <tr key={payout.id} className="hover:bg-gray-50">
                                 <td className="px-2 py-2 text-xs text-gray-900 whitespace-nowrap">
                                   {formatDate(payout.payment_date)}
+                                </td>
+                                <td className="px-2 py-2">
+                                  {payout.promo_codes && payout.promo_codes.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {payout.promo_codes.map((code, idx) => (
+                                        <code key={idx} className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded">
+                                          {code}
+                                        </code>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-gray-400">—</span>
+                                  )}
                                 </td>
                                 <td className="px-2 py-2 text-xs font-bold text-orange-600 whitespace-nowrap">
                                   {formatCurrency(payout.amount_value || 0, payout.amount_currency)}
@@ -776,7 +920,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
                             ))
                           ) : (
                             <tr>
-                              <td colSpan={4} className="px-2 py-4 text-center text-xs text-gray-500">
+                              <td colSpan={5} className="px-2 py-4 text-center text-xs text-gray-500">
                                 Нет выплат за этот месяц
                               </td>
                             </tr>
@@ -802,6 +946,18 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
                                 </p>
                               </div>
                             </div>
+                            {payout.promo_codes && payout.promo_codes.length > 0 && (
+                              <div className="mb-2">
+                                <p className="text-xs text-gray-600 mb-1">Промокоды:</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {payout.promo_codes.map((code, idx) => (
+                                    <code key={idx} className="text-xs font-mono bg-white px-2 py-1 rounded">
+                                      {code}
+                                    </code>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
                             {payout.description && (
                               <div className="mb-2">
                                 <p className="text-xs text-gray-600 mb-1">Описание</p>
@@ -911,8 +1067,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
               <h2 className="text-base sm:text-lg font-black text-slate-900">График по всем месяцам</h2>
             </div>
             
-            <div className="w-full h-[300px] sm:h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
+            <div className="w-full" style={{ minHeight: '300px', height: '300px' }}>
+              <ResponsiveContainer width="100%" height={300} minHeight={300}>
                 <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis 
@@ -926,7 +1082,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
                     stroke="#6b7280"
                     fontSize={12}
                     tick={{ fill: '#6b7280' }}
-                    tickFormatter={(value) => formatCurrency(value, stats.totalRevenueCurrency)}
+                    tickFormatter={(value) => formatCurrency(value, userIsAdmin && adminData ? adminData.totalRevenueCurrency : stats.totalRevenueCurrency)}
                   />
                   <YAxis 
                     yAxisId="right"
@@ -976,8 +1132,10 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
           </div>
         )}
 
-        {/* Promo Codes Stats */}
-        {stats.promoCodeStats.length > 0 ? (
+        {/* Promo Codes Stats - скрываем для админа */}
+        {!userIsAdmin && (
+          <>
+            {stats.promoCodeStats.length > 0 ? (
           <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
               <h2 className="text-base sm:text-lg font-black text-slate-900">Статистика по промокодам</h2>
@@ -1111,14 +1269,16 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
               ))}
             </div>
           </div>
-        ) : (
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-8 sm:p-12 text-center">
-            <Gift className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-2">Нет промокодов</h3>
-            <p className="text-xs sm:text-sm text-gray-600">
-              У вас пока нет промокодов. Обратитесь к администратору для создания промокодов.
-            </p>
-          </div>
+            ) : (
+              <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-8 sm:p-12 text-center">
+                <Gift className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-base sm:text-lg font-bold text-slate-900 mb-2">Нет промокодов</h3>
+                <p className="text-xs sm:text-sm text-gray-600">
+                  У вас пока нет промокодов. Обратитесь к администратору для создания промокодов.
+                </p>
+              </div>
+            )}
+          </>
         )}
 
         {/* Payouts Table */}

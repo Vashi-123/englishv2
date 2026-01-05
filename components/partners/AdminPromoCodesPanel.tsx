@@ -14,31 +14,23 @@ import {
   User,
   TrendingUp,
   CreditCard,
-  BarChart3,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Filter
 } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend
-} from 'recharts';
 
 interface AdminPromoCodesPanelProps {
   userEmail: string;
+  onFilterChange?: (selectedPromoCodes: Set<string>) => void;
 }
 
-export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ userEmail }) => {
+export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ userEmail, onFilterChange }) => {
   const [data, setData] = useState<AdminPromoCodesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
+  const [selectedPromoCodes, setSelectedPromoCodes] = useState<Set<string>>(new Set()); // По умолчанию все промокоды
 
   const loadPromoCodes = async (showRefreshing = false) => {
     if (showRefreshing) {
@@ -112,36 +104,119 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
     });
   };
 
-  // Подготовка данных для графика
-  const chartData = useMemo(() => {
-    if (!data?.monthlyStats) return [];
-    return data.monthlyStats.map(month => ({
-      month: new Date(month.monthKey + '-01').toLocaleDateString('ru-RU', { month: 'short', year: 'numeric' }),
-      monthKey: month.monthKey,
-      revenue: month.revenue,
-      totalPayments: month.totalPayments,
-      payouts: month.payouts || 0,
-    }));
-  }, [data?.monthlyStats]);
+  // Получаем список всех промокодов
+  const allPromoCodes = useMemo(() => {
+    if (!data?.promoCodes) return [];
+    return data.promoCodes.map(pc => pc.code);
+  }, [data?.promoCodes]);
 
-  // Кастомный формат для тултипа графика
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-lg">
-          <p className="text-sm font-semibold text-slate-900 mb-2">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <p key={index} className="text-xs" style={{ color: entry.color }}>
-              {entry.name}: {entry.dataKey === 'revenue' 
-                ? formatCurrency(entry.value, data?.totalRevenueCurrency || 'RUB')
-                : entry.value}
-            </p>
-          ))}
-        </div>
-      );
+  // Инициализируем selectedPromoCodes всеми промокодами при первой загрузке
+  useEffect(() => {
+    if (allPromoCodes.length > 0 && selectedPromoCodes.size === 0) {
+      const newSelected = new Set(allPromoCodes);
+      setSelectedPromoCodes(newSelected);
+      onFilterChange?.(newSelected);
     }
-    return null;
-  };
+  }, [allPromoCodes, selectedPromoCodes.size, onFilterChange]);
+
+  // Уведомляем родительский компонент об изменении фильтра
+  useEffect(() => {
+    if (selectedPromoCodes.size > 0) {
+      onFilterChange?.(selectedPromoCodes);
+    }
+  }, [selectedPromoCodes, onFilterChange]);
+
+  // Фильтруем платежи по выбранным промокодам
+  const filteredPayments = useMemo(() => {
+    if (!data?.payments) return [];
+    if (selectedPromoCodes.size === 0 || selectedPromoCodes.size === allPromoCodes.length) {
+      return data.payments;
+    }
+    return data.payments.filter(payment => {
+      if (!payment.promo_code) return false;
+      return selectedPromoCodes.has(payment.promo_code.toUpperCase());
+    });
+  }, [data?.payments, selectedPromoCodes, allPromoCodes.length]);
+
+  // Пересчитываем месячную статистику на основе отфильтрованных платежей
+  const filteredMonthlyStats = useMemo(() => {
+    if (!filteredPayments.length) return [];
+    
+    const statsByMonth: Record<string, {
+      revenue: number;
+      totalPayments: number;
+      currency: string;
+    }> = {};
+
+    filteredPayments.forEach(payment => {
+      if (!payment.created_at) return;
+      const paymentDate = new Date(payment.created_at);
+      const monthKey = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!statsByMonth[monthKey]) {
+        statsByMonth[monthKey] = {
+          revenue: 0,
+          totalPayments: 0,
+          currency: payment.amount_currency || 'RUB',
+        };
+      }
+      
+      const amount = payment.amount_value ? Number(payment.amount_value) : 0;
+      if (Number.isFinite(amount) && amount > 0) {
+        statsByMonth[monthKey].revenue += amount;
+        statsByMonth[monthKey].totalPayments += 1;
+      }
+    });
+
+    // Добавляем выплаты (фильтруем по выбранным промокодам)
+    const payoutsByMonth: Record<string, { payouts: number; currency: string }> = {};
+    (data?.payouts || []).forEach(payout => {
+      if (!payout.payment_date) return;
+      
+      // Если выбраны все промокоды, показываем все выплаты
+      if (selectedPromoCodes.size !== allPromoCodes.length) {
+        // Если у выплаты есть промокоды, проверяем, есть ли пересечение с выбранными
+        if (payout.promo_codes && payout.promo_codes.length > 0) {
+          const hasMatchingPromo = payout.promo_codes.some(code => selectedPromoCodes.has(code.toUpperCase()));
+          if (!hasMatchingPromo) return;
+        } else {
+          // Если у выплаты нет промокодов, не показываем при фильтрации
+          return;
+        }
+      }
+      
+      const payoutDate = new Date(payout.payment_date);
+      const monthKey = `${payoutDate.getFullYear()}-${String(payoutDate.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (!payoutsByMonth[monthKey]) {
+        payoutsByMonth[monthKey] = { payouts: 0, currency: payout.amount_currency || 'RUB' };
+      }
+      
+      const amount = payout.amount_value ? Number(payout.amount_value) : 0;
+      if (Number.isFinite(amount) && amount > 0) {
+        payoutsByMonth[monthKey].payouts += amount;
+      }
+    });
+
+    // Объединяем статистику
+    return Object.keys(statsByMonth)
+      .sort()
+      .map(monthKey => {
+        const monthStats = statsByMonth[monthKey];
+        const monthPayouts = payoutsByMonth[monthKey] || { payouts: 0, currency: monthStats.currency };
+        const monthName = new Date(monthKey + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
+        
+        return {
+          month: monthName,
+          monthKey,
+          revenue: monthStats.revenue,
+          totalPayments: monthStats.totalPayments,
+          payouts: monthPayouts.payouts,
+          currency: monthStats.currency,
+        };
+      });
+  }, [filteredPayments, data?.payouts, selectedPromoCodes, allPromoCodes.length]);
+
 
   if (loading) {
     return (
@@ -241,81 +316,8 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
         </div>
       </div>
 
-      {/* Monthly Chart */}
-      {chartData && chartData.length > 0 && (
-        <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm p-4 sm:p-6">
-          <div className="flex items-center gap-2 mb-4 sm:mb-6">
-            <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary" />
-            <h2 className="text-base sm:text-lg font-black text-slate-900">График по месяцам</h2>
-          </div>
-          
-          <div className="w-full h-[300px] sm:h-[400px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis 
-                  dataKey="month" 
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tick={{ fill: '#6b7280' }}
-                />
-                <YAxis 
-                  yAxisId="left"
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tick={{ fill: '#6b7280' }}
-                  tickFormatter={(value) => formatCurrency(value, data.totalRevenueCurrency)}
-                />
-                <YAxis 
-                  yAxisId="right"
-                  orientation="right"
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tick={{ fill: '#6b7280' }}
-                />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend 
-                  wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }}
-                  iconType="line"
-                />
-                <Line 
-                  yAxisId="left"
-                  type="monotone" 
-                  dataKey="revenue" 
-                  stroke="#10b981" 
-                  strokeWidth={3}
-                  name="Выручка"
-                  dot={{ fill: '#10b981', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-                <Line 
-                  yAxisId="left"
-                  type="monotone" 
-                  dataKey="payouts" 
-                  stroke="#f97316" 
-                  strokeWidth={2}
-                  name="Выплачено"
-                  dot={{ fill: '#f97316', r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-                <Line 
-                  yAxisId="right"
-                  type="monotone" 
-                  dataKey="totalPayments" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  name="Платежей"
-                  dot={{ fill: '#3b82f6', r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      )}
-
       {/* Monthly History */}
-      {data.monthlyStats && data.monthlyStats.length > 0 && (
+      {filteredMonthlyStats && filteredMonthlyStats.length > 0 && (
         <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
             <div className="flex items-center gap-2">
@@ -325,7 +327,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
           </div>
           
           <div className="divide-y divide-gray-200">
-            {data.monthlyStats.slice().reverse().map((month) => {
+            {filteredMonthlyStats.slice().reverse().map((month) => {
               const isExpanded = expandedMonths.has(month.monthKey);
               return (
                 <div key={month.monthKey} className="hover:bg-gray-50 transition-colors">
@@ -369,7 +371,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                   </button>
                   
                   {isExpanded && (
-                    <div className="px-4 sm:px-6 pb-4 pt-2 border-t border-gray-100">
+                    <div className="px-4 sm:px-6 pb-4 pt-2 border-t border-gray-100 space-y-6">
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div className="bg-gray-50 rounded-xl p-4">
                           <p className="text-xs font-semibold text-gray-600 mb-2">Выручка</p>
@@ -388,6 +390,182 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                           </p>
                         </div>
                       </div>
+
+                      {/* Payments for Month */}
+                      {(() => {
+                        const monthPayments = filteredPayments.filter(payment => {
+                          if (!payment.created_at) return false;
+                          const paymentDate = new Date(payment.created_at);
+                          const paymentMonthKey = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`;
+                          return paymentMonthKey === month.monthKey;
+                        });
+
+                        if (monthPayments.length === 0) return null;
+
+                        return (
+                          <div className="border-t border-gray-200 pt-4">
+                            <h4 className="text-sm font-bold text-slate-900 mb-3">Платежи за {month.month}</h4>
+                            <div className="hidden lg:block overflow-x-auto">
+                              <table className="w-full table-auto text-xs">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Дата</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Промокод</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Сумма</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                  {monthPayments.map((payment) => (
+                                    <tr key={payment.id} className="hover:bg-gray-50">
+                                      <td className="px-2 py-2 text-gray-900 whitespace-nowrap">
+                                        {formatDate(payment.created_at)}
+                                      </td>
+                                      <td className="px-2 py-2">
+                                        <code className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">
+                                          {payment.promo_code || '—'}
+                                        </code>
+                                      </td>
+                                      <td className="px-2 py-2 font-bold text-emerald-600 whitespace-nowrap">
+                                        {formatCurrency(payment.amount_value || 0, payment.amount_currency)}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="lg:hidden space-y-2">
+                              {monthPayments.map((payment) => (
+                                <div key={payment.id} className="bg-gray-50 rounded-lg p-3">
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div>
+                                      <p className="text-xs text-gray-600 mb-1">Дата</p>
+                                      <p className="text-sm font-semibold text-gray-900">{formatDate(payment.created_at)}</p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-xs text-gray-600 mb-1">Сумма</p>
+                                      <p className="text-sm font-bold text-emerald-600">
+                                        {formatCurrency(payment.amount_value || 0, payment.amount_currency)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xs text-gray-600">Промокод:</p>
+                                    <code className="text-xs font-mono bg-white px-2 py-1 rounded">
+                                      {payment.promo_code || '—'}
+                                    </code>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Payouts for Month */}
+                      {(() => {
+                        // Выплаты показываем только если выбраны все промокоды или если у выплаты есть промокоды из выбранных
+                        const monthPayouts = (data.payouts || []).filter(payout => {
+                          if (!payout.payment_date) return false;
+                          const payoutDate = new Date(payout.payment_date);
+                          const payoutMonthKey = `${payoutDate.getFullYear()}-${String(payoutDate.getMonth() + 1).padStart(2, '0')}`;
+                          if (payoutMonthKey !== month.monthKey) return false;
+                          
+                          // Если выбраны все промокоды, показываем все выплаты
+                          if (selectedPromoCodes.size === allPromoCodes.length) return true;
+                          
+                          // Если у выплаты есть промокоды, проверяем, есть ли пересечение с выбранными
+                          if (payout.promo_codes && payout.promo_codes.length > 0) {
+                            return payout.promo_codes.some(code => selectedPromoCodes.has(code.toUpperCase()));
+                          }
+                          
+                          // Если у выплаты нет промокодов, не показываем при фильтрации
+                          return false;
+                        });
+
+                        if (monthPayouts.length === 0) return null;
+
+                        return (
+                          <div className="border-t border-gray-200 pt-4">
+                            <h4 className="text-sm font-bold text-slate-900 mb-3">Выплаты за {month.month}</h4>
+                            <div className="hidden lg:block overflow-x-auto">
+                              <table className="w-full table-auto text-xs">
+                                <thead className="bg-gray-50">
+                                  <tr>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Дата</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Промокоды</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Сумма</th>
+                                    <th className="px-2 py-2 text-left font-semibold text-gray-600 uppercase">Партнер</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-200">
+                                  {monthPayouts.map((payout) => (
+                                    <tr key={payout.id} className="hover:bg-gray-50">
+                                      <td className="px-2 py-2 text-gray-900 whitespace-nowrap">
+                                        {formatDate(payout.payment_date)}
+                                      </td>
+                                      <td className="px-2 py-2">
+                                        {payout.promo_codes && payout.promo_codes.length > 0 ? (
+                                          <div className="flex flex-wrap gap-1">
+                                            {payout.promo_codes.map((code, idx) => (
+                                              <code key={idx} className="text-xs font-mono bg-gray-100 px-1.5 py-0.5 rounded">
+                                                {code}
+                                              </code>
+                                            ))}
+                                          </div>
+                                        ) : (
+                                          <span className="text-gray-400">—</span>
+                                        )}
+                                      </td>
+                                      <td className="px-2 py-2 font-bold text-orange-600 whitespace-nowrap">
+                                        {formatCurrency(payout.amount_value || 0, payout.amount_currency)}
+                                      </td>
+                                      <td className="px-2 py-2 text-gray-600">
+                                        {payout.partner_email || '—'}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="lg:hidden space-y-2">
+                              {monthPayouts.map((payout) => (
+                                <div key={payout.id} className="bg-gray-50 rounded-lg p-3">
+                                  <div className="flex items-start justify-between mb-2">
+                                    <div>
+                                      <p className="text-xs text-gray-600 mb-1">Дата</p>
+                                      <p className="text-sm font-semibold text-gray-900">{formatDate(payout.payment_date)}</p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-xs text-gray-600 mb-1">Сумма</p>
+                                      <p className="text-sm font-bold text-orange-600">
+                                        {formatCurrency(payout.amount_value || 0, payout.amount_currency)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  {payout.promo_codes && payout.promo_codes.length > 0 && (
+                                    <div className="mb-2">
+                                      <p className="text-xs text-gray-600 mb-1">Промокоды:</p>
+                                      <div className="flex flex-wrap gap-1">
+                                        {payout.promo_codes.map((code, idx) => (
+                                          <code key={idx} className="text-xs font-mono bg-white px-2 py-1 rounded">
+                                            {code}
+                                          </code>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {payout.partner_email && (
+                                    <div>
+                                      <p className="text-xs text-gray-600 mb-1">Партнер:</p>
+                                      <p className="text-sm text-gray-900">{payout.partner_email}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -400,19 +578,9 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
       {/* Promo Codes Table */}
       <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-purple-50 to-blue-50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
-              <h2 className="text-base sm:text-lg font-black text-slate-900">Все промокоды</h2>
-            </div>
-            <button
-              onClick={() => loadPromoCodes(true)}
-              disabled={refreshing}
-              className="px-3 sm:px-4 py-2 text-xs sm:text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Обновить</span>
-            </button>
+          <div className="flex items-center gap-2">
+            <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
+            <h2 className="text-base sm:text-lg font-black text-slate-900">Все промокоды</h2>
           </div>
           <p className="text-xs sm:text-sm text-gray-600 mt-1">
             Всего промокодов: <span className="font-bold text-slate-900">{promoCodes.length}</span>
@@ -438,7 +606,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Тип</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Партнер</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Статус</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Успешных</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Платежи</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Выручка</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Выплачено</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Создан</th>
@@ -583,7 +751,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                     {/* Stats grid */}
                     <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
                       <div>
-                        <p className="text-xs text-gray-600 mb-1">Успешных</p>
+                        <p className="text-xs text-gray-600 mb-1">Платежи</p>
                         <p className="text-base font-bold text-emerald-600">{promo.totalPayments}</p>
                       </div>
                       <div className="col-span-2">
@@ -622,6 +790,64 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
           </>
         )}
       </div>
+
+      {/* Promo Code Filter */}
+      {allPromoCodes.length > 0 && (
+        <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm p-4 sm:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Filter className="w-5 h-5 text-brand-primary" />
+            <h2 className="text-base sm:text-lg font-black text-slate-900">Фильтр по промокодам</h2>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => {
+                const newSelected = selectedPromoCodes.size === allPromoCodes.length 
+                  ? new Set<string>()
+                  : new Set(allPromoCodes);
+                setSelectedPromoCodes(newSelected);
+                onFilterChange?.(newSelected);
+              }}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                selectedPromoCodes.size === allPromoCodes.length
+                  ? 'bg-brand-primary text-white border-brand-primary'
+                  : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+              }`}
+            >
+              {selectedPromoCodes.size === allPromoCodes.length ? 'Снять все' : 'Выбрать все'}
+            </button>
+            {allPromoCodes.map(code => {
+              const isSelected = selectedPromoCodes.has(code);
+              return (
+                <button
+                  key={code}
+                  onClick={() => {
+                    const newSelected = new Set(selectedPromoCodes);
+                    if (isSelected) {
+                      newSelected.delete(code);
+                    } else {
+                      newSelected.add(code);
+                    }
+                    setSelectedPromoCodes(newSelected);
+                    onFilterChange?.(newSelected);
+                  }}
+                  className={`px-3 py-1.5 text-xs font-mono font-semibold rounded-lg border transition-colors ${
+                    isSelected
+                      ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                      : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  {code}
+                </button>
+              );
+            })}
+          </div>
+          {selectedPromoCodes.size > 0 && selectedPromoCodes.size < allPromoCodes.length && (
+            <p className="text-xs text-gray-600 mt-3">
+              Выбрано промокодов: {selectedPromoCodes.size} из {allPromoCodes.length}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -52,6 +52,9 @@ Deno.serve(async (req: Request) => {
 
     const payoutsList = Array.isArray(payouts) ? payouts : [];
     
+    // Получаем промокоды партнера для добавления к выплатам
+    const partnerPromoCodes = promoCodes ? promoCodes.map((pc) => String(pc.code).trim().toUpperCase()) : [];
+    
     // Список выплат для таблицы
     const payoutsListFormatted = payoutsList.map((p) => ({
       id: p.id,
@@ -62,6 +65,7 @@ Deno.serve(async (req: Request) => {
       created_at: p.created_at ? String(p.created_at) : null,
       receipt_storage_bucket: p.receipt_storage_bucket ? String(p.receipt_storage_bucket) : null,
       receipt_storage_path: p.receipt_storage_path ? String(p.receipt_storage_path) : null,
+      promo_codes: partnerPromoCodes,
     }));
 
     // Подсчитываем общую сумму выплат

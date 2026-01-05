@@ -66,7 +66,7 @@ Deno.serve(async (req: Request) => {
     // Получаем все выплаты партнерам (нужно для общей статистики даже если нет промокодов)
     const { data: payouts, error: payoutsError } = await client
       .from("partner_payouts")
-      .select("partner_email, amount_value, amount_currency, payment_date, created_at")
+      .select("id, partner_email, amount_value, amount_currency, payment_date, created_at, description, receipt_storage_bucket, receipt_storage_path")
       .order("payment_date", { ascending: false });
 
     if (payoutsError) throw payoutsError;
@@ -122,6 +122,17 @@ Deno.serve(async (req: Request) => {
       p.status && successfulStatuses.includes(String(p.status).toLowerCase())
     );
     
+    // Группируем промокоды по email партнера
+    const promoCodesByEmail: Record<string, string[]> = {};
+    promoCodesList.forEach((pc) => {
+      const email = normalizeEmail(pc.email);
+      if (!email) return;
+      if (!promoCodesByEmail[email]) {
+        promoCodesByEmail[email] = [];
+      }
+      promoCodesByEmail[email].push(String(pc.code).trim().toUpperCase());
+    });
+
     // Группируем выплаты по email партнера
     const payoutsByEmail: Record<string, { total: number; currency: string }> = {};
     payoutsList.forEach((payout) => {
@@ -340,6 +351,22 @@ Deno.serve(async (req: Request) => {
           promo_code: p.promo_code,
           created_at: p.created_at ? String(p.created_at) : null,
         })),
+        payouts: payoutsList.map((p) => {
+          const email = normalizeEmail(p.partner_email);
+          const partnerPromoCodes = email ? (promoCodesByEmail[email] || []) : [];
+          return {
+            id: p.id,
+            amount_value: p.amount_value,
+            amount_currency: p.amount_currency || "RUB",
+            description: p.description,
+            payment_date: p.payment_date ? String(p.payment_date) : null,
+            created_at: p.created_at ? String(p.created_at) : null,
+            receipt_storage_bucket: p.receipt_storage_bucket ? String(p.receipt_storage_bucket) : null,
+            receipt_storage_path: p.receipt_storage_path ? String(p.receipt_storage_path) : null,
+            partner_email: p.partner_email,
+            promo_codes: partnerPromoCodes,
+          };
+        }),
       },
     });
   } catch (error) {

@@ -51,6 +51,7 @@ export interface PartnerStats {
     created_at: string | null;
     receipt_storage_bucket: string | null;
     receipt_storage_path: string | null;
+    promo_codes?: string[];
   }>;
 }
 
@@ -122,6 +123,18 @@ export interface AdminPromoCodesData {
     amount_currency: string;
     promo_code: string | null;
     created_at: string | null;
+  }>;
+  payouts: Array<{
+    id: string;
+    amount_value: number | null;
+    amount_currency: string;
+    description: string | null;
+    payment_date: string | null;
+    created_at: string | null;
+    receipt_storage_bucket: string | null;
+    receipt_storage_path: string | null;
+    partner_email: string;
+    promo_codes: string[];
   }>;
 }
 
@@ -216,6 +229,11 @@ export const getAdminPromoCodes = async (email: string, retryCount = 0): Promise
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       const errorMessage = error.error || `HTTP ${response.status}`;
+      
+      // Не ретраим на ошибки авторизации
+      if (response.status === 403 || response.status === 401) {
+        throw new Error(errorMessage);
+      }
       
       if (retryCount < maxRetries && response.status >= 500 && response.status < 600) {
         const delay = 200 * Math.pow(1.5, retryCount);
