@@ -88,7 +88,7 @@ export const fetchBillingProduct = async (key: string = BILLING_PRODUCT_KEY): Pr
     .maybeSingle();
   if (error) throw error;
   if (!data) return null;
-  return {
+  const product = {
     key: String(data.key),
     title: String(data.title || ""),
     priceValue: String(data.price_value),
@@ -96,6 +96,8 @@ export const fetchBillingProduct = async (key: string = BILLING_PRODUCT_KEY): Pr
     active: Boolean(data.active),
     iosProductId: data.ios_product_id ? String(data.ios_product_id) : null,
   };
+  writeCachedProduct(product); // Update cache on fetch
+  return product;
 };
 
 export const getCachedBillingProduct = (key: string = BILLING_PRODUCT_KEY): BillingProduct | null => {

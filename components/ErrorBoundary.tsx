@@ -81,10 +81,55 @@ const ErrorDisplay: React.FC<{ error: Error; errorInfo: React.ErrorInfo | null }
           <button
             type="button"
             className="h-10 px-4 rounded-xl border border-gray-200 bg-white text-slate-900 font-semibold"
-            onClick={() => {
+            onClick={async () => {
               try {
+                // КРИТИЧНО: Сохраняем сессию перед очисткой localStorage
+                const sessionKeys: string[] = [];
+                const sessionValues: Record<string, string> = {};
+                
+                // Сохраняем все ключи сессии Supabase
+                for (let i = 0; i < window.localStorage.length; i++) {
+                  const key = window.localStorage.key(i);
+                  if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
+                    sessionKeys.push(key);
+                    const value = window.localStorage.getItem(key);
+                    if (value) {
+                      sessionValues[key] = value;
+                    }
+                  }
+                }
+                
+                // Очищаем localStorage и sessionStorage
                 window.localStorage.clear();
                 window.sessionStorage.clear();
+                
+                // Восстанавливаем сессию
+                for (const key of sessionKeys) {
+                  if (sessionValues[key]) {
+                    try {
+                      window.localStorage.setItem(key, sessionValues[key]);
+                    } catch {
+                      // ignore
+                    }
+                  }
+                }
+                
+                // На iOS также восстанавливаем в Preferences
+                try {
+                  const { Capacitor } = await import('@capacitor/core');
+                  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios') {
+                    const { Preferences } = await import('@capacitor/preferences');
+                    for (const key of sessionKeys) {
+                      if (sessionValues[key]) {
+                        Preferences.set({ key, value: sessionValues[key] }).catch(() => {
+                          // ignore
+                        });
+                      }
+                    }
+                  }
+                } catch {
+                  // ignore
+                }
               } catch {
                 // ignore
               }

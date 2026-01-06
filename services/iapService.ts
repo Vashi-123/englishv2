@@ -1,6 +1,6 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { supabase } from "./supabaseClient";
-import { fetchBillingProduct, BILLING_PRODUCT_KEY } from "./billingService";
+import { fetchBillingProduct, getCachedBillingProduct, BILLING_PRODUCT_KEY } from "./billingService";
 
 // Fallback product ID if not found in database
 const DEFAULT_IOS_PRODUCT_ID = "englishv2.premium.a1";
@@ -8,6 +8,12 @@ const DEFAULT_IOS_PRODUCT_ID = "englishv2.premium.a1";
 // Get iOS product ID from database
 const getIosProductId = async (): Promise<string> => {
   try {
+    // Try cache first to avoid network delay
+    const cached = getCachedBillingProduct(BILLING_PRODUCT_KEY);
+    if (cached?.iosProductId) {
+      return cached.iosProductId;
+    }
+
     const product = await fetchBillingProduct(BILLING_PRODUCT_KEY);
     // Use ios_product_id from DB, or fallback to title, or default
     if (product?.iosProductId) {

@@ -48,8 +48,8 @@ const AppContent = lazyWithErrorHandling(() => import('./components/AppContent')
 const PartnerAuthScreen = lazyWithErrorHandling(() => import('./components/partners/PartnerAuthScreen').then(m => ({ default: m.PartnerAuthScreen })));
 const PartnerDashboard = lazyWithErrorHandling(() => import('./components/partners/PartnerDashboard').then(m => ({ default: m.PartnerDashboard })));
 
-// Компонент загрузки
-const LoadingScreen = () => (
+// Простой компонент загрузки
+const LoadingScreen: React.FC = () => (
   <div className="min-h-screen bg-slate-50 flex items-center justify-center pt-[var(--app-safe-top)]">
     <div className="text-center space-y-3">
       <div className="h-12 w-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin mx-auto" />
@@ -104,15 +104,22 @@ const OfflineGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 // Компонент для главной страницы (интро + форма входа)
 const LandingPage: React.FC = () => {
-  const { session, showIntro, hasLoggedIn, setShowIntro, refreshSession } = useAuth();
+  const { session, loading, showIntro, hasLoggedIn, setShowIntro, refreshSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const isNativePlatform = typeof window !== 'undefined' && Capacitor.isNativePlatform();
 
-  // УБРАНО: автоматический редирект на /app при наличии сессии
-  // Теперь на / всегда показывается главная страница (интро или форма входа)
-  // Пользователь может вручную перейти на /app если авторизован
+  // Автоматический редирект на /app при наличии сессии
+  useEffect(() => {
+    if (!loading && session?.user?.id) {
+      navigate('/app', { replace: true });
+    }
+  }, [loading, session, navigate]);
 
+  // Показываем LoadingScreen пока идет загрузка сессии
+  if (loading) {
+    return <LoadingScreen />;
+  }
 
   // Показываем интро-экраны
   const shouldShowIntro = !isNativePlatform || (isNativePlatform && showIntro && !hasLoggedIn);
@@ -126,6 +133,11 @@ const LandingPage: React.FC = () => {
         }}
       />
     );
+  }
+
+  // Если есть сессия, но мы все еще на LandingPage, показываем лоадер и ждем редиректа
+  if (session?.user?.id) {
+    return <LoadingScreen />;
   }
 
   // После интро показываем форму входа
@@ -150,7 +162,7 @@ const LandingPage: React.FC = () => {
 
 // Компонент для страницы приложения (вход + уроки)
 const AppPage: React.FC = () => {
-  const { session, refreshSession } = useAuth();
+  const { session, loading, refreshSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -164,6 +176,11 @@ const AppPage: React.FC = () => {
       sessionStorage.setItem('showPaywall', '1');
     }
   }, [session, showPaywallParam]);
+
+  // Показываем LoadingScreen пока идет загрузка сессии
+  if (loading) {
+    return <LoadingScreen />;
+  }
 
   // Если есть сессия - показываем приложение с уроками
   if (session?.user?.id) {
@@ -339,7 +356,7 @@ const EmailConfirmPage: React.FC = () => {
 
 // Компонент для партнерского портала
 const PartnerPage: React.FC = () => {
-  const { session, refreshSession } = useAuth();
+  const { session, loading, refreshSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const autologinAttemptedRef = useRef(false);
@@ -363,7 +380,8 @@ const PartnerPage: React.FC = () => {
     })();
   }, [autologinActive, navigate, refreshSession, session?.user?.id]);
 
-  if (!session?.user?.id && autologinActive) {
+  // Показываем LoadingScreen пока идет загрузка сессии
+  if (loading || (!session?.user?.id && autologinActive)) {
     return <LoadingScreen />;
   }
 

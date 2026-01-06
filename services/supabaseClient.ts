@@ -219,6 +219,62 @@ if (isNativeIOS && typeof window !== 'undefined') {
 // Экспортируем промис синхронизации для использования в AuthProvider
 export const waitForPreferencesSync = () => preferencesSyncPromise || Promise.resolve();
 
+// КРИТИЧНО: Функция для принудительной загрузки сессии из Preferences в кеш
+// Вызывается при инициализации, чтобы гарантировать, что сессия доступна синхронно
+export const ensurePreferencesLoaded = async (): Promise<void> => {
+  if (!isNativeIOS || typeof window === 'undefined') {
+    return;
+  }
+  
+  // Если preferencesSyncPromise еще не завершен, ждем его
+  if (preferencesSyncPromise) {
+    await preferencesSyncPromise;
+  }
+  
+  // Дополнительно: если кеш все еще пуст для ключей сессии, пытаемся загрузить из Preferences
+  const projectRef = supabaseUrl?.split('//')[1]?.split('.')[0] || '';
+  const supabaseAuthKey = projectRef ? `sb-${projectRef}-auth-token` : null;
+  const supabaseKeys = [
+    supabaseAuthKey,
+    'sb-auth-token',
+    'supabase.auth.token',
+  ].filter(Boolean) as string[];
+  
+  let hasSessionInCache = false;
+  for (const key of supabaseKeys) {
+    if (syncStorageCache.has(key)) {
+      hasSessionInCache = true;
+      break;
+    }
+  }
+  
+  // Если сессии нет в кеше, но есть в Preferences - загружаем
+  if (!hasSessionInCache) {
+    try {
+      const { Preferences } = await import('@capacitor/preferences');
+      for (const key of supabaseKeys) {
+        try {
+          const { value } = await Preferences.get({ key });
+          if (value) {
+            syncStorageCache.set(key, value);
+            try {
+              window.localStorage.setItem(key, value);
+            } catch {
+              // ignore
+            }
+            console.log('[Supabase] ensurePreferencesLoaded: сессия загружена из Preferences в кеш, ключ:', key);
+            break; // Нашли сессию, выходим
+          }
+        } catch {
+          // ignore
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+};
+
 // Функция для восстановления сессии из Preferences в кеш и localStorage
 // КРИТИЧНО: Вызывается ДО getSession(), чтобы сессия была доступна синхронно
 export const restoreSessionFromPreferences = async (): Promise<{ restored: boolean; key: string | null; value: string | null }> => {
@@ -303,6 +359,9 @@ export const restoreSessionFromPreferences = async (): Promise<{ restored: boole
   }
 };
 
+// Флаг для отслеживания, была ли попытка загрузки из Preferences при первом обращении
+let preferencesLoadAttempted = false;
+
 const safeStorageSync = {
   getItem: (key: string): string | null => {
     if (isNativeIOS) {
@@ -320,6 +379,24 @@ const safeStorageSync = {
       } catch {
         // ignore
       }
+      
+      // КРИТИЧНО: Если кеш и localStorage пусты, и это ключ сессии, 
+      // и Preferences еще не загружались синхронно - пытаемся загрузить из Preferences
+      // Это важно для случая, когда localStorage очищен после полного закрытия приложения
+      if (key.startsWith('sb-') && key.endsWith('-auth-token') && !preferencesLoadAttempted && typeof window !== 'undefined') {
+        preferencesLoadAttempted = true;
+        // Пытаемся синхронно загрузить из Preferences (может не сработать, но попробуем)
+        // В реальности это асинхронно, но мы уже запустили preferencesSyncPromise выше
+        // Просто проверяем, может быть он уже завершился
+        try {
+          // Проверяем, может быть preferencesSyncPromise уже завершился и обновил кеш
+          // Но это не гарантирует синхронность, поэтому просто возвращаем null
+          // и полагаемся на то, что bootstrap восстановит сессию из Preferences
+        } catch {
+          // ignore
+        }
+      }
+      
       // В конце memory storage
       return memoryStorage.get(key) ?? null;
     } else {
@@ -404,7 +481,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       
       // NOTE: iOS/iPadOS WebView can take a long time to spin up networking on cold start.
       // A too-aggressive timeout breaks OAuth PKCE exchange (Apple/Google) and looks like "infinite spinner".
-      const firstAttemptTimeoutMs = isNativeIOS ? 20000 : 8000;
+      // Reduced to 10s (from 20s) to improve perceived performance on cold start.
+      const firstAttemptTimeoutMs = isNativeIOS ? 10000 : 8000;
 
       try {
         let response: Response | null = null;
