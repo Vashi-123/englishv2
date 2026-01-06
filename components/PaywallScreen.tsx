@@ -565,12 +565,25 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
             </div>
           )}
 
+          {isNativeIos && (
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={handlePresentOfferCode}
+                disabled={anyPaying || isPremium}
+                className="h-12 w-full rounded-2xl bg-gray-100 text-slate-900 font-bold shadow-sm hover:bg-gray-200 transition disabled:opacity-60 active:scale-[0.98] active:brightness-[0.9] flex items-center justify-center gap-2"
+              >
+                Ввести промокод
+              </button>
+            </div>
+          )}
+
           <div className="mt-6 grid gap-3">
             <button
               type="button"
               onClick={useIosIap ? handlePayIos : handlePay}
               disabled={anyPaying || isPremium}
-              className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
+              className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 active:scale-[0.98] active:brightness-[0.9] flex items-center justify-center gap-2"
             >
               <span className="inline-flex items-center justify-center gap-2">
                 {anyPaying ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> : null}

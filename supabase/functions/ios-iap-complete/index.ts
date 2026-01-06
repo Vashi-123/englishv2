@@ -134,7 +134,7 @@ async function generateAppStoreJWT(): Promise<string> {
 async function verifyTransactionWithServerAPI(
   transactionId: string,
   productId: string
-): Promise<{ valid: boolean; productId?: string; transactionId?: string; originalTransactionId?: string; error?: string }> {
+): Promise<{ valid: boolean; productId?: string; transactionId?: string; originalTransactionId?: string; offerCodeRefName?: string; error?: string }> {
   if (!APP_STORE_KEY_ID || !APP_STORE_ISSUER_ID || !APP_STORE_PRIVATE_KEY) {
     return { valid: false, error: "App Store Server API credentials not configured" };
   }
@@ -195,6 +195,7 @@ async function verifyTransactionWithServerAPI(
         const txProductId = payloadJson.productId;
         const txTransactionId = payloadJson.transactionId;
         const txOriginalTransactionId = payloadJson.originalTransactionId;
+        const txOfferCodeRefName = payloadJson.offerCodeRefName;
 
         // Check if transaction matches
         if (txTransactionId === transactionId || txOriginalTransactionId === transactionId) {
@@ -209,6 +210,7 @@ async function verifyTransactionWithServerAPI(
             productId: txProductId || productId,
             transactionId: txTransactionId || transactionId,
             originalTransactionId: txOriginalTransactionId,
+            offerCodeRefName: txOfferCodeRefName,
           };
         }
 
@@ -228,6 +230,8 @@ async function verifyTransactionWithServerAPI(
   }
 }
 
+type VerifyReceiptResult = { valid: boolean; productId?: string; transactionId?: string; originalTransactionId?: string; offerCodeRefName?: string; error?: string };
+
 /**
  * Verify receipt with Apple App Store (legacy method)
  * Returns verified transaction data or null if verification fails
@@ -236,7 +240,7 @@ const verifyReceiptLegacy = async (
   receiptData: string,
   productId: string,
   transactionId: string
-): Promise<{ valid: boolean; productId?: string; transactionId?: string; error?: string }> => {
+): Promise<VerifyReceiptResult> => {
   if (!receiptData || !receiptData.trim()) {
     return { valid: false, error: "Receipt data is missing" };
   }
@@ -324,7 +328,7 @@ const verifyReceipt = async (
   receiptData: string | null,
   productId: string,
   transactionId: string
-): Promise<{ valid: boolean; productId?: string; transactionId?: string; originalTransactionId?: string; error?: string }> => {
+): Promise<VerifyReceiptResult> => {
   // Try App Store Server API first (new method, preferred)
   if (APP_STORE_KEY_ID && APP_STORE_ISSUER_ID && APP_STORE_PRIVATE_KEY) {
     console.log(`[ios-iap-complete] Attempting verification via App Store Server API`, { transactionId });
@@ -473,13 +477,15 @@ Deno.serve(async (req: Request) => {
     // Currently, promo code is saved if provided in the request
     let promoCode = typeof body?.promoCode === "string" ? body.promoCode.trim() : null;
     
-    // TODO: If promoCode is not provided, parse receipt using App Store Server API
-    // to extract offerCodeRefName from transaction details
-    // This requires App Store Server API credentials and JWT token generation
+    // If promoCode is not provided in request, try to extract from verified receipt (App Store Server API)
+    if (!promoCode && receiptVerification?.offerCodeRefName) {
+      console.log("[ios-iap-complete] Extracted promo code from verified transaction", { offerCodeRefName: receiptVerification.offerCodeRefName });
+      promoCode = receiptVerification.offerCodeRefName;
+    }
 
     // Verify transaction/receipt with Apple App Store
     // App Store Server API can work without receiptData, legacy method requires it
-    let receiptVerification: { valid: boolean; productId?: string; transactionId?: string; originalTransactionId?: string; error?: string } | null = null;
+    let receiptVerification: VerifyReceiptResult | null = null;
     
     // Try verification (will use App Store Server API if available, or legacy method with receiptData)
     receiptVerification = await verifyReceipt(receiptData, rawProductId, transactionId);
