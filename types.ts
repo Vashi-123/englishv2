@@ -163,7 +163,7 @@ export type GrammarPayload = {
   content?: string;
   explanation?: string;
   successText?: string;
-  drills?: Array<{ question: string; task: string; expected: string }>;
+  drills?: Array<{ question: string; task: string; expected: string | string[]; requiredWords?: string[] }>;
 };
 
 export type AudioExercisePayload = {

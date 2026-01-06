@@ -122,11 +122,27 @@ export async function checkForUpdate(): Promise<{
   isForceUpdate: boolean;
   versionInfo: VersionInfo | null;
 }> {
+  // Веб-версии не должны требовать обновления — просто выходим
+  if (!Capacitor.isNativePlatform()) {
+    return {
+      needsUpdate: false,
+      isForceUpdate: false,
+      versionInfo: null,
+    };
+  }
+
   try {
     const currentVersion = await getCurrentVersion();
     const latestInfo = await getLatestVersionInfo();
 
+    console.log('[Version] Check update:', {
+      platform: Capacitor.getPlatform(),
+      currentVersion,
+      latestInfo,
+    });
+
     if (!latestInfo) {
+      console.log('[Version] No latest version info available');
       return {
         needsUpdate: false,
         isForceUpdate: false,
@@ -135,12 +151,26 @@ export async function checkForUpdate(): Promise<{
     }
 
     const comparison = compareVersions(currentVersion, latestInfo.version);
-    const needsUpdate = comparison < 0;
-
-    // Всегда принудительное обновление при обнаружении новой версии
-    const isForceUpdate = needsUpdate || 
+    const isBelowMinVersion = latestInfo.minVersion 
+      ? compareVersions(currentVersion, latestInfo.minVersion) < 0 
+      : false;
+    
+    // Обновление нужно если: версия меньше последней, или forceUpdate, или версия меньше минимальной
+    const needsUpdate = comparison < 0 || 
       latestInfo.forceUpdate ||
-      (latestInfo.minVersion && compareVersions(currentVersion, latestInfo.minVersion) < 0);
+      isBelowMinVersion;
+
+    // Принудительное обновление если: нужна новая версия, или forceUpdate, или версия ниже минимальной
+    const isForceUpdate = needsUpdate;
+
+    console.log('[Version] Update check result:', {
+      currentVersion,
+      latestVersion: latestInfo.version,
+      comparison,
+      needsUpdate,
+      isForceUpdate,
+      minVersion: latestInfo.minVersion,
+    });
 
     return {
       needsUpdate,

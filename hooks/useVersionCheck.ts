@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { checkForUpdate, getCurrentVersion } from '../services/versionService';
 
 interface VersionCheckResult {
@@ -24,6 +25,11 @@ export function useVersionCheck(checkInterval: number = 5 * 60 * 1000) {
   const [isChecking, setIsChecking] = useState(false);
 
   const performCheck = async () => {
+    // На вебе вообще не проверяем версию
+    if (!Capacitor.isNativePlatform()) {
+      return;
+    }
+
     setIsChecking(true);
     try {
       const currentVersion = await getCurrentVersion();
@@ -41,6 +47,11 @@ export function useVersionCheck(checkInterval: number = 5 * 60 * 1000) {
   };
 
   useEffect(() => {
+    // На вебе не запускаем проверку версий
+    if (!Capacitor.isNativePlatform()) {
+      return;
+    }
+
     // Первая проверка при монтировании
     performCheck();
 

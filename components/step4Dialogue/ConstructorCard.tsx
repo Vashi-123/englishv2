@@ -104,11 +104,8 @@ export function ConstructorCard({
     if (!expected) return null;
     if (!sentence) return false;
     if (expectedTokens) {
-      if (pickedTokens.length !== expectedTokens.length) return false;
-      for (let i = 0; i < expectedTokens.length; i++) {
-        if (pickedTokens[i] !== expectedTokens[i]) return false;
-      }
-      return true;
+      const expectedSentence = formatConstructorSentence(expectedTokens);
+      return normalizeLenient(sentence) === normalizeLenient(expectedSentence);
     }
     if (typeof expected !== 'string') return false;
     return normalizeLenient(sentence) === normalizeLenient(expected);

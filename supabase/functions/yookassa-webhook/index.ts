@@ -79,21 +79,69 @@ Deno.serve(async (req: Request) => {
         .eq("id", paymentRow.id);
     }
 
-    // Grant entitlement on success.
-    if (paid && status === "succeeded") {
-      const userIdFromMeta = typeof metadata?.user_id === "string" ? metadata.user_id : null;
-      const userId = userIdFromMeta || (paymentRow?.user_id as string | undefined) || null;
-      if (userId) {
-        // Get user email if available
-        const { data: userData } = await supabase.auth.admin.getUserById(userId);
-        const userEmail = userData?.user?.email ? String(userData.user.email).trim() : null;
-        
+    const userIdFromMeta = typeof metadata?.user_id === "string" ? metadata.user_id : null;
+    const userId = userIdFromMeta || (paymentRow?.user_id as string | undefined) || null;
+
+    // Обработка различных статусов платежа
+    if (userId) {
+      // Get user email if available
+      const { data: userData } = await supabase.auth.admin.getUserById(userId);
+      const userEmail = userData?.user?.email ? String(userData.user.email).trim() : null;
+
+      // Успешная оплата - активируем premium
+      if (paid && status === "succeeded") {
         await supabase
           .from("user_entitlements")
           .upsert(
             { user_id: userId, email: userEmail || null, is_premium: true, premium_until: null, paid: true },
             { onConflict: "user_id" }
           );
+      }
+      // Waiting for capture - для двухстадийных платежей (если будет использоваться)
+      // Пока не активируем premium, ждем подтверждения
+      else if (status === "waiting_for_capture") {
+        console.log(`[yookassa-webhook] Payment waiting for capture: ${paymentId}`, { userId });
+        // Можно добавить логику уведомления или автоматического подтверждения
+        // Для одностадийных платежей (capture: true) этот статус не должен появляться
+      }
+      // Отмена платежа - не активируем premium
+      else if (status === "canceled") {
+        console.log(`[yookassa-webhook] Payment canceled: ${paymentId}`, { userId });
+        // Premium не активируется, статус уже обновлен выше
+      }
+      // Возврат средств - отключаем premium
+      else if (status === "refunded" || status === "partially_refunded") {
+        console.log(`[yookassa-webhook] Payment refunded: ${paymentId}`, { userId, status });
+        // Отключаем premium при полном возврате
+        if (status === "refunded") {
+          // Проверяем, был ли premium активирован именно этим платежом
+          const { data: entitlements } = await supabase
+            .from("user_entitlements")
+            .select("user_id,paid")
+            .eq("user_id", userId)
+            .maybeSingle();
+          
+          // Если premium был оплаченным и это был последний успешный платеж, отключаем
+          if (entitlements?.paid) {
+            // Проверяем, есть ли другие успешные платежи
+            const { data: otherPayments } = await supabase
+              .from("payments")
+              .select("id")
+              .eq("user_id", userId)
+              .eq("provider", "yookassa")
+              .eq("status", "succeeded")
+              .neq("provider_payment_id", paymentId)
+              .limit(1);
+            
+            // Если других успешных платежей нет, отключаем premium
+            if (!otherPayments || otherPayments.length === 0) {
+              await supabase
+                .from("user_entitlements")
+                .update({ is_premium: false, paid: false })
+                .eq("user_id", userId);
+            }
+          }
+        }
       }
     }
 

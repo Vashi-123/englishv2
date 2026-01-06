@@ -97,6 +97,7 @@ export function DialogueMessages({
 
 			  isAwaitingModelReply,
 			  lessonCompletedPersisted,
+			  isRevisit,
 			  onNextLesson,
 
         nextLessonNumber,
@@ -190,6 +191,7 @@ export function DialogueMessages({
 
 			  isAwaitingModelReply: boolean;
 			  lessonCompletedPersisted: boolean;
+			  isRevisit?: boolean;
 			  onNextLesson?: () => void;
 
         nextLessonNumber?: number;
@@ -507,10 +509,29 @@ export function DialogueMessages({
           })();
 
           const isTaskCard = Boolean(isTaskPayload && !isSituationCard && !isVocabulary && !isSeparatorOnly);
+          const isGrammar = parsed?.type === 'grammar';
+          
+          // Проверяем, является ли это сообщение следующим после завершенного matching
+          // Если matching был завершен и это сообщение идет после того места, где был matching,
+          // то px-6 нужно применить только к сообщению, а не к обертке с matching
+          const isAfterCompletedMatching = (() => {
+            if (!matchesComplete || matchingInsertIndexSafe === null) return false;
+            // Если matching был вставлен в конце списка (matchingInsertIndexSafe === messages.length),
+            // то новое сообщение будет иметь idx >= matchingInsertIndexSafe
+            // Если matching был вставлен внутри списка, то следующее сообщение будет иметь idx > matchingInsertIndexSafe
+            if (matchingInsertIndexSafe === messages.length) {
+              return idx >= matchingInsertIndexSafe;
+            }
+            return idx > matchingInsertIndexSafe;
+          })();
+          
           const isFullCard = isSituationCard || isVocabulary || isTaskCard || Boolean(isSeparatorOnly || showSeparator);
+          // Не применяем px-6 к внешнему контейнеру, если это сообщение после завершенного matching,
+          // чтобы не затронуть matching карточку. px-6 будет применен только к самому сообщению в MessageRow.
+          const shouldApplyOuterPadding = !isFullCard && !isAfterCompletedMatching;
 
           return (
-            <div key={msgStableId} className={isFullCard ? '' : 'px-6'}>
+            <div key={msgStableId} className={shouldApplyOuterPadding ? 'px-4' : ''}>
               <MessageRow
                 msg={msg}
                 idx={idx}
@@ -519,11 +540,13 @@ export function DialogueMessages({
                 isVocabulary={isVocabulary}
                 isSituationCard={isSituationCard}
                 isTaskCard={isTaskCard}
+                isGrammar={isGrammar}
                 isSeparatorOnly={Boolean(isSeparatorOnly)}
                 showSeparatorTitle={Boolean(showSeparator)}
                 separatorTitle={parsed?.title}
                 separatorsForThisMessage={separatorsForThisMessage}
                 shouldInsertMatchingHere={Boolean(shouldInsertMatchingHere)}
+                isAfterCompletedMatching={isAfterCompletedMatching}
                 matching={{
                   containerRef: matchingRef,
                   showMatching,
@@ -653,7 +676,7 @@ export function DialogueMessages({
           <>
             <div className="w-full flex justify-center">
               <div className="w-full max-w-[480px] sm:max-w-[520px]">
-                <AchievementCard />
+                <AchievementCard isRevisit={isRevisit} />
               </div>
             </div>
             {onNextLesson && (

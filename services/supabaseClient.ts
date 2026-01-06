@@ -121,6 +121,9 @@ const safeStorage = {
 const syncStorageCache = new Map<string, string>();
 
 // Инициализация: сначала синхронно загружаем из localStorage, затем асинхронно синхронизируем с Preferences
+// КРИТИЧНО: На iOS нужно сначала загрузить сессию из Preferences, чтобы она была доступна при инициализации Supabase
+let preferencesSyncPromise: Promise<void> | null = null;
+
 if (isNativeIOS && typeof window !== 'undefined') {
   // СИНХРОННО: сначала загружаем из localStorage (доступен сразу)
   try {
@@ -137,8 +140,9 @@ if (isNativeIOS && typeof window !== 'undefined') {
     // ignore
   }
   
-  // АСИНХРОННО: затем синхронизируем с Preferences (может быть более актуальная версия)
-  (async () => {
+  // АСИНХРОННО: синхронизируем с Preferences (может быть более актуальная версия)
+  // Сохраняем промис, чтобы можно было дождаться завершения синхронизации
+  preferencesSyncPromise = (async () => {
     try {
       // Динамический импорт Preferences только на iOS
       const { Preferences } = await import('@capacitor/preferences');
@@ -212,6 +216,93 @@ if (isNativeIOS && typeof window !== 'undefined') {
   }
 }
 
+// Экспортируем промис синхронизации для использования в AuthProvider
+export const waitForPreferencesSync = () => preferencesSyncPromise || Promise.resolve();
+
+// Функция для восстановления сессии из Preferences в кеш и localStorage
+// КРИТИЧНО: Вызывается ДО getSession(), чтобы сессия была доступна синхронно
+export const restoreSessionFromPreferences = async (): Promise<{ restored: boolean; key: string | null; value: string | null }> => {
+  if (!isNativeIOS || typeof window === 'undefined') {
+    return { restored: false, key: null, value: null };
+  }
+
+  try {
+    const { Preferences } = await import('@capacitor/preferences');
+    
+    // Получаем project ref из URL для формирования правильного ключа
+    const projectRef = supabaseUrl?.split('//')[1]?.split('.')[0] || '';
+    const supabaseAuthKey = projectRef ? `sb-${projectRef}-auth-token` : null;
+    
+    // Список возможных ключей Supabase (в порядке приоритета)
+    const supabaseKeys = [
+      supabaseAuthKey,
+      'sb-auth-token',
+      'supabase.auth.token',
+    ].filter(Boolean) as string[];
+    
+    // Ищем сессию в Preferences
+    for (const key of supabaseKeys) {
+      try {
+        const { value } = await Preferences.get({ key });
+        if (value) {
+          console.log('[Supabase] restoreSessionFromPreferences: найдена сессия в Preferences, ключ:', key);
+          
+          // Восстанавливаем в кеш (синхронный доступ)
+          syncStorageCache.set(key, value);
+          
+          // Восстанавливаем в localStorage (для совместимости)
+          try {
+            window.localStorage.setItem(key, value);
+            console.log('[Supabase] restoreSessionFromPreferences: сессия восстановлена в кеш и localStorage');
+          } catch (err) {
+            console.warn('[Supabase] restoreSessionFromPreferences: ошибка восстановления в localStorage:', err);
+          }
+          
+          return { restored: true, key, value };
+        }
+      } catch (err) {
+        console.warn('[Supabase] restoreSessionFromPreferences: ошибка чтения ключа', key, err);
+      }
+    }
+    
+    // Также проверяем localStorage на наличие других ключей Supabase
+    // и пытаемся загрузить их из Preferences
+    try {
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const key = window.localStorage.key(i);
+        if (key && key.startsWith('sb-') && key.endsWith('-auth-token') && !supabaseKeys.includes(key)) {
+          try {
+            const { value } = await Preferences.get({ key });
+            if (value) {
+              console.log('[Supabase] restoreSessionFromPreferences: найдена сессия в Preferences (дополнительный ключ), ключ:', key);
+              
+              // Восстанавливаем в кеш и localStorage
+              syncStorageCache.set(key, value);
+              try {
+                window.localStorage.setItem(key, value);
+              } catch {
+                // ignore
+              }
+              
+              return { restored: true, key, value };
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    
+    console.log('[Supabase] restoreSessionFromPreferences: сессия не найдена в Preferences');
+    return { restored: false, key: null, value: null };
+  } catch (err) {
+    console.error('[Supabase] restoreSessionFromPreferences: ошибка:', err);
+    return { restored: false, key: null, value: null };
+  }
+};
+
 const safeStorageSync = {
   getItem: (key: string): string | null => {
     if (isNativeIOS) {
@@ -249,21 +340,25 @@ const safeStorageSync = {
         // ignore
       }
       // Асинхронно сохраняем в Preferences (особенно важно для ключей Supabase)
+      // КРИТИЧНО: Для ключей сессии используем await, чтобы гарантировать сохранение
       // Используем динамический импорт для безопасности
-      import('@capacitor/preferences').then(({ Preferences }) => {
-        if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-          Preferences.set({ key, value }).catch((err) => {
-            console.warn('[Supabase] Failed to persist auth token to Preferences:', err);
-          });
-        } else {
-          // Для других ключей тоже сохраняем, но с меньшим приоритетом
-          Preferences.set({ key, value }).catch(() => {
-            // ignore для не-критичных ключей
-          });
+      const saveToPreferences = async () => {
+        try {
+          const { Preferences } = await import('@capacitor/preferences');
+          if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
+            // Для ключей сессии ждем завершения сохранения
+            await Preferences.set({ key, value });
+          } else {
+            // Для других ключей сохраняем без ожидания
+            Preferences.set({ key, value }).catch(() => {
+              // ignore для не-критичных ключей
+            });
+          }
+        } catch {
+          // ignore - если Preferences недоступен
         }
-      }).catch(() => {
-        // ignore - если Preferences недоступен
-      });
+      };
+      void saveToPreferences();
     } else {
       // На вебе используем обычный localStorage
       try {

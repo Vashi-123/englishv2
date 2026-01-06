@@ -8,6 +8,7 @@ import { isStep4DebugEnabled } from './debugFlags';
 import type { Step4PerfEventInput } from './useLessonPerfLog';
 import { recordConstructorReview, recordFindMistakeReview } from './reviewDecks';
 import { applyConstructorReview, applyFindMistakeReview } from '../../services/exerciseReviewService';
+import { validateGrammarDrill, type GrammarDrill } from '../../utils/grammarValidator';
 
 type EnsureLessonContext = () => Promise<void>;
 type EnsureLessonScript = () => Promise<any>;
@@ -255,6 +256,7 @@ export function useLessonFlow({
         let isCorrect = true;
         let feedback = '';
         let reactionText: string | undefined = undefined;
+        let wasLocalValidation = false; // Флаг для отслеживания локальной проверки ситуаций
 
         if (stepForInput.type === 'find_the_mistake' && opts?.choice) {
           const task = (script as any)?.find_the_mistake?.tasks?.[Number((stepForInput as any)?.index) || 0];
@@ -289,7 +291,6 @@ export function useLessonFlow({
             day,
             lesson,
             level,
-            currentStepSnapshot: out.nextStep || null,
             completed: out.messages?.some((m) => String(m.text || '').includes('<lesson_complete>')) ? true : undefined,
           })
             .then(() => upsertSpan?.('ok'))
@@ -308,31 +309,129 @@ export function useLessonFlow({
           } else {
             if (!lessonId || !userId) throw new Error('Missing lesson context');
             const validateSpan = startSpan('validateDialogueAnswer', { stepType: stepForInput.type });
-            try {
-              const validation = await withTimeout(
-                validateDialogueAnswerV2({
-                  lessonId,
-                  userId,
-                  currentStep: stepForInput,
-                  studentAnswer,
-                  uiLang: language,
-                }),
-                12000,
-                'validateDialogueAnswer'
-              );
-              isCorrect = validation.isCorrect;
-              feedback = validation.feedback || '';
-              reactionText = validation.reactionText;
-              validateSpan?.('ok', { isCorrect });
-            } catch (err: any) {
-              // Never leave the UI stuck on "three dots". Fall back to a safe retry prompt.
-              console.error('[Step4Dialogue] validateDialogueAnswer error:', err);
-              validateSpan?.('error', { error: String(err?.message || err) });
-              isCorrect = false;
-              feedback = language?.toLowerCase?.().startsWith('ru')
-                ? 'Похоже, связь нестабильна и я не смог проверить ответ. Попробуй отправить ещё раз.'
-                : "Connection seems unstable and I couldn't validate your answer. Please try sending again.";
-              reactionText = undefined;
+            
+            // Для ситуаций сначала проверяем локально
+            let needsAI = true;
+            if (stepForInput.type === 'situations') {
+              try {
+                const scenario = (script as any)?.situations?.scenarios?.[Number((stepForInput as any)?.index) || 0];
+                const stepIndexRaw = (stepForInput as any)?.subIndex;
+                const stepIndex = typeof stepIndexRaw === 'number' && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
+                const steps = Array.isArray(scenario?.steps) ? scenario.steps : null;
+                let expectedAnswer = '';
+                
+                if (steps && steps.length > 0) {
+                  const safeIndex = Math.max(0, Math.min(steps.length - 1, stepIndex));
+                  const step = steps[safeIndex];
+                  expectedAnswer = String(step?.expected_answer || '').trim();
+                } else if (scenario) {
+                  expectedAnswer = String(scenario?.expected_answer || '').trim();
+                }
+                
+                if (expectedAnswer) {
+                  const grammarDrill: GrammarDrill = {
+                    question: String(scenario?.title || ''),
+                    task: steps && steps.length > 0 
+                      ? String(steps[Math.max(0, Math.min(steps.length - 1, stepIndex))]?.task || '')
+                      : String(scenario?.task || ''),
+                    expected: expectedAnswer,
+                  };
+                  
+                  const localResult = validateGrammarDrill(studentAnswer, grammarDrill);
+                  
+                  // Если локальная проверка нашла правильный ответ и нет лишних слов - не нужен ИИ
+                  if (localResult.isCorrect && (!localResult.extraWords || localResult.extraWords.length === 0)) {
+                    isCorrect = true;
+                    feedback = localResult.feedback || '';
+                    needsAI = false;
+                    wasLocalValidation = true;
+                    console.log('[Step4Dialogue] Ситуация: проверка локальная (ИИ не использован)', {
+                      expected: expectedAnswer,
+                      answer: studentAnswer,
+                      isCorrect,
+                      extraWords: localResult.extraWords
+                    });
+                    validateSpan?.('ok', { isCorrect, local: true });
+                    // Показываем три точки на 1000мс перед показом следующего сообщения
+                    // isAwaitingModelReply уже установлен в true в начале функции, просто ждем
+                    await pauseMilliseconds(1000);
+                  } else if (!localResult.needsAI) {
+                    // Локальная проверка дала результат, но ответ неправильный
+                    isCorrect = localResult.isCorrect;
+                    feedback = localResult.feedback || '';
+                    needsAI = false;
+                    wasLocalValidation = true;
+                    console.log('[Step4Dialogue] Ситуация: проверка локальная (ИИ не использован, ответ неправильный)', {
+                      expected: expectedAnswer,
+                      answer: studentAnswer,
+                      isCorrect,
+                      missingWords: localResult.missingWords,
+                      incorrectWords: localResult.incorrectWords,
+                      extraWords: localResult.extraWords,
+                      orderError: localResult.orderError
+                    });
+                    validateSpan?.('ok', { isCorrect, local: true });
+                    await pauseMilliseconds(1000);
+                  } else {
+                    // Если есть лишние слова или локальная проверка не нашла правильный ответ - нужен ИИ
+                    needsAI = true;
+                    console.log('[Step4Dialogue] Ситуация: требуется проверка через ИИ', {
+                      expected: expectedAnswer,
+                      answer: studentAnswer,
+                      isCorrect: localResult.isCorrect,
+                      extraWords: localResult.extraWords,
+                      missingWords: localResult.missingWords,
+                      incorrectWords: localResult.incorrectWords
+                    });
+                  }
+                }
+              } catch (err: any) {
+                console.error('[Step4Dialogue] Local situation validation error:', err);
+                // В случае ошибки локальной проверки - используем ИИ
+                needsAI = true;
+              }
+            }
+            
+            // Если нужна проверка через ИИ
+            if (needsAI) {
+              console.log('[Step4Dialogue] Проверка через ИИ:', {
+                stepType: stepForInput.type,
+                answer: studentAnswer,
+                stepIndex: stepForInput.index,
+                subIndex: stepForInput.subIndex
+              });
+              try {
+                const validation = await withTimeout(
+                  validateDialogueAnswerV2({
+                    lessonId,
+                    userId,
+                    currentStep: stepForInput,
+                    studentAnswer,
+                    uiLang: language,
+                  }),
+                  12000,
+                  'validateDialogueAnswer'
+                );
+                isCorrect = validation.isCorrect;
+                feedback = validation.feedback || '';
+                reactionText = validation.reactionText;
+                console.log('[Step4Dialogue] Результат проверки через ИИ:', {
+                  stepType: stepForInput.type,
+                  isCorrect,
+                  feedback,
+                  reactionText
+                });
+                validateSpan?.('ok', { isCorrect, ai: true });
+              } catch (err: any) {
+                // Never leave the UI stuck on "three dots". Fall back to a safe retry prompt.
+                console.error('[Step4Dialogue] validateDialogueAnswer error:', err);
+                validateSpan?.('error', { error: String(err?.message || err) });
+                isCorrect = false;
+                feedback = language?.toLowerCase?.().startsWith('ru')
+                  ? 'Похоже, связь нестабильна и я не смог проверить ответ. Попробуй отправить ещё раз.'
+                  : "Connection seems unstable and I couldn't validate your answer. Please try sending again.";
+                reactionText = undefined;
+              }
             }
           }
         }
@@ -427,6 +526,12 @@ export function useLessonFlow({
               console.error('[Step4Dialogue] upsertLessonProgress bg error:', err);
               upsertSpan?.('error', { error: String(err?.message || err) });
             });
+        }
+        // Для ситуаций с локальной проверкой даем время React обновить состояние перед сбросом флага
+        // чтобы автопроизведение могло сработать
+        if (stepForInput.type === 'situations' && wasLocalValidation) {
+          await pauseMilliseconds(100);
+          await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
         }
         totalSpan?.('ok', {
           branch: String(stepForInput.type),

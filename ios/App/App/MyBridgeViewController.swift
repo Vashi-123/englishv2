@@ -209,14 +209,23 @@ class MyBridgeViewController: CAPBridgeViewController {
         NSLog("[MyBridgeViewController] capacitorDidLoad - registering NativeIapPlugin")
         bridge?.registerPluginInstance(NativeIapPlugin())
         
-        // Listen for transaction updates to avoid missing successful purchases
+        // Listen for transaction updates to handle pending transactions that complete later
+        // This is critical for pending transactions that finish after payment is received
+        // When a pending transaction completes, it will appear in Transaction.updates
+        // The JS layer will check for completed transactions when app returns from background
         if #available(iOS 15.0, *) {
             transactionUpdateTask = Task {
                 for await result in Transaction.updates {
-                    if case .verified(let transaction) = result {
-                        // Transaction is already handled in purchase() method
-                        // This listener ensures we don't miss any transactions
+                    switch result {
+                    case .verified(let transaction):
+                        // Transaction is verified - this could be a pending transaction that completed
+                        // We finish it here, and the JS layer will detect it via restorePurchases
+                        // when the app returns from background
+                        NSLog("[MyBridgeViewController] Transaction update received (pending completed): \(transaction.id)")
                         await transaction.finish()
+                    case .unverified(_, let error):
+                        // Transaction verification failed - log but don't block
+                        NSLog("[MyBridgeViewController] Transaction verification failed: \(error.localizedDescription)")
                     }
                 }
             }

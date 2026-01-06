@@ -58,7 +58,16 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const [promoIosProductId, setPromoIosProductId] = useState<string | null>(null);
   const [defaultIosProductId, setDefaultIosProductId] = useState<string | null>(null);
 
-  const listPriceLabel = useMemo(() => formatPrice("15000.00", "RUB"), []);
+  const listPriceLabel = useMemo(() => {
+    const basePrice = Number(basePriceValue);
+    if (Number.isFinite(basePrice) && basePrice > 0) {
+      // Старая цена примерно в 10 раз больше текущей
+      const listPrice = basePrice * 10;
+      return formatPrice(String(listPrice), basePriceCurrency || "RUB");
+    }
+    // Fallback для случая, когда цена еще не загружена
+    return formatPrice("15000.00", "RUB");
+  }, [basePriceValue, basePriceCurrency]);
   const priceBusy = priceLoading || (isNativeIos && iapLoading);
 
   const promoAppliedRef = useRef(false);
@@ -308,6 +317,14 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
         console.error("[PaywallScreen] no confirmation URL");
         return;
       }
+      // Сохраняем paymentId для проверки статуса при возврате
+      if (res.paymentId && typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('yookassa_payment_id', res.paymentId);
+        } catch {
+          // ignore
+        }
+      }
       window.location.href = url;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -338,14 +355,50 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       console.log("[PaywallScreen] purchaseIosIap result:", res);
       if (!res || res.ok !== true) {
         const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось завершить покупку";
+        
+        // Отмена пользователем - не показываем как ошибку
+        if (res && "cancelled" in res && res.cancelled === true) {
+          console.log("[PaywallScreen] Purchase was cancelled by user");
+          // Не показываем alert для отмены - пользователь сам отменил
+          return;
+        }
+        
+        // Pending транзакция - показываем информационное сообщение
+        if (res && "pending" in res && res.pending === true) {
+          console.warn("[PaywallScreen] Purchase is pending", msg);
+          alert(msg + "\n\nВы можете проверить статус покупки в настройках App Store. Premium будет активирован автоматически после поступления оплаты.");
+          return;
+        }
+        
+        // Другие ошибки
         console.error("[PaywallScreen] iOS purchase failed", msg);
+        if (msg.includes("ожидает оплаты") || msg.includes("PENDING")) {
+          alert(msg + "\n\nВы можете проверить статус покупки в настройках App Store. Premium будет активирован автоматически после поступления оплаты.");
+        } else {
+          alert(msg);
+        }
         return;
       }
       onEntitlementsRefresh();
       onClose();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      console.error("[PaywallScreen] iOS purchase catch", msg || "Не удалось завершить покупку");
+      
+      // Отмена пользователем - не показываем как ошибку
+      if (msg.includes("CANCELLED") || msg.includes("cancelled") || msg === "Покупка отменена") {
+        console.log("[PaywallScreen] Purchase was cancelled by user");
+        // Не показываем alert для отмены
+        return;
+      }
+      
+      // Pending транзакция
+      if (msg.includes("PENDING") || msg.includes("ожидает оплаты")) {
+        console.warn("[PaywallScreen] Purchase is pending", msg);
+        alert("Транзакция ожидает оплаты. Покупка будет завершена автоматически после поступления средств на ваш счет Apple ID.\n\nВы можете проверить статус покупки в настройках App Store.");
+      } else {
+        console.error("[PaywallScreen] iOS purchase catch", msg || "Не удалось завершить покупку");
+        alert(msg || "Не удалось завершить покупку");
+      }
     } finally {
       setIapPaying(false);
     }

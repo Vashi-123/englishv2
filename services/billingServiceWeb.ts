@@ -39,3 +39,24 @@ export const quoteBillingWithPromo = async (params: { promoCode?: string; produc
   if (error) throw error;
   return data as BillingQuoteResponse;
 };
+
+/**
+ * Check YooKassa payment status - useful when user returns from payment page
+ * and webhook might not have arrived yet
+ */
+export const checkYooKassaPaymentStatus = async (params: { paymentId: string }) => {
+  const { data, error } = await supabase.functions.invoke("yookassa-check-payment", {
+    body: {
+      paymentId: params.paymentId,
+    },
+  });
+  if (error) throw error;
+  return data as {
+    ok: boolean;
+    status?: string;
+    paid?: boolean;
+    succeeded?: boolean;
+    canceled?: boolean;
+    error?: string;
+  };
+};

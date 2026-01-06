@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { ActivityType, ViewState } from '../types';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDashboardData } from '../hooks/useDashboardData';
@@ -62,6 +63,8 @@ export const AppContent: React.FC<{
   userEmail?: string;
   onSignOut: () => Promise<void>;
 }> = ({ userId, userEmail, onSignOut }) => {
+  const location = useLocation();
+  const navigate = useNavigate();
   // Language management
   const { language, setLanguage, copy, languages } = useLanguage();
   // TTS for word pronunciation
@@ -185,6 +188,29 @@ export const AppContent: React.FC<{
   useEffect(() => {
     void primeBillingProductCache();
   }, []);
+
+  // Проверяем параметр showPaywall в URL и открываем PaywallScreen
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() && userId) {
+      const params = new URLSearchParams(location.search);
+      const showPaywallFromUrl = params.get('showPaywall') === '1';
+      const showPaywallFromStorage = typeof window !== 'undefined' && sessionStorage.getItem('showPaywall') === '1';
+      
+      if (showPaywallFromUrl || showPaywallFromStorage) {
+        setPaywallLesson(null);
+        setView(ViewState.PAYWALL);
+        // Убираем параметр из URL и sessionStorage
+        if (showPaywallFromUrl) {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('showPaywall');
+          navigate(url.pathname + url.search, { replace: true });
+        }
+        if (showPaywallFromStorage) {
+          sessionStorage.removeItem('showPaywall');
+        }
+      }
+    }
+  }, [location.search, userId, navigate, setPaywallLesson, setView]);
 
   const openInsightPopup = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -366,19 +392,90 @@ export const AppContent: React.FC<{
   const statusStorageKey = userEmail ? getCacheKeyWithCurrentUser(`englishv2:dayCompletedStatus:${level}`) : null;
   const selectedDayStorageKey = userEmail ? getCacheKeyWithCurrentUser(`englishv2:selectedDayId:${level}`) : null;
 
-  // If payment returns the user to the app, refresh entitlements once.
+  // If payment returns the user to the app, check payment status and refresh entitlements
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     if (url.searchParams.get('paid') !== '1') return;
+    
     url.searchParams.delete('paid');
     try {
       window.history.replaceState({}, '', url.toString());
     } catch {
       // ignore
     }
-    void refreshEntitlements();
+    
+    // Проверяем статус платежа, если webhook еще не пришел
+    const checkPaymentStatus = async () => {
+      try {
+        const paymentId = sessionStorage.getItem('yookassa_payment_id');
+        if (paymentId) {
+          // Очищаем paymentId из sessionStorage
+          sessionStorage.removeItem('yookassa_payment_id');
+          
+          // Проверяем статус платежа через edge function
+          const { checkYooKassaPaymentStatus } = await import('../services/billingServiceWeb');
+          const statusResult = await checkYooKassaPaymentStatus({ paymentId });
+          
+          if (statusResult?.ok) {
+            if (statusResult.canceled) {
+              // Платеж отменен - показываем сообщение
+              console.log('[AppContent] Payment was canceled', { paymentId });
+              // Можно показать toast или сообщение, но не блокируем интерфейс
+            } else if (statusResult.succeeded) {
+              // Платеж успешен - обновляем entitlements
+              console.log('[AppContent] Payment succeeded, refreshing entitlements', { paymentId });
+              await refreshEntitlements();
+              return; // Выходим, refreshEntitlements уже вызван
+            }
+          }
+        }
+      } catch (err) {
+        // Игнорируем ошибки проверки статуса - просто обновляем entitlements
+        console.log('[AppContent] Payment status check failed, refreshing entitlements anyway:', err);
+      }
+      
+      // Обновляем entitlements в любом случае (на случай, если webhook уже пришел)
+      void refreshEntitlements();
+    };
+    
+    void checkPaymentStatus();
   }, [refreshEntitlements]);
+
+  // Автоматическая обработка завершившихся pending транзакций при возврате приложения из фона
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'ios') return;
+    if (!userId) return;
+
+    const handleAppStateChange = async () => {
+      try {
+        const { App } = await import('@capacitor/app');
+        const listener = await App.addListener('appStateChange', async ({ isActive }) => {
+          if (isActive) {
+            // При возврате приложения проверяем завершившиеся pending транзакции
+            try {
+              const { restoreIosPurchases } = await import('../services/iapService');
+              const result = await restoreIosPurchases();
+              if (result?.ok && result.granted) {
+                // Если найдена завершившаяся транзакция, обновляем entitlements
+                await refreshEntitlements();
+              }
+            } catch (err) {
+              // Игнорируем ошибки при автоматической проверке
+              console.log('[AppContent] Auto-restore purchases check failed:', err);
+            }
+          }
+        });
+        return () => {
+          listener.remove();
+        };
+      } catch (err) {
+        // Игнорируем ошибки
+      }
+    };
+
+    void handleAppStateChange();
+  }, [userId, refreshEntitlements]);
 
   // Persist dashboard state so a refresh doesn't feel like a cold start.
   // ОПТИМИЗАЦИЯ: Используем debounce + асинхронные операции для предотвращения блокировки UI

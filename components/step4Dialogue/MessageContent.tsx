@@ -512,12 +512,23 @@ function MessageContentComponent({
     const explanation = typeof (parsed as any).explanation === 'string' ? String((parsed as any).explanation) : String((parsed as any).content || '');
     const drillsRaw = Array.isArray((parsed as any).drills) ? ((parsed as any).drills as any[]) : [];
     const drills = drillsRaw
-      .map((d) => ({
-        question: String(d?.question || '').trim(),
-        task: String(d?.task || '').trim(),
-        expected: String(d?.expected || '').trim(),
-      }))
-      .filter((d) => d.question && d.task && d.expected);
+      .map((d) => {
+        // Поддержка expected как строки или массива
+        let expected: string | string[];
+        if (Array.isArray(d?.expected)) {
+          expected = d.expected;
+        } else {
+          expected = String(d?.expected || '').trim();
+        }
+        
+        return {
+          question: String(d?.question || '').trim(),
+          task: String(d?.task || '').trim(),
+          expected,
+          requiredWords: Array.isArray(d?.requiredWords) ? d.requiredWords : undefined,
+        };
+      })
+      .filter((d) => d.question && d.task && (Array.isArray(d.expected) ? d.expected.length > 0 : d.expected));
     const successText =
       typeof (parsed as any).successText === 'string' && String((parsed as any).successText).trim()
         ? String((parsed as any).successText).trim()
@@ -525,6 +536,21 @@ function MessageContentComponent({
 
     const ui = (grammarDrillsUI && grammarDrillsUI[msgStableId]) || undefined;
     const unlocked = !grammarGateLocked;
+    
+    // Log when ui changes
+    useEffect(() => {
+      if (ui) {
+        console.log('[MessageContent] Передача initialState в GrammarDrillsCard:', {
+          msgStableId,
+          checked: ui.checked,
+          correct: ui.correct,
+          feedbacks: ui.feedbacks,
+          notes: ui.notes,
+          currentDrillIndex: ui.currentDrillIndex,
+          fullUi: ui
+        });
+      }
+    }, [ui, msgStableId]);
 
     // Handler to start drills (show first drill)
     const handleStartDrills = React.useCallback(() => {
@@ -573,45 +599,48 @@ function MessageContentComponent({
 
     // State to control delayed appearance of grammar card
     const [showGrammarCard, setShowGrammarCard] = useState(false);
-    const headingRef = useRef<HTMLDivElement>(null);
-    const cardRef = useRef<HTMLDivElement>(null);
-
-    // Show heading immediately, then card after delay
-    useEffect(() => {
-      // Scroll to heading when it appears
-      if (headingRef.current) {
-        const timeoutId = setTimeout(() => {
-          headingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
-        return () => clearTimeout(timeoutId);
-      }
-    }, []);
+    const grammarCardRef = useRef<HTMLDivElement>(null);
 
     // Show card after delay
     useEffect(() => {
       const timer = setTimeout(() => {
         setShowGrammarCard(true);
-      }, 500);
+      }, 1000);
       return () => clearTimeout(timer);
     }, []);
 
-    // Scroll to card when it appears
+    // Trigger useAutoScrollToEnd when card appears by finding scroll container and scrolling
     useEffect(() => {
-      if (showGrammarCard && cardRef.current) {
-        const timeoutId = setTimeout(() => {
-          cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
-        return () => clearTimeout(timeoutId);
+      if (!showGrammarCard) return;
+      
+      // Find scroll container (parent with overflow-y-auto)
+      const findScrollContainer = (el: HTMLElement | null): HTMLElement | null => {
+        if (!el) return null;
+        const style = window.getComputedStyle(el);
+        if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+          return el;
+        }
+        return findScrollContainer(el.parentElement);
+      };
+
+      const scrollContainer = findScrollContainer(grammarCardRef.current);
+      if (scrollContainer) {
+        // Use requestAnimationFrame to ensure DOM is updated
+        const frameId = requestAnimationFrame(() => {
+          const targetTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight);
+          scrollContainer.scrollTo({ top: targetTop, behavior: 'smooth' });
+        });
+        return () => cancelAnimationFrame(frameId);
       }
     }, [showGrammarCard]);
 
     return (
       <div className="space-y-4">
-        <div ref={headingRef}>
+        <div>
           <ModuleSeparatorHeading title="Грамматика" />
         </div>
         {showGrammarCard && (
-          <div ref={cardRef}>
+          <div ref={grammarCardRef}>
             <GrammarDrillsCard
               explanation={stripModuleTag(explanation)}
               drills={drills}
@@ -1157,6 +1186,27 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
     if (prevGrammar?.answers?.length !== nextGrammar?.answers?.length) return false;
     if (prevGrammar?.checked?.length !== nextGrammar?.checked?.length) return false;
     if (prevGrammar?.correct?.length !== nextGrammar?.correct?.length) return false;
+    // Check array contents, not just length
+    if (prevGrammar?.checked && nextGrammar?.checked) {
+      for (let i = 0; i < prevGrammar.checked.length; i++) {
+        if (prevGrammar.checked[i] !== nextGrammar.checked[i]) return false;
+      }
+    }
+    if (prevGrammar?.correct && nextGrammar?.correct) {
+      for (let i = 0; i < prevGrammar.correct.length; i++) {
+        if (prevGrammar.correct[i] !== nextGrammar.correct[i]) return false;
+      }
+    }
+    if (prevGrammar?.feedbacks && nextGrammar?.feedbacks) {
+      for (let i = 0; i < prevGrammar.feedbacks.length; i++) {
+        if (prevGrammar.feedbacks[i] !== nextGrammar.feedbacks[i]) return false;
+      }
+    }
+    if (prevGrammar?.notes && nextGrammar?.notes) {
+      for (let i = 0; i < prevGrammar.notes.length; i++) {
+        if (prevGrammar.notes[i] !== nextGrammar.notes[i]) return false;
+      }
+    }
   }
 
   // Situations: re-render when start state changes so the dialogue opens/hides correctly

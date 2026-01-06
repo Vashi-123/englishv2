@@ -1,6 +1,6 @@
 import React, { memo, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Crown, GraduationCap } from 'lucide-react';
+import { Crown, GraduationCap, Menu } from 'lucide-react';
 import { ViewState } from '../../types';
 import { useLanguageMenu } from '../../hooks/useLanguageMenu';
 import { formatFirstLessonsRu } from '../../services/ruPlural';
@@ -59,14 +59,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                 else openLangMenu();
               }}
             >
-              <div className="w-full h-full bg-white flex items-center justify-center p-0.5">
-                <img
-                  src="/logo.png"
-                  alt="Logo"
-                  className="w-full h-full object-contain object-center"
-                  draggable={false}
-                />
-              </div>
+              <Menu className="w-5 h-5 text-slate-700" />
             </div>
             <div>
               <div className="text-xs font-medium text-gray-600">{greeting}</div>

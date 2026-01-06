@@ -12,9 +12,19 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const APP_STORE_SHARED_SECRET = Deno.env.get("APP_STORE_SHARED_SECRET");
 const DEFAULT_PRODUCT_KEY = "premium_a1";
 
-// App Store verifyReceipt endpoints
+// App Store Server API credentials (new method)
+const APP_STORE_KEY_ID = Deno.env.get("APP_STORE_KEY_ID");
+const APP_STORE_ISSUER_ID = Deno.env.get("APP_STORE_ISSUER_ID");
+const APP_STORE_PRIVATE_KEY = Deno.env.get("APP_STORE_PRIVATE_KEY");
+const APP_BUNDLE_ID = Deno.env.get("APP_BUNDLE_ID") || "com.go-practice.app";
+
+// App Store verifyReceipt endpoints (legacy, fallback)
 const APP_STORE_VERIFY_RECEIPT_SANDBOX = "https://sandbox.itunes.apple.com/verifyReceipt";
 const APP_STORE_VERIFY_RECEIPT_PRODUCTION = "https://buy.itunes.apple.com/verifyReceipt";
+
+// App Store Server API endpoints (new method)
+const APP_STORE_SERVER_API_SANDBOX = "https://api.storekit-sandbox.itunes.apple.com";
+const APP_STORE_SERVER_API_PRODUCTION = "https://api.storekit.itunes.apple.com";
 
 type ReqBody = {
   productId?: string;
@@ -27,6 +37,7 @@ type ReqBody = {
   priceValue?: number | string | null;
   priceCurrency?: string | null;
   promoCode?: string;
+  transactionStatus?: "pending" | "succeeded" | "failed";
 };
 
 const json = (status: number, body: unknown) =>
@@ -40,10 +51,188 @@ const getBearerToken = (req: Request): string | null => {
 };
 
 /**
- * Verify receipt with Apple App Store
+ * Base64URL encode helper
+ */
+const base64url = (input: string | Uint8Array): string => {
+  if (typeof input === "string") {
+    const bytes = new TextEncoder().encode(input);
+    return base64url(bytes);
+  }
+  // Convert Uint8Array to base64
+  let binary = "";
+  for (let i = 0; i < input.length; i++) {
+    binary += String.fromCharCode(input[i]);
+  }
+  const base64 = btoa(binary);
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+
+/**
+ * Generate JWT token for App Store Server API
+ */
+async function generateAppStoreJWT(): Promise<string> {
+  if (!APP_STORE_KEY_ID || !APP_STORE_ISSUER_ID || !APP_STORE_PRIVATE_KEY) {
+    throw new Error("Missing App Store Server API credentials");
+  }
+
+  const header = { alg: "ES256", kid: APP_STORE_KEY_ID };
+  const nowSec = Math.floor(Date.now() / 1000);
+  const payload = {
+    iss: APP_STORE_ISSUER_ID,
+    iat: nowSec,
+    exp: nowSec + 1200, // 20 minutes
+    aud: "appstoreconnect-v1",
+    bid: APP_BUNDLE_ID,
+  };
+
+  const headerB64 = base64url(JSON.stringify(header));
+  const payloadB64 = base64url(JSON.stringify(payload));
+  const unsignedToken = `${headerB64}.${payloadB64}`;
+
+  // Import private key from PEM format
+  // Remove PEM headers and convert to ArrayBuffer
+  const pemKey = APP_STORE_PRIVATE_KEY
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s/g, "");
+  
+  const keyData = Uint8Array.from(atob(pemKey), (c) => c.charCodeAt(0));
+  
+  // Import key using Web Crypto API
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    keyData.buffer,
+    {
+      name: "ECDSA",
+      namedCurve: "P-256",
+    },
+    false,
+    ["sign"]
+  );
+
+  // Sign the token
+  const signature = await crypto.subtle.sign(
+    {
+      name: "ECDSA",
+      hash: "SHA-256",
+    },
+    privateKey,
+    new TextEncoder().encode(unsignedToken)
+  );
+
+  // Convert signature to base64url (ES256 uses IEEE P1363 format: r|s, each 32 bytes)
+  const sigBytes = new Uint8Array(signature);
+  const signatureB64 = base64url(sigBytes);
+
+  return `${unsignedToken}.${signatureB64}`;
+}
+
+/**
+ * Verify transaction using App Store Server API
  * Returns verified transaction data or null if verification fails
  */
-const verifyReceipt = async (
+async function verifyTransactionWithServerAPI(
+  transactionId: string,
+  productId: string
+): Promise<{ valid: boolean; productId?: string; transactionId?: string; originalTransactionId?: string; error?: string }> {
+  if (!APP_STORE_KEY_ID || !APP_STORE_ISSUER_ID || !APP_STORE_PRIVATE_KEY) {
+    return { valid: false, error: "App Store Server API credentials not configured" };
+  }
+
+  try {
+    const jwt = await generateAppStoreJWT();
+    
+    // Try sandbox first, then production
+    const endpoints = [
+      `${APP_STORE_SERVER_API_SANDBOX}/inApps/v1/transactions/${transactionId}`,
+      `${APP_STORE_SERVER_API_PRODUCTION}/inApps/v1/transactions/${transactionId}`,
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const response = await fetch(endpoint, {
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (response.status === 404) {
+          // Transaction not found, try next endpoint
+          continue;
+        }
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.warn(`[ios-iap-complete] App Store Server API error: ${response.status}`, errorText);
+          continue;
+        }
+
+        // App Store Server API returns a signed transaction
+        // The transaction data is in JWS (JSON Web Signature) format
+        const signedTransaction = await response.text();
+        
+        // Parse JWS to get transaction data
+        // Format: header.payload.signature
+        const parts = signedTransaction.split(".");
+        if (parts.length !== 3) {
+          console.warn(`[ios-iap-complete] Invalid JWS format from App Store Server API`);
+          continue;
+        }
+
+        // Decode payload (base64url)
+        const payloadB64 = parts[1];
+        const payloadJson = JSON.parse(
+          new TextDecoder().decode(
+            Uint8Array.from(
+              atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")),
+              (c) => c.charCodeAt(0)
+            )
+          )
+        );
+
+        // Verify transaction matches
+        const txProductId = payloadJson.productId;
+        const txTransactionId = payloadJson.transactionId;
+        const txOriginalTransactionId = payloadJson.originalTransactionId;
+
+        // Check if transaction matches
+        if (txTransactionId === transactionId || txOriginalTransactionId === transactionId) {
+          // Verify product ID matches (if provided)
+          if (productId && txProductId && txProductId !== productId) {
+            console.warn(`[ios-iap-complete] Product ID mismatch: expected ${productId}, got ${txProductId}`);
+            // Still consider valid if transaction ID matches
+          }
+
+          return {
+            valid: true,
+            productId: txProductId || productId,
+            transactionId: txTransactionId || transactionId,
+            originalTransactionId: txOriginalTransactionId,
+          };
+        }
+
+        // Transaction found but doesn't match
+        console.warn(`[ios-iap-complete] Transaction ID mismatch in App Store Server API response`);
+        continue;
+      } catch (err) {
+        console.error(`[ios-iap-complete] Error calling App Store Server API ${endpoint}:`, err);
+        continue;
+      }
+    }
+
+    return { valid: false, error: "Transaction not found in App Store Server API" };
+  } catch (err) {
+    console.error(`[ios-iap-complete] Error generating JWT or calling App Store Server API:`, err);
+    return { valid: false, error: String(err) };
+  }
+}
+
+/**
+ * Verify receipt with Apple App Store (legacy method)
+ * Returns verified transaction data or null if verification fails
+ */
+const verifyReceiptLegacy = async (
   receiptData: string,
   productId: string,
   transactionId: string
@@ -126,6 +315,43 @@ const verifyReceipt = async (
   return { valid: false, error: "Receipt verification failed for both production and sandbox" };
 };
 
+/**
+ * Verify transaction/receipt with Apple App Store
+ * Uses App Store Server API (new method) if available, falls back to verifyReceipt (legacy)
+ * Returns verified transaction data or null if verification fails
+ */
+const verifyReceipt = async (
+  receiptData: string | null,
+  productId: string,
+  transactionId: string
+): Promise<{ valid: boolean; productId?: string; transactionId?: string; originalTransactionId?: string; error?: string }> => {
+  // Try App Store Server API first (new method, preferred)
+  if (APP_STORE_KEY_ID && APP_STORE_ISSUER_ID && APP_STORE_PRIVATE_KEY) {
+    console.log(`[ios-iap-complete] Attempting verification via App Store Server API`, { transactionId });
+    const serverApiResult = await verifyTransactionWithServerAPI(transactionId, productId);
+    if (serverApiResult.valid) {
+      console.log(`[ios-iap-complete] Verification successful via App Store Server API`, {
+        transactionId: serverApiResult.transactionId,
+        productId: serverApiResult.productId,
+      });
+      return serverApiResult;
+    }
+    // If Server API fails but we have receipt data, fall back to legacy method
+    console.warn(`[ios-iap-complete] App Store Server API verification failed, falling back to legacy method`, {
+      error: serverApiResult.error,
+    });
+  }
+
+  // Fallback to legacy verifyReceipt method
+  if (receiptData && receiptData.trim()) {
+    console.log(`[ios-iap-complete] Using legacy verifyReceipt method`, { transactionId });
+    return await verifyReceiptLegacy(receiptData, productId, transactionId);
+  }
+
+  // No receipt data and Server API failed
+  return { valid: false, error: "No receipt data provided and App Store Server API verification failed" };
+};
+
 Deno.serve(async (req: Request) => {
   const requestId = crypto.randomUUID();
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -153,6 +379,65 @@ Deno.serve(async (req: Request) => {
     const productKeyFromBody = String(body?.product_key || DEFAULT_PRODUCT_KEY).trim();
     const transactionId = String(body?.transactionId || body?.transaction_id || "").trim();
     if (!transactionId) return json(400, { ok: false, error: "transactionId is required", requestId });
+    
+    // КРИТИЧНО: Проверяем статус транзакции - pending транзакции не должны помечаться как успешные
+    const transactionStatus = body?.transactionStatus;
+    if (transactionStatus === "pending") {
+      console.warn(`[ios-iap-complete] Transaction is pending, not marking as succeeded`, {
+        requestId,
+        transactionId,
+        productId: rawProductId,
+      });
+      // Создаем запись с статусом pending, но не активируем premium
+      const { data: existingPayment, error: existingPaymentError } = await supabase
+        .from("payments")
+        .select("id,status")
+        .eq("provider_payment_id", transactionId)
+        .maybeSingle();
+      if (existingPaymentError) throw existingPaymentError;
+      
+      const priceValueRaw = body?.priceValue;
+      const priceValueNum = typeof priceValueRaw === "string" || typeof priceValueRaw === "number" ? Number(priceValueRaw) : null;
+      const amountValue = Number.isFinite(priceValueNum) ? Number(priceValueNum) : null;
+      const priceCurrencyRaw = body?.priceCurrency;
+      const amountCurrency = typeof priceCurrencyRaw === "string" && priceCurrencyRaw.trim() ? priceCurrencyRaw.trim() : "RUB";
+      
+      const paymentMetadata = {
+        product_key: productKeyFromBody,
+        raw_product_id: rawProductId,
+        transaction_status: "pending",
+        note: "Transaction is pending payment. Premium will be activated automatically when payment is received.",
+      };
+      
+      if (existingPayment?.id) {
+        const { error: updateError } = await supabase
+          .from("payments")
+          .update({ status: "pending", metadata: paymentMetadata })
+          .eq("id", existingPayment.id);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase.from("payments").insert({
+          user_id: userId,
+          provider: "ios_iap",
+          provider_payment_id: transactionId,
+          idempotence_key: transactionId,
+          status: "pending",
+          amount_value: amountValue,
+          amount_currency: amountCurrency,
+          description: "iOS In-App Purchase (Pending)",
+          metadata: paymentMetadata,
+        });
+        if (insertError) throw insertError;
+      }
+      
+      return json(200, {
+        ok: true,
+        granted: false,
+        pending: true,
+        message: "Transaction is pending payment. Premium will be activated automatically when payment is received.",
+        requestId,
+      });
+    }
 
     // Get product from database to validate product_key and get ios_product_id
     const { data: product, error: productError } = await supabase
@@ -192,37 +477,75 @@ Deno.serve(async (req: Request) => {
     // to extract offerCodeRefName from transaction details
     // This requires App Store Server API credentials and JWT token generation
 
-    // Verify receipt with Apple App Store (required for non-consumable purchases)
-    let receiptVerification: { valid: boolean; productId?: string; transactionId?: string; error?: string } | null = null;
-    if (receiptData) {
-      receiptVerification = await verifyReceipt(receiptData, rawProductId, transactionId);
-      if (!receiptVerification.valid) {
-        console.error(`[ios-iap-complete] Receipt verification failed: ${receiptVerification.error}`, {
-          requestId,
-          transactionId,
-          productId: rawProductId,
+    // Verify transaction/receipt with Apple App Store
+    // App Store Server API can work without receiptData, legacy method requires it
+    let receiptVerification: { valid: boolean; productId?: string; transactionId?: string; originalTransactionId?: string; error?: string } | null = null;
+    
+    // Try verification (will use App Store Server API if available, or legacy method with receiptData)
+    receiptVerification = await verifyReceipt(receiptData, rawProductId, transactionId);
+    
+    if (!receiptVerification.valid) {
+      console.error(`[ios-iap-complete] Receipt verification failed: ${receiptVerification.error}`, {
+        requestId,
+        transactionId,
+        productId: rawProductId,
+        hasReceiptData: !!receiptData,
+        hasServerApi: !!(APP_STORE_KEY_ID && APP_STORE_ISSUER_ID && APP_STORE_PRIVATE_KEY),
+      });
+      
+      // КРИТИЧНО: Для production транзакций верификация обязательна
+      // Проверяем, не является ли это sandbox транзакцией (для тестирования)
+      const isSandbox = receiptVerification.error?.includes("sandbox") || 
+                       receiptVerification.error?.includes("storekit-sandbox") || false;
+      
+      if (!isSandbox) {
+        // В production без верификации не активируем premium
+        // Но создаем запись со статусом для отслеживания
+        const { error: insertError } = await supabase.from("payments").insert({
+          user_id: userId,
+          provider: "ios_iap",
+          provider_payment_id: transactionId,
+          idempotence_key: transactionId,
+          status: "pending", // Помечаем как pending до верификации
+          amount_value: amountValue,
+          amount_currency: amountCurrency,
+          description: "iOS In-App Purchase (Verification pending)",
+          metadata: {
+            product_key: productKey,
+            raw_product_id: rawProductId,
+            verification_error: receiptVerification.error,
+            verification_method: APP_STORE_KEY_ID ? "App Store Server API" : "verifyReceipt (legacy)",
+            note: "Transaction verification failed - premium not activated",
+          },
         });
-        // For non-consumable purchases, receipt verification is critical
-        // But we'll allow it to proceed with a warning for now (can be made strict later)
-        // return json(400, { ok: false, error: `Receipt verification failed: ${receiptVerification.error}`, requestId });
-      } else {
-        console.log(`[ios-iap-complete] Receipt verified successfully`, {
+        if (insertError) throw insertError;
+        
+        return json(400, {
+          ok: false,
+          error: `Верификация транзакции не удалась: ${receiptVerification.error}. Premium не активирован.`,
           requestId,
-          transactionId: receiptVerification.transactionId,
-          productId: receiptVerification.productId,
         });
-        // Use verified transaction ID and product ID if available
-        if (receiptVerification.transactionId) {
-          // transactionId already set, but we can validate it matches
-        }
-        if (receiptVerification.productId && receiptVerification.productId !== rawProductId) {
-          console.warn(`[ios-iap-complete] Product ID mismatch in receipt: expected ${rawProductId}, got ${receiptVerification.productId}`, { requestId });
-        }
       }
+      // Для sandbox разрешаем с предупреждением
+      console.warn(`[ios-iap-complete] Sandbox transaction verification failed, but allowing for testing`, {
+        requestId,
+        error: receiptVerification.error,
+      });
     } else {
-      console.warn(`[ios-iap-complete] No receipt data provided for verification`, { requestId, transactionId });
-      // For non-consumable purchases, receipt should always be present
-      // But we'll allow it to proceed with a warning (can be made strict later)
+      console.log(`[ios-iap-complete] Transaction verified successfully`, {
+        requestId,
+        transactionId: receiptVerification.transactionId,
+        productId: receiptVerification.productId,
+        originalTransactionId: receiptVerification.originalTransactionId,
+      });
+      
+      // Use verified transaction ID and product ID if available
+      if (receiptVerification.transactionId && receiptVerification.transactionId !== transactionId) {
+        console.log(`[ios-iap-complete] Using verified transaction ID: ${receiptVerification.transactionId}`, { requestId });
+      }
+      if (receiptVerification.productId && receiptVerification.productId !== rawProductId) {
+        console.warn(`[ios-iap-complete] Product ID mismatch in verification: expected ${rawProductId}, got ${receiptVerification.productId}`, { requestId });
+      }
     }
 
     const { data: existingPayment, error: existingPaymentError } = await supabase
@@ -249,10 +572,12 @@ Deno.serve(async (req: Request) => {
       receipt_preview: receiptPreview,
       promo_code: promoCode,
       provider: "ios_iap",
-      receipt_verified: receiptVerification?.valid ?? false,
-      receipt_verification_error: receiptVerification?.error || null,
+      verification_method: APP_STORE_KEY_ID ? "App Store Server API" : "verifyReceipt (legacy)",
+      verified: receiptVerification?.valid ?? false,
+      verification_error: receiptVerification?.error || null,
       verified_product_id: receiptVerification?.productId || null,
       verified_transaction_id: receiptVerification?.transactionId || null,
+      original_transaction_id: receiptVerification?.originalTransactionId || null,
     };
 
     if (existingPayment?.id) {

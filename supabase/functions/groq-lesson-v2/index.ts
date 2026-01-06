@@ -24,7 +24,8 @@ interface LessonScript {
     drills?: Array<{
       question: string;
       task: string;
-      expected: string;
+      expected: string | string[];
+      requiredWords?: string[];
     }>;
     audio_exercise?: {
       expected: string;
@@ -712,7 +713,12 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       if (drillIndex !== null && drills.length > drillIndex) {
         // This is a grammar drill validation
         const drill = drills[drillIndex];
-        expected = String(drill?.expected || "").trim();
+        // Поддержка expected как строки или массива
+        if (Array.isArray(drill?.expected)) {
+          expected = drill.expected.join(" ");
+        } else {
+          expected = String(drill?.expected || "").trim();
+        }
         stepType = "grammar_drill";
         extra = `Задание: ${String(drill?.task || "").trim()}\nВопрос: ${String(drill?.question || "").trim()}\nПравило: ${script.grammar?.explanation || ""}`;
       } else if (script.grammar?.audio_exercise?.expected) {

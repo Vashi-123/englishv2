@@ -1,6 +1,10 @@
 import React from 'react';
 
-export function AchievementCard() {
+type AchievementCardProps = {
+  isRevisit?: boolean;
+};
+
+export function AchievementCard({ isRevisit = false }: AchievementCardProps) {
   return (
     <div className="flex justify-center my-8 animate-fade-in">
       <div className="relative group">
@@ -100,10 +104,10 @@ export function AchievementCard() {
             </div>
 
             <h3 className="text-2xl font-extrabold bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent mb-3 animate-text-shimmer">
-              Отличная работа!
+              {isRevisit ? 'Урок завершен!' : 'Отличная работа!'}
             </h3>
             <p className="text-sm font-medium text-amber-700 text-center max-w-xs">
-              Продолжай в том же духе
+              {isRevisit ? 'Ты уже прошел этот урок ранее' : 'Продолжай в том же духе'}
             </p>
           </div>
         </div>

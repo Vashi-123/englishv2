@@ -17,7 +17,7 @@ export type LessonScriptV2 = {
   words: LessonWords;
   grammar: {
     explanation: string;
-    drills?: Array<{ question: string; task: string; expected: string }>;
+    drills?: Array<{ question: string; task: string; expected: string | string[]; requiredWords?: string[] }>;
     audio_exercise?: { expected: string };
     text_exercise?: { expected: string; instruction: string };
     transition?: string;

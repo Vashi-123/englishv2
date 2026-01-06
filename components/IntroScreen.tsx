@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { Sparkles, ArrowRight, Crown, Loader2, X } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
@@ -19,10 +19,25 @@ type IntroScreenProps = {
 
 export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [step, setStep] = useState<0 | 1>(0);
   const [isMobile, setIsMobile] = useState(false);
   const { copy } = useLanguage();
   const [showPriceModal, setShowPriceModal] = useState(false);
+
+  // Проверяем параметр showPaywall в URL и открываем модальное окно
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) {
+      const params = new URLSearchParams(location.search);
+      if (params.get('showPaywall') === '1') {
+        setShowPriceModal(true);
+        // Убираем параметр из URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete('showPaywall');
+        navigate(url.pathname + url.search, { replace: true });
+      }
+    }
+  }, [location.search, navigate]);
   const [priceValue, setPriceValue] = useState<string>('1490.00');
   const [priceCurrency, setPriceCurrency] = useState<string>('RUB');
   const [basePriceValue, setBasePriceValue] = useState<string>('1490.00');

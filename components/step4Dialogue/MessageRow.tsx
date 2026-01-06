@@ -25,11 +25,13 @@ type Props = {
   isVocabulary: boolean;
   isSituationCard: boolean;
   isTaskCard: boolean;
+  isGrammar?: boolean;
   isSeparatorOnly: boolean;
   showSeparatorTitle: boolean;
   separatorTitle?: string;
   separatorsForThisMessage: string[];
   shouldInsertMatchingHere: boolean;
+  isAfterCompletedMatching?: boolean;
   matching: MatchingProps;
   onRegisterMessageEl: (index: number, el: HTMLDivElement | null) => void;
   children: React.ReactNode;
@@ -47,11 +49,13 @@ export const MessageRow: React.FC<Props> = ({
   isVocabulary,
   isSituationCard,
   isTaskCard,
+  isGrammar,
   isSeparatorOnly,
   showSeparatorTitle,
   separatorTitle,
   separatorsForThisMessage,
   shouldInsertMatchingHere,
+  isAfterCompletedMatching,
   matching,
   onRegisterMessageEl,
   children,
@@ -94,7 +98,7 @@ export const MessageRow: React.FC<Props> = ({
         <div
           className={`flex ${
             isFullCard ? 'w-full max-w-2xl' : 'max-w-[85%]'
-          } ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-start gap-3 min-w-0`}
+          } ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'} items-start gap-3 min-w-0 ${isAfterCompletedMatching ? 'px-6' : ''}`}
         >
           {msg.role === 'model' && !isSituationCard && !isFullCard && (
             <div className="w-8 h-8 rounded-full bg-gray-50 text-brand-primary flex items-center justify-center flex-shrink-0">
@@ -104,7 +108,7 @@ export const MessageRow: React.FC<Props> = ({
 
           <div className={`relative group ${isVocabulary || isSituationCard || isTaskCard ? 'w-full' : ''}`}>
             <div
-              className={`px-5 py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
+              className={`${isGrammar ? 'px-0' : 'px-5'} py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
                 isSituationCard || isTaskCard || isVocabulary
                   ? 'bg-transparent text-gray-900 p-0 rounded-none'
                   : msg.role === 'user'

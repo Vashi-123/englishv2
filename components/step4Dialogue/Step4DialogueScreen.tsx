@@ -48,6 +48,7 @@ import { useAutoScrollToEnd } from './useAutoScrollToEnd';
 import { useVocabScroll } from './useVocabScroll';
 import { getCacheKeyWithCurrentUser } from '../../services/cacheUtils';
 import { augmentScriptWithReviewDecks } from './reviewDecks';
+import { validateGrammarDrill, type GrammarDrill } from '../../utils/grammarValidator';
 import {
   buildConstructorTaskKey,
   buildFindMistakeTaskKey,
@@ -825,6 +826,11 @@ export function Step4DialogueScreen({
     });
   }, []);
   const [goalGatePending, setGoalGatePending] = useState(false);
+  const incompleteLessonWarningDismissedKey = useMemo(() => {
+    if (!day || !lesson || !resolvedLevel) return null;
+    return `incomplete_lesson_warning_dismissed_${resolvedLevel}`;
+  }, [day, lesson, resolvedLevel]);
+
   const goalAckStorageKey = useMemo(() => {
     const baseKey = `step4dialogue:goalAck:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
     return getCacheKeyWithCurrentUser(baseKey);
@@ -1702,6 +1708,8 @@ export function Step4DialogueScreen({
       goalGateAcknowledged,
       isAwaitingModelReply,
       lessonCompletedPersisted,
+      // Add grammarDrillsUI to trigger auto-scroll when drills state changes
+      JSON.stringify(grammarDrillsUI),
     ],
     endRef: messagesEndRef,
     enabled: !isInitializing && !shouldScrollToGrammarHeading && !ankiGateActive,
@@ -1773,13 +1781,22 @@ export function Step4DialogueScreen({
 	  });
 
   // Обработка подтверждения перезапуска незавершенного урока
-  const handleIncompleteLessonConfirm = useCallback(async () => {
+  const handleIncompleteLessonConfirm = useCallback(async (dontShowAgain: boolean) => {
     if (!day || !lesson) return;
     
     const checkKey = `${day}_${lesson}_${resolvedLevel}`;
     // Помечаем, что урок был перезапущен
     lessonRestartedRef.current = checkKey;
     incompleteLessonCheckedRef.current = checkKey;
+    
+    // Сохраняем настройку "больше не показывать"
+    if (dontShowAgain && incompleteLessonWarningDismissedKey) {
+      try {
+        window.localStorage.setItem(incompleteLessonWarningDismissedKey, '1');
+      } catch {
+        // ignore
+      }
+    }
     
     setShowIncompleteLessonModal(false);
     
@@ -1834,23 +1851,54 @@ export function Step4DialogueScreen({
         if (hasProgress && !isCompleted) {
           incompleteLessonCheckedRef.current = checkKey;
           
-          console.log('[Step4Dialogue] Incomplete lesson detected, showing warning...', {
-            hasProgress,
-            isCompleted,
-          });
-          
-          // Сбрасываем goalGateAcknowledged, чтобы кнопка "Начинаем" появилась после перезапуска
-          try {
-            window.localStorage.removeItem(goalAckStorageKey);
-            setGoalGateAcknowledged(false);
-            setGoalGatePending(false);
-          } catch {
-            // ignore
+          // Проверяем, не отключено ли предупреждение пользователем
+          let warningDismissed = false;
+          if (incompleteLessonWarningDismissedKey) {
+            try {
+              warningDismissed = window.localStorage.getItem(incompleteLessonWarningDismissedKey) === '1';
+            } catch {
+              // ignore
+            }
           }
           
-          // Показываем предупреждающее окно ДО инициализации чата
-          setShowIncompleteLessonModal(true);
-          // НЕ инициализируем чат, пока модальное окно открыто
+          if (!warningDismissed) {
+            console.log('[Step4Dialogue] Incomplete lesson detected, showing warning...', {
+              hasProgress,
+              isCompleted,
+            });
+            
+            // Сбрасываем goalGateAcknowledged, чтобы кнопка "Начинаем" появилась после перезапуска
+            try {
+              window.localStorage.removeItem(goalAckStorageKey);
+              setGoalGateAcknowledged(false);
+              setGoalGatePending(false);
+            } catch {
+              // ignore
+            }
+            
+            // Показываем предупреждающее окно ДО инициализации чата
+            setShowIncompleteLessonModal(true);
+            // НЕ инициализируем чат, пока модальное окно открыто
+          } else {
+            // Предупреждение отключено, автоматически перезапускаем урок без показа модального окна
+            console.log('[Step4Dialogue] Incomplete lesson detected, but warning is dismissed. Auto-restarting...');
+            try {
+              window.localStorage.removeItem(goalAckStorageKey);
+              setGoalGateAcknowledged(false);
+              setGoalGatePending(false);
+            } catch {
+              // ignore
+            }
+            // Автоматически перезапускаем урок
+            lessonRestartedRef.current = checkKey;
+            setMessages([]);
+            setCurrentStep(null);
+            // Вызываем restartLesson асинхронно
+            (async () => {
+              await restartLesson();
+              chatInitializedRef.current = null;
+            })();
+          }
         } else {
           incompleteLessonCheckedRef.current = checkKey;
         }
@@ -1863,7 +1911,7 @@ export function Step4DialogueScreen({
     return () => {
       cancelled = true;
     };
-  }, [day, lesson, resolvedLevel, restartLesson, goalAckStorageKey, setGoalGateAcknowledged, setGoalGatePending]);
+  }, [day, lesson, resolvedLevel, restartLesson, goalAckStorageKey, incompleteLessonWarningDismissedKey, setGoalGateAcknowledged, setGoalGatePending]);
 
   // Инициализируем чат только если урок не незавершен (модальное окно не показывается)
   // Используем ref для отслеживания, была ли уже вызвана инициализация для этого урока
@@ -2250,6 +2298,8 @@ export function Step4DialogueScreen({
                   correct: Array.from({ length: count }, () => false),
                   completed: false,
                   currentDrillIndex: 0, // Start with first drill
+                  feedbacks: Array.from({ length: count }, () => ''),
+                  notes: Array.from({ length: count }, () => ''),
                 },
               }));
             },
@@ -2301,6 +2351,8 @@ export function Step4DialogueScreen({
                   correct: Array.isArray(ui.correct) && ui.correct.length === count ? ui.correct : Array.from({ length: count }, () => false),
                   completed: Boolean(ui.completed),
                   currentDrillIndex: 0, // Start with first drill
+                  feedbacks: Array.isArray(ui.feedbacks) && ui.feedbacks.length === count ? ui.feedbacks : Array.from({ length: count }, () => ''),
+                  notes: Array.isArray(ui.notes) && ui.notes.length === count ? ui.notes : Array.from({ length: count }, () => ''),
                 },
               }));
             },
@@ -2323,41 +2375,137 @@ export function Step4DialogueScreen({
                 
                 setIsLoading(true);
                 try {
-                  const stepForValidation = {
-                    ...currentStep,
-                    type: 'grammar' as const,
-                    subIndex: currentDrillIndex,
+                  const currentDrill = drills[currentDrillIndex];
+                  
+                  // Сначала пробуем локальную проверку
+                  const grammarDrill: GrammarDrill = {
+                    question: currentDrill?.question || '',
+                    task: currentDrill?.task || '',
+                    expected: currentDrill?.expected || '',
+                    requiredWords: currentDrill?.requiredWords,
                   };
                   
-                  const { validateDialogueAnswerV2 } = await import('../../services/generationService');
-                  const result = await validateDialogueAnswerV2({
-                    lessonId: lessonIdRef.current || '',
-                    userId: userIdRef.current || '',
-                    currentStep: stepForValidation,
-                    studentAnswer: currentAnswer,
-                    uiLang: resolvedLanguage || 'ru',
-                  });
+                  const localResult = validateGrammarDrill(currentAnswer, grammarDrill);
+                  
+                  let isCorrect = false;
+                  let feedback = '';
+                  let notesForDrill = '';
+                  let needsAI = false;
+                  
+                  if (!localResult.needsAI) {
+                    // Локальная проверка дала результат
+                    console.log('[Step4DialogueScreen] Локальная проверка грамматики:', {
+                      drillIndex: currentDrillIndex,
+                      question: currentDrill?.question,
+                      expected: currentDrill?.expected,
+                      answer: currentAnswer,
+                      isCorrect: localResult.isCorrect,
+                      missingWords: localResult.missingWords,
+                      incorrectWords: localResult.incorrectWords,
+                      extraWords: localResult.extraWords,
+                      orderError: localResult.orderError
+                    });
+                    
+                    isCorrect = localResult.isCorrect;
+                    // Используем feedback из localResult (уже содержит правильный ответ)
+                    feedback = localResult.feedback || '';
+                    notesForDrill = '';
+                    
+                    needsAI = false;
+                  } else {
+                    // Нужна проверка через ИИ
+                    needsAI = true;
+                    console.log('[Step4DialogueScreen] Проверка грамматики через ИИ:', {
+                      drillIndex: currentDrillIndex,
+                      question: currentDrill?.question,
+                      expected: currentDrill?.expected,
+                      answer: currentAnswer
+                    });
+                  }
+                  
+                  // Если нужна проверка через ИИ
+                  if (needsAI) {
+                    const stepForValidation = {
+                      ...currentStep,
+                      type: 'grammar' as const,
+                      subIndex: currentDrillIndex,
+                    };
+                    
+                    const { validateDialogueAnswerV2 } = await import('../../services/generationService');
+                    const result = await validateDialogueAnswerV2({
+                      lessonId: lessonIdRef.current || '',
+                      userId: userIdRef.current || '',
+                      currentStep: stepForValidation,
+                      studentAnswer: currentAnswer,
+                      uiLang: resolvedLanguage || 'ru',
+                    });
+                    
+                    console.log('[Step4DialogueScreen] Результат проверки грамматики через ИИ:', {
+                      drillIndex: currentDrillIndex,
+                      isCorrect: result.isCorrect,
+                      feedback: result.feedback
+                    });
+                    
+                    isCorrect = result.isCorrect;
+                    feedback = result.feedback || '';
+                    notesForDrill = '';
+                  }
                   
                   // Update UI state
-                  const nextChecked = [...(ui.checked || Array(drills.length).fill(false))];
-                  const nextCorrect = [...(ui.correct || Array(drills.length).fill(false))];
+                  const currentChecked = ui?.checked || Array(drills.length).fill(false);
+                  const currentCorrect = ui?.correct || Array(drills.length).fill(false);
+                  const currentFeedbacks = ui?.feedbacks || Array(drills.length).fill('');
+                  const currentNotes = ui?.notes || Array(drills.length).fill('');
+                  
+                  const nextChecked = [...currentChecked];
+                  const nextCorrect = [...currentCorrect];
+                  const nextFeedbacks = [...currentFeedbacks];
+                  const nextNotes = [...currentNotes];
+                  
                   nextChecked[currentDrillIndex] = true;
-                  nextCorrect[currentDrillIndex] = result.isCorrect;
+                  nextCorrect[currentDrillIndex] = isCorrect;
+                  nextFeedbacks[currentDrillIndex] = feedback;
+                  nextNotes[currentDrillIndex] = notesForDrill;
                   
                   let nextDrillIndex = currentDrillIndex;
                   // Move to next drill if correct, or stay on current if incorrect
-                  if (result.isCorrect && currentDrillIndex < drills.length - 1) {
+                  if (isCorrect && currentDrillIndex < drills.length - 1) {
                     nextDrillIndex = currentDrillIndex + 1;
                   }
                   
+                  // Preserve existing answers to prevent flickering
+                  // Only create new array if answers don't exist or have wrong length
+                  const preservedAnswers = (() => {
+                    if (Array.isArray(ui?.answers) && ui.answers.length === drills.length) {
+                      return ui.answers; // Keep existing answers
+                    }
+                    // Create new array only if needed
+                    return ui?.answers?.slice(0, drills.length) || Array.from({ length: drills.length }, () => '');
+                  })();
+                  
+                  const newState = {
+                    answers: preservedAnswers,
+                    checked: nextChecked,
+                    correct: nextCorrect,
+                    completed: ui?.completed || false,
+                    currentDrillIndex: nextDrillIndex,
+                    feedbacks: nextFeedbacks,
+                    notes: nextNotes,
+                  };
+                  
+                  console.log('[Step4DialogueScreen] Обновление UI state:', {
+                    drillIndex: currentDrillIndex,
+                    isCorrect,
+                    checked: nextChecked[currentDrillIndex],
+                    correct: nextCorrect[currentDrillIndex],
+                    feedback,
+                    notesForDrill,
+                    newState
+                  });
+                  
                   setGrammarDrillsUI((prev) => ({
                     ...prev,
-                    [stableId]: {
-                      ...ui,
-                      checked: nextChecked,
-                      correct: nextCorrect,
-                      currentDrillIndex: nextDrillIndex,
-                    },
+                    [stableId]: newState,
                   }));
                 } finally {
                   setIsLoading(false);
@@ -2508,6 +2656,44 @@ export function Step4DialogueScreen({
   ]);
 
   const lessonProgress = useMemo(() => {
+    // Если урок завершен, всегда показываем 100% прогресс
+    if (lessonCompletedPersisted) {
+      const getScriptWordsCount = (script: any | null): number => {
+        if (!script) return 0;
+        const words = (script as any).words;
+        if (!words) return 0;
+        if (Array.isArray(words)) return words.length;
+        if (typeof words === 'object' && Array.isArray((words as any).items)) return (words as any).items.length;
+        return 0;
+      };
+      const vocabWordsCount = (vocabWords?.length || 0) > 0 ? vocabWords.length : getScriptWordsCount(lessonScript);
+      const vocabUnitCount = vocabWordsCount > 0 ? vocabWordsCount : 0;
+      const matchingUnitCount = vocabWordsCount > 0 ? vocabWordsCount : 0;
+      const grammarUnitCount =
+        (Array.isArray((lessonScript as any)?.grammar?.drills) && (lessonScript as any).grammar.drills.length > 0) ||
+        (lessonScript as any)?.grammar?.audio_exercise?.expected ||
+        (lessonScript as any)?.grammar?.text_exercise?.expected
+          ? 1
+          : 0;
+      const constructorCount = lessonScript?.constructor?.tasks?.length || 0;
+      const findMistakeCount = lessonScript?.find_the_mistake?.tasks?.length || 0;
+      const situationsCount = (() => {
+        const scenarios = lessonScript?.situations?.scenarios;
+        if (!Array.isArray(scenarios) || scenarios.length === 0) return 0;
+        let totalSteps = 0;
+        for (const s of scenarios) {
+          const steps = (s as any)?.steps;
+          if (Array.isArray(steps) && steps.length > 0) totalSteps += steps.length;
+          else totalSteps += 1;
+        }
+        return totalSteps;
+      })();
+      const total =
+        vocabUnitCount + matchingUnitCount + grammarUnitCount + constructorCount + findMistakeCount + situationsCount;
+      if (!total) return { percent: 100, label: '' };
+      return { percent: 100, label: `${total}/${total}` };
+    }
+
     const effectiveStep = (() => {
       if (currentStep?.type) return currentStep;
       for (let i = messages.length - 1; i >= 0; i--) {
@@ -2620,6 +2806,7 @@ export function Step4DialogueScreen({
     const percent = Math.round((safeCompleted / total) * 100);
     return { percent, label: `${safeCompleted}/${total}` };
   }, [
+    lessonCompletedPersisted,
     currentStep?.index,
     (currentStep as any)?.subIndex,
     currentStep?.type,
@@ -2736,6 +2923,7 @@ export function Step4DialogueScreen({
             handleCheckVocabulary={handleCheckVocabulary}
             isAwaitingModelReply={isAwaitingModelReply}
             lessonCompletedPersisted={lessonCompletedPersisted}
+            isRevisit={initialLessonProgress?.completed === true}
             onNextLesson={onNextLesson}
             nextLessonNumber={nextLessonNumber}
             nextLessonIsPremium={nextLessonIsPremium}

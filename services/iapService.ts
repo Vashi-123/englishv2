@@ -49,6 +49,8 @@ type IapCompleteResponse = {
 } | {
   ok: false;
   error: string;
+  cancelled?: boolean; // Флаг для отмененных покупок
+  pending?: boolean; // Флаг для pending транзакций
 };
 
 let initialized = false;
@@ -118,30 +120,67 @@ export const purchaseIosIap = async (payload?: IapPurchasePayload): Promise<IapC
     defaultProductId,
     selectedProductId: productId,
   });
-  const purchaseResult = await nativeIap.purchase?.({ productId });
-  console.log("[iapService] purchaseIap result:", purchaseResult);
-  const purchase = purchaseResult?.purchase;
-  if (!purchase) throw new Error("Не удалось завершить покупку");
+  
+  try {
+    const purchaseResult = await nativeIap.purchase?.({ productId });
+    console.log("[iapService] purchaseIap result:", purchaseResult);
+    const purchase = purchaseResult?.purchase;
+    if (!purchase) throw new Error("Не удалось завершить покупку");
 
   const transactionId = purchase.transactionId || payload?.transactionId || crypto.randomUUID();
   const receiptData = purchase.receiptData || payload?.receiptData || null;
   const purchaseDateMs = purchase.purchaseDateMs ?? payload?.purchaseDateMs;
   const promoCode = purchase.offerCodeRefName || payload?.promoCode || null;
 
-  const { data, error } = await supabase.functions.invoke("ios-iap-complete", {
-    body: {
-      productId,
-      product_key: BILLING_PRODUCT_KEY,
-      transactionId,
-      receiptData,
-      purchaseDateMs: Number.isFinite(purchaseDateMs) ? purchaseDateMs : undefined,
-      priceValue: payload?.priceValue ?? null,
-      priceCurrency: payload?.priceCurrency ?? null,
-      promoCode: promoCode || undefined, // Apple Offer Code (will be extracted from receipt on server if not provided)
-    },
-  });
-  if (error) throw error;
-  return data as IapCompleteResponse;
+    const { data, error } = await supabase.functions.invoke("ios-iap-complete", {
+      body: {
+        productId,
+        product_key: BILLING_PRODUCT_KEY,
+        transactionId,
+        receiptData,
+        purchaseDateMs: Number.isFinite(purchaseDateMs) ? purchaseDateMs : undefined,
+        priceValue: payload?.priceValue ?? null,
+        priceCurrency: payload?.priceCurrency ?? null,
+        promoCode: promoCode || undefined, // Apple Offer Code (will be extracted from receipt on server if not provided)
+      },
+    });
+    if (error) throw error;
+    return data as IapCompleteResponse;
+  } catch (err) {
+    // КРИТИЧНО: Обрабатываем различные статусы транзакций
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    
+    // Pending транзакции - ожидают оплаты
+    if (errorMessage === "PENDING" || errorMessage.includes("PENDING")) {
+      console.warn("[iapService] Purchase is pending - waiting for payment", { productId });
+      return {
+        ok: false,
+        error: "Транзакция ожидает оплаты. Покупка будет завершена автоматически после поступления средств на ваш счет Apple ID.",
+      };
+    }
+    
+    // Отмена пользователем - не ошибка, а нормальное действие
+    if (errorMessage === "CANCELLED" || errorMessage.includes("CANCELLED") || errorMessage.includes("cancelled")) {
+      console.log("[iapService] Purchase was cancelled by user", { productId });
+      return {
+        ok: false,
+        error: "Покупка отменена",
+        cancelled: true, // Флаг для UI, чтобы не показывать как ошибку
+      };
+    }
+    
+    // Неизвестное состояние транзакции
+    if (errorMessage.includes("Unknown purchase state")) {
+      console.error("[iapService] Unknown purchase state", { productId, errorMessage });
+      return {
+        ok: false,
+        error: "Неизвестное состояние транзакции. Попробуйте еще раз или обратитесь в поддержку.",
+      };
+    }
+    
+    // Пробрасываем другие ошибки
+    throw err;
+  }
 };
 
 export const restoreIosPurchases = async (): Promise<IapCompleteResponse | null> => {

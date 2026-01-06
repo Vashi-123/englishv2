@@ -113,6 +113,7 @@ const LandingPage: React.FC = () => {
   // Теперь на / всегда показывается главная страница (интро или форма входа)
   // Пользователь может вручную перейти на /app если авторизован
 
+
   // Показываем интро-экраны
   const shouldShowIntro = !isNativePlatform || (isNativePlatform && showIntro && !hasLoggedIn);
   if (shouldShowIntro) {
@@ -133,7 +134,14 @@ const LandingPage: React.FC = () => {
       onAuthSuccess={async () => {
         await refreshSession();
         const paidParam = new URLSearchParams(location.search).get('paid');
-        const redirectUrl = paidParam === '1' ? '/app?paid=1' : '/app';
+        const savedShowPaywall = sessionStorage.getItem('showPaywall');
+        sessionStorage.removeItem('showPaywall');
+        let redirectUrl = '/app';
+        if (paidParam === '1') {
+          redirectUrl = savedShowPaywall === '1' ? '/app?paid=1&showPaywall=1' : '/app?paid=1';
+        } else if (savedShowPaywall === '1') {
+          redirectUrl = '/app?showPaywall=1';
+        }
         navigate(redirectUrl);
       }}
     />
@@ -145,6 +153,17 @@ const AppPage: React.FC = () => {
   const { session, refreshSession } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const paidParam = new URLSearchParams(location.search).get('paid');
+  const showPaywallParam = new URLSearchParams(location.search).get('showPaywall');
+  
+  // Сохраняем showPaywall в sessionStorage, если пользователь не авторизован
+  // ВАЖНО: useEffect должен быть ПЕРЕД условным return, чтобы соблюдать правила хуков
+  useEffect(() => {
+    if (!session?.user?.id && showPaywallParam === '1') {
+      sessionStorage.setItem('showPaywall', '1');
+    }
+  }, [session, showPaywallParam]);
 
   // Если есть сессия - показываем приложение с уроками
   if (session?.user?.id) {
@@ -221,16 +240,18 @@ const AppPage: React.FC = () => {
       </>
     );
   }
-
-  const paidParam = new URLSearchParams(location.search).get('paid');
   
   return (
     <AuthScreen
       onAuthSuccess={async () => {
         await refreshSession();
         // После успешного входа остаемся на /app, где покажется AppContent
+        const savedShowPaywall = sessionStorage.getItem('showPaywall');
+        sessionStorage.removeItem('showPaywall');
         if (paidParam === '1') {
-          navigate('/app?paid=1', { replace: true });
+          navigate('/app?paid=1' + (savedShowPaywall === '1' ? '&showPaywall=1' : ''), { replace: true });
+        } else if (savedShowPaywall === '1') {
+          navigate('/app?showPaywall=1', { replace: true });
         } else {
           navigate('/app', { replace: true });
         }
@@ -445,16 +466,37 @@ const PaidRedirectHandler: React.FC = () => {
   return null;
 };
 
-// Компонент для проверки версии
+// Компонент для проверки версии (только для нативных платформ)
 const VersionChecker: React.FC = () => {
+  // На вебе вообще не рендерим компонент
+  if (!Capacitor.isNativePlatform()) {
+    return null;
+  }
+
   const { needsUpdate, isForceUpdate, versionInfo, isChecking } = useVersionCheck();
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   useEffect(() => {
+    console.log('[VersionChecker] State changed:', {
+      needsUpdate,
+      isChecking,
+      isForceUpdate,
+      hasVersionInfo: !!versionInfo,
+    });
+
     if (needsUpdate && !isChecking) {
+      console.log('[VersionChecker] Showing update modal:', {
+        needsUpdate,
+        isForceUpdate,
+        version: versionInfo?.version,
+        message: versionInfo?.message,
+        updateUrl: versionInfo?.updateUrl,
+      });
       setIsModalVisible(true);
+    } else if (!needsUpdate) {
+      setIsModalVisible(false);
     }
-  }, [needsUpdate, isChecking]);
+  }, [needsUpdate, isChecking, isForceUpdate, versionInfo]);
 
   return (
     <UpdateModal
