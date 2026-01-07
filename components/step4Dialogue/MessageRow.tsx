@@ -108,7 +108,13 @@ export const MessageRow: React.FC<Props> = ({
 
           <div className={`relative group ${isVocabulary || isSituationCard || isTaskCard ? 'w-full' : ''}`}>
             <div
-              className={`${isGrammar ? 'px-0' : 'px-5'} py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
+              className={`${
+                isGrammar
+                  ? 'px-0'
+                  : isSituationCard || isTaskCard || isVocabulary
+                    ? ''
+                    : 'px-5'
+              } py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
                 isSituationCard || isTaskCard || isVocabulary
                   ? 'bg-transparent text-gray-900 p-0 rounded-none'
                   : msg.role === 'user'

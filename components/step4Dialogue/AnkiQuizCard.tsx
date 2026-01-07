@@ -159,7 +159,7 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
             <button
               type="button"
               onClick={finish}
-              className="px-5 py-4 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200"
+              className="py-4 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200"
             >
               Продолжить
             </button>

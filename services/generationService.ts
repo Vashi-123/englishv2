@@ -1298,3 +1298,4 @@ export const resetUserProgress = async (): Promise<void> => {
     console.error('[resetUserProgress] Error:', error);
   }
 };
+

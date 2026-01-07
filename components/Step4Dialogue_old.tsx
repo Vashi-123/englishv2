@@ -1369,7 +1369,7 @@ const checkLessonComplete = (text: string): boolean => {
                     </div>
                   )}
                   <div className="relative group">
-                    <div className={`px-5 py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
+                    <div className={`py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
                       msg.role === 'user' 
                         ? 'bg-black text-white rounded-br-none' 
                         : 'bg-gray-50 text-gray-900 rounded-bl-none'

@@ -267,7 +267,9 @@ export function useLessonFlow({
             const cardId = typeof task?.id === 'number' ? task.id : null;
             const quality = isCorrectChoice ? 5 : 2;
             if (cardId) {
-              await applyFindMistakeReview({ cardId, quality });
+              void applyFindMistakeReview({ cardId, quality }).catch(err => {
+                console.error('[Step4Dialogue] applyFindMistakeReview background error:', err);
+              });
             } else if (deckUserId && task) {
               // Offline/server-missing fallback
               recordFindMistakeReview({ userId: deckUserId, level: level || 'A1', lang: language, task });
@@ -318,23 +320,26 @@ export function useLessonFlow({
                 const stepIndexRaw = (stepForInput as any)?.subIndex;
                 const stepIndex = typeof stepIndexRaw === 'number' && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
                 const steps = Array.isArray(scenario?.steps) ? scenario.steps : null;
-                let expectedAnswer = '';
+                let expectedAnswer: any = '';
                 
                 if (steps && steps.length > 0) {
                   const safeIndex = Math.max(0, Math.min(steps.length - 1, stepIndex));
                   const step = steps[safeIndex];
-                  expectedAnswer = String(step?.expected_answer || '').trim();
+                  expectedAnswer = step?.expected || step?.expected_answer || '';
                 } else if (scenario) {
-                  expectedAnswer = String(scenario?.expected_answer || '').trim();
+                  expectedAnswer = scenario?.expected || scenario?.expected_answer || '';
                 }
                 
                 if (expectedAnswer) {
+                  const currentStepData = steps && steps.length > 0 
+                    ? steps[Math.max(0, Math.min(steps.length - 1, stepIndex))]
+                    : scenario;
+                    
                   const grammarDrill: GrammarDrill = {
                     question: String(scenario?.title || ''),
-                    task: steps && steps.length > 0 
-                      ? String(steps[Math.max(0, Math.min(steps.length - 1, stepIndex))]?.task || '')
-                      : String(scenario?.task || ''),
+                    task: String(currentStepData?.task || ''),
                     expected: expectedAnswer,
+                    requiredWords: currentStepData?.requiredWords || currentStepData?.required_words || scenario?.requiredWords || scenario?.required_words,
                   };
                   
                   const localResult = validateGrammarDrill(studentAnswer, grammarDrill);
@@ -355,23 +360,21 @@ export function useLessonFlow({
                     // Показываем три точки на 1000мс перед показом следующего сообщения
                     // isAwaitingModelReply уже установлен в true в начале функции, просто ждем
                     await pauseMilliseconds(1000);
-                  } else if (!localResult.needsAI) {
-                    // Локальная проверка дала результат, но ответ неправильный
-                    isCorrect = localResult.isCorrect;
-                    feedback = localResult.feedback || '';
-                    needsAI = false;
-                    wasLocalValidation = true;
-                    console.log('[Step4Dialogue] Ситуация: проверка локальная (ИИ не использован, ответ неправильный)', {
+                  } else if (!localResult.isCorrect) {
+                    // Локальная проверка дала результат, но ответ неправильный - передаем на ИИ
+                    needsAI = true;
+                    wasLocalValidation = false; // Нет локального "правильного" ответа
+                    console.log('[Step4Dialogue] Ситуация: проверка локальная (ответ неправильный, передаем на ИИ)', {
                       expected: expectedAnswer,
                       answer: studentAnswer,
-                      isCorrect,
+                      isCorrect: localResult.isCorrect,
                       missingWords: localResult.missingWords,
                       incorrectWords: localResult.incorrectWords,
                       extraWords: localResult.extraWords,
                       orderError: localResult.orderError
                     });
-                    validateSpan?.('ok', { isCorrect, local: true });
-                    await pauseMilliseconds(1000);
+                    validateSpan?.('ok', { isCorrect: localResult.isCorrect, local: true, needsAI: true });
+                    // Паузу тут не ставим, так как ждем ответа от ИИ
                   } else {
                     // Если есть лишние слова или локальная проверка не нашла правильный ответ - нужен ИИ
                     needsAI = true;
@@ -447,7 +450,9 @@ export function useLessonFlow({
             const task = (script as any)?.constructor?.tasks?.[idx];
             const cardId = typeof task?.id === 'number' ? task.id : null;
             if (cardId) {
-              await applyConstructorReview({ cardId, quality: 5 });
+              void applyConstructorReview({ cardId, quality: 5 }).catch(err => {
+                console.error('[Step4Dialogue] applyConstructorReview background error:', err);
+              });
             } else if (deckUserId && task) {
               // Offline/server-missing fallback
               recordConstructorReview({ userId: deckUserId, level: level || 'A1', lang: language, task });

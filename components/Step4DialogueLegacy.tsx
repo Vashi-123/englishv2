@@ -2428,7 +2428,7 @@ const checkLessonComplete = (text: string): boolean => {
 		                  )}
 		                  <div className={`relative group ${isVocabulary || isSituationCard ? 'w-full' : ''}`}>
 		                    <div
-		                      className={`px-5 py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
+		                      className={` py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
 		                        isSituationCard
 		                          ? 'bg-transparent text-gray-900 p-0 rounded-none'
 		                          : msg.role === 'user'

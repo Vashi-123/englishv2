@@ -5,9 +5,10 @@ export type ConstructorTask = {
   id?: number;
   instruction?: string;
   words: string[];
-  correct: string | string[];
+  correct: string | string[] | string[][];
   note?: string;
   translation?: string;
+  requiredWords?: string[] | string[][];
 };
 
 export type FindMistakeTask = {
@@ -23,27 +24,34 @@ const safeArray = (v: unknown) => (Array.isArray(v) ? v : []);
 
 export const buildConstructorTaskKey = (task: any) => {
   const words = safeArray(task?.words).map((w) => safeTrim(w)).filter(Boolean);
+  words.sort();
   const correctRaw = task?.correct;
-  const correct = Array.isArray(correctRaw) ? correctRaw.map((w) => safeTrim(w)).filter(Boolean) : safeTrim(correctRaw);
-  const note = safeTrim(task?.note);
-  const translation = safeTrim(task?.translation);
-  // Stable key order
+  const correct = Array.isArray(correctRaw)
+    ? (Array.isArray(correctRaw[0])
+        ? correctRaw.map((v: string[]) => v.map((w) => safeTrim(w)).filter(Boolean).sort())
+        : correctRaw.map((w: string) => safeTrim(w)).filter(Boolean).sort()
+      )
+    : safeTrim(correctRaw);
+  // Exclude note/translation to ensure uniqueness based on content only
   return JSON.stringify({
     words,
     correct,
-    note: note || '',
-    translation: translation || '',
+    requiredWords: Array.isArray(task?.requiredWords)
+      ? (Array.isArray(task?.requiredWords[0])
+          ? task?.requiredWords.map((v: string[]) => v.map((w) => safeTrim(w)).filter(Boolean).sort())
+          : task?.requiredWords.map((w: string) => safeTrim(w)).filter(Boolean).sort()
+        )
+      : safeTrim(task?.requiredWords),
   });
 };
 
 export const buildFindMistakeTaskKey = (task: any) => {
   const options = safeArray(task?.options).map((o) => safeTrim(o)).filter(Boolean).slice(0, 2);
   const answer = safeTrim(task?.answer).toUpperCase();
-  const explanation = safeTrim(task?.explanation);
+  // Exclude explanation to ensure uniqueness based on content only
   return JSON.stringify({
     options,
     answer,
-    explanation: explanation || '',
   });
 };
 
@@ -59,7 +67,12 @@ export async function upsertConstructorCardsFromScript(params: {
       const words = safeArray((t as any)?.words).map((w) => safeTrim(w)).filter(Boolean);
       const correctRaw = (t as any)?.correct;
       const correct =
-        Array.isArray(correctRaw) ? correctRaw.map((w) => safeTrim(w)).filter(Boolean) : safeTrim(correctRaw);
+        Array.isArray(correctRaw)
+          ? (Array.isArray(correctRaw[0])
+              ? correctRaw.map((v: string[]) => v.map((w) => safeTrim(w)).filter(Boolean))
+              : correctRaw.map((w: string) => safeTrim(w)).filter(Boolean)
+            )
+          : safeTrim(correctRaw);
       if (!words.length) return null;
       if (Array.isArray(correct) ? correct.length === 0 : !correct) return null;
       const task = {
@@ -68,6 +81,12 @@ export async function upsertConstructorCardsFromScript(params: {
         correct,
         note: safeTrim((t as any)?.note) || undefined,
         translation: safeTrim((t as any)?.translation) || undefined,
+        requiredWords: Array.isArray((t as any)?.requiredWords)
+          ? (Array.isArray((t as any)?.requiredWords[0])
+              ? (t as any)?.requiredWords.map((v: string[]) => v.map((w) => safeTrim(w)).filter(Boolean))
+              : (t as any)?.requiredWords.map((w: string) => safeTrim(w)).filter(Boolean)
+            )
+          : safeTrim((t as any)?.requiredWords) || undefined,
       };
       return { task_key: buildConstructorTaskKey(task), task };
     })

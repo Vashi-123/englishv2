@@ -58,6 +58,24 @@ import {
   upsertFindMistakeCardsFromScript,
 } from '../../services/exerciseReviewService';
 
+const safeTrim = (v: unknown) => String(v ?? '').trim();
+const safeArray = (v: unknown) => (Array.isArray(v) ? v : []);
+
+const normalizeCtorKey = (task: any) => {
+  const words = safeArray(task?.words).map((w) => safeTrim(w)).filter(Boolean).sort().join('||');
+  const correctRaw = task?.correct;
+  const correct = Array.isArray(correctRaw) 
+    ? correctRaw.map((w) => safeTrim(w)).filter(Boolean).join('||') 
+    : safeTrim(correctRaw);
+  return `w:${words}::c:${correct}`;
+};
+
+const normalizeFindKey = (task: any) => {
+  const options = safeArray(task?.options).map((o) => safeTrim(o)).filter(Boolean).sort().join('||');
+  const answer = safeTrim(task?.answer).toUpperCase();
+  return `o:${options}::a:${answer}`;
+};
+
 export type Step4DialogueProps = {
   day?: number;
   lesson?: number;
@@ -167,6 +185,12 @@ export function Step4DialogueScreen({
     return false;
   });
   const [initError, setInitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (lessonScript) {
+      console.log('[Step4DialogueScreen] FULL LESSON SCRIPT:', lessonScript);
+    }
+  }, [lessonScript]);
 
   const [showTranslations, setShowTranslations] = useState<Record<number, boolean>>({});
 
@@ -425,15 +449,18 @@ export function Step4DialogueScreen({
           return { key, task: patch };
         })
         .filter((x) => {
-          if (uniqCtor.has(x.key)) return false;
-          uniqCtor.add(x.key);
+          const sig = buildConstructorTaskKey(x.task);
+          if (uniqCtor.has(sig)) return false;
+          uniqCtor.add(sig);
           return true;
         });
       for (const row of ctorBatch) {
         if (ctorBase.length >= perLessonLimit) break;
-        if (uniqCtor.has(row.task_key)) continue;
-        uniqCtor.add(row.task_key);
         const serverTask = (row.task || {}) as any;
+        const sig = buildConstructorTaskKey(serverTask);
+        if (uniqCtor.has(sig)) continue;
+        uniqCtor.add(sig);
+        
         ctorBase.push({
           key: row.task_key,
           task: {
@@ -458,15 +485,18 @@ export function Step4DialogueScreen({
           return { key, task: patch };
         })
         .filter((x) => {
-          if (uniqFind.has(x.key)) return false;
-          uniqFind.add(x.key);
+          const sig = buildFindMistakeTaskKey(x.task);
+          if (uniqFind.has(sig)) return false;
+          uniqFind.add(sig);
           return true;
         });
       for (const row of findBatch) {
         if (findBase.length >= perLessonLimit) break;
-        if (uniqFind.has(row.task_key)) continue;
-        uniqFind.add(row.task_key);
         const serverTask = (row.task || {}) as any;
+        const sig = buildFindMistakeTaskKey(serverTask);
+        if (uniqFind.has(sig)) continue;
+        uniqFind.add(sig);
+        
         findBase.push({
           key: row.task_key,
           task: {
@@ -480,8 +510,8 @@ export function Step4DialogueScreen({
         });
       }
 
-      const ctorFinal = ctorBase.map((x) => x.task).slice(0, perLessonLimit);
-      const findFinal = findBase.map((x) => x.task).slice(0, perLessonLimit);
+      const ctorFinal = ctorBase.map((x) => x.task);
+      const findFinal = findBase.map((x) => x.task);
 
       const augmented = {
         ...(base as any),
@@ -2846,7 +2876,7 @@ export function Step4DialogueScreen({
         )}
         {overlayVisible && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/85 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-3 rounded-2xl border border-black/5 bg-white px-5 py-4 shadow-xl">
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-black/5 bg-white  py-4 shadow-xl">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
               <div className="text-sm font-medium text-zinc-800">
                 {resolvedLanguage?.toLowerCase().startsWith("ru") ? "Загружаю урок…" : "Loading lesson…"}
@@ -2987,3 +3017,4 @@ export function Step4DialogueScreen({
     </>
   );
 }
+

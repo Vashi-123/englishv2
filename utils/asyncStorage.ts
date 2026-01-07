@@ -92,6 +92,33 @@ export async function getItemObjectAsync<T>(key: string): Promise<T | null> {
 }
 
 /**
+ * Асинхронное удаление из localStorage
+ */
+export function removeItemAsync(key: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined') {
+      resolve();
+      return;
+    }
+
+    const remove = () => {
+      try {
+        window.localStorage.removeItem(key);
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    };
+
+    if ('requestIdleCallback' in window) {
+      (window as any).requestIdleCallback(remove, { timeout: 1000 });
+    } else {
+      setTimeout(remove, 0);
+    }
+  });
+}
+
+/**
  * Debounced запись в localStorage
  * Объединяет множественные записи в одну
  */
@@ -137,4 +164,3 @@ export function createDebouncedObjectWriter<T>(
     }
   };
 }
-

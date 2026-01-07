@@ -34,15 +34,31 @@ type Props = {
   onValidateDrill?: (params: { drillIndex: number; answer: string }) => Promise<{ isCorrect: boolean; feedback: string }>;
 };
 
-const normalizeAnswer = (value: string | string[]) => {
+const normalizeAnswer = (value: string | string[] | string[][]): string[] => {
+  const normalizeSingle = (val: string | string[]) => {
+    if (Array.isArray(val)) {
+      return val.join(' ').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[’‘'`]/g, "'").replace(/\u00A0/g, ' ');
+    }
+    return String(val || '')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .replace(/[’‘'`]/g, "'")
+      .replace(/\u00A0/g, ' ');
+  };
+
   if (Array.isArray(value)) {
-    return value.join(' ').trim().replace(/\s+/g, ' ').replace(/[’`]/g, "'").replace(/\u00A0/g, ' ');
+    if (value.length === 0) return [''];
+    const first = value[0];
+    if (Array.isArray(first)) {
+      // It's string[][] - return all variants normalized
+      return (value as string[][]).map(v => normalizeSingle(v));
+    }
+    // It's string[] - return one variant normalized
+    return [normalizeSingle(value as string[])];
   }
-  return String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/[’`]/g, "'")
-    .replace(/\u00A0/g, ' ');
+  // It's string - return one variant normalized
+  return [normalizeSingle(value)];
 };
 
 export function GrammarDrillsCard({
@@ -62,6 +78,19 @@ export function GrammarDrillsCard({
   currentStep,
   onValidateDrill,
 }: Props) {
+  useEffect(() => {
+    if (drills.length > 0) {
+      console.log('[GrammarDrillsCard] Drills structure check:', drills.map(d => ({
+        q: d.question,
+        expectedType: Array.isArray(d.expected) 
+          ? (d.expected.length > 0 && Array.isArray(d.expected[0]) ? 'string[][]' : 'string[]') 
+          : typeof d.expected,
+        expectedValue: d.expected,
+        requiredValue: d.requiredWords
+      })));
+    }
+  }, [drills]);
+
   const initial = useMemo<GrammarDrillsUiState>(() => {
     const count = Array.isArray(drills) ? drills.length : 0;
     const empty: GrammarDrillsUiState = {
@@ -384,9 +413,10 @@ export function GrammarDrillsCard({
           } catch (err) {
             console.error('[GrammarDrillsCard] Validation error:', err);
             // Fallback to simple comparison
-            const exp = normalizeAnswer(drills[idx]?.expected || '');
-            const ans = normalizeAnswer(answer);
-            isCorrect = Boolean(exp && ans && exp === ans);
+            const expectedVariants = normalizeAnswer(drills[idx]?.expected || '');
+            const ansArr = normalizeAnswer(answer);
+            const ans = ansArr[0] || '';
+            isCorrect = expectedVariants.some(exp => exp && ans && exp === ans);
             feedback = isCorrect ? '' : 'Неверно. Попробуй еще раз.';
             notesForDrill = '';
           }
@@ -394,9 +424,10 @@ export function GrammarDrillsCard({
           // Локальная проверка уже дала результат, ничего не делаем
         } else {
           // Нет возможности проверить через ИИ, используем простое сравнение
-          const exp = normalizeAnswer(drills[idx]?.expected || '');
-          const ans = normalizeAnswer(answer);
-          isCorrect = Boolean(exp && ans && exp === ans);
+          const expectedVariants = normalizeAnswer(drills[idx]?.expected || '');
+          const ansArr = normalizeAnswer(answer);
+          const ans = ansArr[0] || '';
+          isCorrect = expectedVariants.some(exp => exp && ans && exp === ans);
           feedback = isCorrect ? '' : 'Неверно. Попробуй еще раз.';
           notesForDrill = '';
         }

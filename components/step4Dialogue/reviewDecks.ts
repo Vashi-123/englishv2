@@ -71,8 +71,8 @@ const normalizeFindMistakeTask = (task: any): FindMistakeTask | null => {
 
 const fingerprintConstructorTask = (t: ConstructorTask) =>
   safeJsonStringify({
-    words: t.words,
-    correct: t.correct,
+    words: [...t.words].sort(),
+    correct: Array.isArray(t.correct) ? [...t.correct].sort() : t.correct,
     note: t.note || '',
     translation: t.translation || '',
   });

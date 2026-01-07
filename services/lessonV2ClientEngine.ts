@@ -17,7 +17,7 @@ export type LessonScriptV2 = {
   words: LessonWords;
   grammar: {
     explanation: string;
-    drills?: Array<{ question: string; task: string; expected: string | string[]; requiredWords?: string[] }>;
+    drills?: Array<{ question: string; task: string; expected: string | string[] | string[][]; requiredWords?: string[] | string[][] }>;
     audio_exercise?: { expected: string };
     text_exercise?: { expected: string; instruction: string };
     transition?: string;
@@ -30,7 +30,7 @@ export type LessonScriptV2 = {
       id?: number;
       instruction?: string;
       words: string[];
-      correct: string | string[];
+      correct: string | string[] | string[][];
       note?: string;
       translation?: string;
     }>;
@@ -55,13 +55,15 @@ export type LessonScriptV2 = {
       // Legacy single-step scenario fields (kept for backward compatibility)
       ai?: string;
       task?: string;
-      expected_answer?: string;
+      expected_answer?: string | string[] | string[][];
+      required_words?: string[] | string[][]; // Добавляем required_words
       // New multi-step scenario format
       steps?: Array<{
         ai: string;
         ai_translation?: string;
         task: string;
-        expected_answer: string;
+        expected_answer: string | string[] | string[][];
+        required_words?: string[] | string[][]; // Добавляем required_words
       }>;
     }>;
   };
@@ -76,7 +78,8 @@ type NormalizedSituationStep = {
   ai: string;
   ai_translation?: string;
   task: string;
-  expected_answer: string;
+  expected_answer: string | string[] | string[][]; // Обновляем тип
+  required_words?: string[] | string[][]; // Добавляем required_words
   stepIndex: number;
   stepsTotal: number;
   isLessonCompletion?: boolean;
@@ -93,7 +96,8 @@ const getSituationStep = (
     const ai = String(step?.ai || "").trim();
     const aiTranslation = typeof step?.ai_translation === "string" ? String(step.ai_translation).trim() : "";
     const task = String(step?.task || "").trim();
-    const expectedRaw = String(step?.expected_answer || "").trim();
+    const expectedRaw = step?.expected_answer; // Убираем String().trim()
+    const requiredWords = (step as any)?.required_words; // Добавляем required_words
     const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
     const expected = isLessonCompletion ? "" : expectedRaw;
     if (!ai || !task || (!expected && !isLessonCompletion)) return null;
@@ -104,6 +108,7 @@ const getSituationStep = (
       ai_translation: aiTranslation || undefined,
       task,
       expected_answer: expected,
+      required_words: requiredWords, // Передаем required_words
       stepIndex: safeIndex,
       stepsTotal: steps.length,
       isLessonCompletion,
@@ -112,7 +117,8 @@ const getSituationStep = (
 
   const ai = String((scenario as any)?.ai || "").trim();
   const task = String((scenario as any)?.task || "").trim();
-  const expectedRaw = String((scenario as any)?.expected_answer || "").trim();
+  const expectedRaw = (scenario as any)?.expected_answer; // Убираем String().trim()
+  const requiredWords = (scenario as any)?.required_words; // Добавляем required_words
   const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
   const expected = isLessonCompletion ? "" : expectedRaw;
   if (!ai || !task || (!expected && !isLessonCompletion)) return null;
@@ -122,6 +128,7 @@ const getSituationStep = (
     ai,
     task,
     expected_answer: expected,
+    required_words: requiredWords, // Передаем required_words
     stepIndex: 0,
     stepsTotal: 1,
     isLessonCompletion,

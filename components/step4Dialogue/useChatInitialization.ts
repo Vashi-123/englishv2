@@ -4,7 +4,6 @@ import type { ChatMessage } from '../../types';
 import { loadLessonInitData, peekCachedLessonScript } from '../../services/generationService';
 import { createInitialLessonMessages, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { isStep4DebugEnabled } from './debugFlags';
-import { parseJsonBestEffort } from './lessonScriptUtils';
 import type { Step4PerfEventInput } from './useLessonPerfLog';
 
 const resolvedErrorMessage = (language: string, err: unknown): string | null => {
@@ -127,12 +126,8 @@ export function useChatInitialization({
           if (!script) {
             const cachedScript = peekCachedLessonScript(day || 1, lesson || 1, level || 'A1');
             if (cachedScript) {
-              try {
-                script = parseJsonBestEffort(cachedScript, 'lessonScript');
-                setLessonScript(script);
-              } catch {
-                // ignore, fallback to ensureLessonScript
-              }
+              script = cachedScript as LessonScriptV2; // cachedScript теперь объект LessonScriptV2
+              setLessonScript(script);
             }
           }
           if (!script) {
@@ -160,7 +155,7 @@ export function useChatInitialization({
           const cachedScript = peekCachedLessonScript(day || 1, lesson || 1, level || 'A1');
           if (cachedScript) {
             try {
-              scriptForSeed = parseJsonBestEffort(cachedScript, 'lessonScript') as LessonScriptV2;
+              scriptForSeed = cachedScript as LessonScriptV2;
               setLessonScript(scriptForSeed);
             } catch {
               scriptForSeed = null;
@@ -223,9 +218,8 @@ export function useChatInitialization({
 
         // Process script if loaded
         if (initData.script && !lessonScript) {
-          const parsed = parseJsonBestEffort(initData.script, 'lessonScript');
-          setLessonScript(parsed);
-          console.log('[Step4Dialogue] Lesson script loaded from initData:', !!parsed, !!parsed?.words);
+          setLessonScript(initData.script as LessonScriptV2);
+          console.log('[Step4Dialogue] Lesson script loaded from initData:', !!initData.script, !!(initData.script as LessonScriptV2)?.words);
         } else if (!initData.script && !lessonScript) {
           console.warn('[Step4Dialogue] No script in initData and lessonScript is null');
         }
@@ -241,7 +235,7 @@ export function useChatInitialization({
           script = lessonScript;
           console.log('[Step4Dialogue] Using existing lessonScript from state');
         } else if (initData.script) {
-          script = parseJsonBestEffort(initData.script, 'lessonScript') as LessonScriptV2;
+          script = initData.script as LessonScriptV2;
           setLessonScript(script);
           console.log('[Step4Dialogue] Parsed script from initData.script:', !!script, !!script?.words);
         } else {

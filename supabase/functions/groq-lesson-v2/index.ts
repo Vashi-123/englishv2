@@ -24,8 +24,8 @@ interface LessonScript {
     drills?: Array<{
       question: string;
       task: string;
-      expected: string | string[];
-      requiredWords?: string[];
+      expected: string | string[] | string[][];
+      requiredWords?: string[] | string[][];
     }>;
     audio_exercise?: {
       expected: string;
@@ -42,7 +42,7 @@ interface LessonScript {
     successText?: string;
     tasks: Array<{
       words: string[];
-      correct: string | string[];
+      correct: string | string[] | string[][];
       note?: string;
       translation?: string;
     }>;
@@ -65,13 +65,15 @@ interface LessonScript {
       // Legacy single-step scenario fields
       ai?: string;
       task?: string;
-      expected_answer?: string;
+      expected_answer?: string | string[] | string[][];
+      required_words?: string[] | string[][]; // Добавляем required_words для сценария
       // New multi-step scenario format
       steps?: Array<{
         ai: string;
         ai_translation?: string;
         task: string;
-        expected_answer: string;
+        expected_answer: string | string[] | string[][];
+        required_words?: string[] | string[][]; // Добавляем required_words для шага
       }>;
     }>;
   };
@@ -86,7 +88,8 @@ const getSituationStep = (scenario: any, stepIndex: number) => {
     const ai = String(step?.ai || "").trim();
     const aiTranslation = typeof step?.ai_translation === "string" ? String(step.ai_translation).trim() : "";
     const task = String(step?.task || "").trim();
-    const expectedRaw = String(step?.expected_answer || "").trim();
+    const expectedRaw = step?.expected_answer; // Убираем String().trim()
+    const requiredWords = step?.required_words; // Добавляем required_words
     const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
     const expected = isLessonCompletion ? "" : expectedRaw;
     if (!ai || !task || (!expected && !isLessonCompletion)) return null;
@@ -95,6 +98,7 @@ const getSituationStep = (scenario: any, stepIndex: number) => {
       ai_translation: aiTranslation || undefined,
       task,
       expected_answer: expected,
+      required_words: requiredWords, // Передаем required_words
       stepIndex: safeIndex,
       stepsTotal: steps.length,
       isLessonCompletion,
@@ -102,11 +106,12 @@ const getSituationStep = (scenario: any, stepIndex: number) => {
   }
   const ai = String(scenario?.ai || "").trim();
   const task = String(scenario?.task || "").trim();
-  const expectedRaw = String(scenario?.expected_answer || "").trim();
+  const expectedRaw = scenario?.expected_answer; // Убираем String().trim()
+  const requiredWords = scenario?.required_words; // Добавляем required_words
   const isLessonCompletion = task.toLowerCase() === "<lesson_completed>";
   const expected = isLessonCompletion ? "" : expectedRaw;
   if (!ai || !task || (!expected && !isLessonCompletion)) return null;
-  return { ai, ai_translation: undefined, task, expected_answer: expected, stepIndex: 0, stepsTotal: 1, isLessonCompletion };
+  return { ai, ai_translation: undefined, task, expected_answer: expected, required_words: requiredWords, stepIndex: 0, stepsTotal: 1, isLessonCompletion };
 };
 
 const extractAssignmentSection = (html?: string): string | null => {
@@ -570,7 +575,7 @@ Lesson context (for you):\n\n${lessonContext}`;
     // Хелпер для валидации ответа через Groq (только проверка корректности)
     const validateAnswer = async (params: {
       step: string;
-      expected: string;
+      expected: string; // Может содержать варианты через " OR "
       studentAnswer: string;
       extra?: string;
     }): Promise<{ isCorrect: boolean; feedback: string }> => {
@@ -589,10 +594,14 @@ Lesson context (for you):\n\n${lessonContext}`;
       };
 
       // Fast path: if the only differences are punctuation/capitalization, accept without LLM validation.
-      const expectedNorm = normalizeLenient(params.expected);
       const answerNorm = normalizeLenient(params.studentAnswer);
-      if (expectedNorm && answerNorm && expectedNorm === answerNorm) {
-        return { isCorrect: true, feedback: "" };
+      const expectedVariants = params.expected.split(" OR ");
+      
+      for (const variant of expectedVariants) {
+        const variantNorm = normalizeLenient(variant);
+        if (variantNorm && answerNorm && variantNorm === answerNorm) {
+          return { isCorrect: true, feedback: "" };
+        }
       }
 
       const validatorSystemPrompt = `Ты валидатор ответов ученика по заранее заданному сценарию урока.
@@ -713,12 +722,16 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       if (drillIndex !== null && drills.length > drillIndex) {
         // This is a grammar drill validation
         const drill = drills[drillIndex];
-        // Поддержка expected как строки или массива
-        if (Array.isArray(drill?.expected)) {
-          expected = drill.expected.join(" ");
-        } else {
-          expected = String(drill?.expected || "").trim();
-        }
+        const ensureString = (val: any) => {
+          if (Array.isArray(val)) {
+            if (Array.isArray(val[0])) { // string[][]
+              return val.map((v: string[]) => v.join(" ")).join(" OR ");
+            }
+            return val.join(" "); // string[]
+          }
+          return String(val || "").trim();
+        };
+        expected = ensureString(drill?.expected);
         stepType = "grammar_drill";
         extra = `Задание: ${String(drill?.task || "").trim()}\nВопрос: ${String(drill?.question || "").trim()}\nПравило: ${script.grammar?.explanation || ""}`;
       } else if (script.grammar?.audio_exercise?.expected) {
@@ -753,7 +766,16 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      expected = Array.isArray(task.correct) ? task.correct.join(" ") : task.correct;
+      const ensureString = (val: any) => {
+        if (Array.isArray(val)) {
+          if (Array.isArray(val[0])) { // string[][]
+            return val.map((v: string[]) => v.join(" ")).join(" OR ");
+          }
+          return val.join(" "); // string[]
+        }
+        return String(val || "").trim();
+      };
+      expected = ensureString(task.correct);
       stepType = "constructor";
       extra = `Слова: ${(task.words || []).join(" ")}`;
     } else if (currentStep.type === "situations") {
@@ -776,7 +798,16 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      expected = normalized.expected_answer;
+      const ensureString = (val: any) => {
+        if (Array.isArray(val)) {
+          if (Array.isArray(val[0])) { // string[][]
+            return val.map((v: string[]) => v.join(" ")).join(" OR ");
+          }
+          return val.join(" "); // string[]
+        }
+        return String(val || "").trim();
+      };
+      expected = ensureString(normalized.expected_answer);
       stepType = "situations";
       extra = `Ситуация: ${scenario.title}. AI сказал: "${normalized.ai}". Задача: ${normalized.task}`;
     } else {

@@ -44,7 +44,25 @@ export const formatConstructorSentence = (tokens: string[]) => {
 const normalizeLenient = (value: string) =>
   String(value || '')
     .toLowerCase()
-    .replace(/[’']/g, '')
+    .replace(/[’']/g, "'")
+    .replace(/\bi'm\b/g, 'i am')
+    .replace(/\byou're\b/g, 'you are')
+    .replace(/\bhe's\b/g, 'he is')
+    .replace(/\bshe's\b/g, 'she is')
+    .replace(/\bit's\b/g, 'it is')
+    .replace(/\bwe're\b/g, 'we are')
+    .replace(/\bthey're\b/g, 'they are')
+    .replace(/\bdon't\b/g, 'do not')
+    .replace(/\bdoesn't\b/g, 'does not')
+    .replace(/\bdidn't\b/g, 'did not')
+    .replace(/\bisn't\b/g, 'is not')
+    .replace(/\baren't\b/g, 'are not')
+    .replace(/\bwasn't\b/g, 'was not')
+    .replace(/\bweren't\b/g, 'were not')
+    .replace(/\bcan't\b/g, 'cannot')
+    .replace(/\bcouldn't\b/g, 'could not')
+    .replace(/\bwon't\b/g, 'will not')
+    .replace(/\bwouldn't\b/g, 'would not')
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -78,38 +96,41 @@ export function ConstructorCard({
 
   const pickedTokens = useMemo(() => pickedWordIndices.map((i) => words[i]).filter(Boolean), [pickedWordIndices, words]);
   const sentence = useMemo(() => formatConstructorSentence(pickedTokens), [pickedTokens]);
-  const expectedTokens = useMemo(() => {
-    if (!expected) return null;
-    if (!Array.isArray(expected)) return null;
-    const tokens = expected.map((t) => String(t ?? '').trim()).filter(Boolean);
-    return tokens.length ? tokens : null;
-  }, [expected]);
-  const expectedSentence = useMemo(() => {
-    if (!expected) return '';
-    if (Array.isArray(expected)) {
-      return expectedTokens ? formatConstructorSentence(expectedTokens) : '';
+  const allExpectedVariants = useMemo(() => {
+    if (!expected) return [];
+    if (!Array.isArray(expected)) return [String(expected)];
+    if (expected.length === 0) return [];
+    if (Array.isArray(expected[0])) {
+      return (expected as string[][]).map((variant) => formatConstructorSentence(variant));
     }
-    return String(expected || '').trim();
-  }, [expected, expectedTokens]);
+    return [formatConstructorSentence(expected as string[])];
+  }, [expected]);
+
+  const expectedSentence = useMemo(() => {
+    return allExpectedVariants[0] || '';
+  }, [allExpectedVariants]);
+
   const maxPickCount = useMemo(() => {
-    if (expectedTokens) return expectedTokens.length;
+    if (!expected) return words.length;
+    if (Array.isArray(expected) && expected.length > 0) {
+      const first = expected[0];
+      if (Array.isArray(first)) return first.length;
+      return expected.length;
+    }
     if (typeof expected === 'string' && expected.trim()) {
       const normalized = normalizeLenient(expected);
       if (!normalized) return 0;
       return normalized.split(' ').filter(Boolean).length;
     }
     return words.length;
-  }, [expected, expectedTokens, words.length]);
+  }, [expected, words.length]);
+
   const isCorrect = useMemo(() => {
     if (!expected) return null;
     if (!sentence) return false;
-    if (expectedTokens) {
-      const expectedSentence = formatConstructorSentence(expectedTokens);
-      return normalizeLenient(sentence) === normalizeLenient(expectedSentence);
-    }
-    if (typeof expected !== 'string') return false;
-    return normalizeLenient(sentence) === normalizeLenient(expected);
-  }, [expected, expectedTokens, pickedTokens, sentence]);
+    const normSentence = normalizeLenient(sentence);
+    return allExpectedVariants.some((variant) => normalizeLenient(variant) === normSentence);
+  }, [expected, sentence, allExpectedVariants]);
 
   useEffect(() => {
     if (hydratedFromPropsRef.current) return;

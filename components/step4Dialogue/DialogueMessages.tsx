@@ -299,7 +299,7 @@ export function DialogueMessages({
       <div className={shouldVirtualize ? '' : 'space-y-6'}>
         {visibleMessages.length === 0 && isLoading && !lessonCompletedPersisted && (
           <div className="min-h-[45vh] flex items-center justify-center">
-            <div className="px-5 py-4 rounded-2xl bg-gray-50 border border-gray-200 shadow-sm">
+            <div className=" py-4 rounded-2xl bg-gray-50 border border-gray-200 shadow-sm">
               <div className="text-sm font-semibold text-gray-700">Загружаю урок</div>
               <div className="mt-2 flex items-center gap-1 text-gray-400">
                 <span className="inline-block w-2 h-2 rounded-full bg-gray-300 animate-bounce [animation-delay:-0.2s]" />
@@ -619,11 +619,11 @@ export function DialogueMessages({
                   handleStudentAnswer={handleStudentAnswer}
                   extractStructuredSections={extractStructuredSections}
                   stripModuleTag={stripModuleTag}
-                  renderMarkdown={renderMarkdown}
                   startedSituations={startedSituations}
                   lessonId={lessonId}
                   userId={userId}
                   language={language}
+                  renderMarkdown={renderMarkdown}
                 />
               </MessageRow>
             </div>

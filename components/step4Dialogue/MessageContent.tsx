@@ -513,8 +513,8 @@ function MessageContentComponent({
     const drillsRaw = Array.isArray((parsed as any).drills) ? ((parsed as any).drills as any[]) : [];
     const drills = drillsRaw
       .map((d) => {
-        // Поддержка expected как строки или массива
-        let expected: string | string[];
+        // Поддержка expected как строки, массива или массива массивов
+        let expected: any;
         if (Array.isArray(d?.expected)) {
           expected = d.expected;
         } else {
@@ -525,7 +525,7 @@ function MessageContentComponent({
           question: String(d?.question || '').trim(),
           task: String(d?.task || '').trim(),
           expected,
-          requiredWords: Array.isArray(d?.requiredWords) ? d.requiredWords : undefined,
+          requiredWords: d?.requiredWords, // Передаем как есть, валидатор сам разберется
         };
       })
       .filter((d) => d.question && d.task && (Array.isArray(d.expected) ? d.expected.length > 0 : d.expected));

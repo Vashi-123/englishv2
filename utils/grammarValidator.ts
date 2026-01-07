@@ -5,8 +5,8 @@
 export type GrammarDrill = {
   question: string;
   task: string;
-  expected: string | string[]; // Может быть строкой или массивом
-  requiredWords?: string[];
+  expected: string | string[] | string[][]; // Может быть строкой, массивом или массивом массивов
+  requiredWords?: string[] | string[][];
 };
 
 export type ValidationResult = {
@@ -25,9 +25,21 @@ export type ValidationResult = {
 /**
  * Преобразует expected в строку для сравнения
  */
-export function getExpectedAsString(expected: string | string[]): string {
+export function getExpectedAsString(expected: string | string[] | string[][]): string {
   if (Array.isArray(expected)) {
-    return expected.join(' ');
+    if (expected.length === 0) return '';
+    const first = expected[0];
+    
+    // Если это массив массивов (несколько вариантов)
+    if (Array.isArray(first)) {
+      // Возвращаем все варианты через " / "
+      return (expected as string[][])
+        .map(variant => variant.join(' ').replace(/\s+([.,!?;:])/g, '$1'))
+        .join(' / ');
+    }
+    
+    // Если это массив строк (один вариант), просто соединяем
+    return (expected as string[]).join(' ').replace(/\s+([.,!?;:])/g, '$1');
   }
   return String(expected || '').trim();
 }
@@ -35,9 +47,16 @@ export function getExpectedAsString(expected: string | string[]): string {
 /**
  * Преобразует expected в массив слов
  */
-export function getExpectedAsArray(expected: string | string[]): string[] {
+export function getExpectedAsArray(expected: string | string[] | string[][]): string[] {
   if (Array.isArray(expected)) {
-    return expected;
+    if (expected.length === 0) return [];
+    const first = expected[0];
+    // Если это массив массивов, берем первый вариант
+    if (Array.isArray(first)) {
+      return first as string[];
+    }
+    // Если это массив строк, возвращаем как есть
+    return expected as string[];
   }
   // Разбиваем строку на слова, сохраняя пунктуацию
   return String(expected || '').trim().split(/\s+/).filter(w => w.length > 0);
@@ -51,7 +70,7 @@ function normalizeText(text: string): string {
     .trim()
     .toLowerCase()
     // Нормализация апострофов
-    .replace(/[''`]/g, "'")
+    .replace(/['`’‘]/g, "'")
     // Нормализация неразрывных пробелов
     .replace(/\u00A0/g, ' ')
     // Удаление точек и запятых (не важно, где они находятся)
@@ -62,7 +81,7 @@ function normalizeText(text: string): string {
     // Нормализация пробелов
     .replace(/\s+/g, ' ')
     // Разворачивание сокращений (с апострофом)
-    .replace(/\bI'm\b/g, 'I am')
+    .replace(/\bi'm\b/g, 'i am')
     .replace(/\byou're\b/g, 'you are')
     .replace(/\bhe's\b/g, 'he is')
     .replace(/\bshe's\b/g, 'she is')
@@ -80,6 +99,22 @@ function normalizeText(text: string): string {
     .replace(/\bcouldn't\b/g, 'could not')
     .replace(/\bwon't\b/g, 'will not')
     .replace(/\bwouldn't\b/g, 'would not')
+    .replace(/\bi've\b/g, 'i have')
+    .replace(/\byou've\b/g, 'you have')
+    .replace(/\bwe've\b/g, 'we have')
+    .replace(/\bthey've\b/g, 'they have')
+    .replace(/\bhe'd\b/g, 'he had')
+    .replace(/\bshe'd\b/g, 'she had')
+    .replace(/\bi'd\b/g, 'i had')
+    .replace(/\bwe'd\b/g, 'we had')
+    .replace(/\bthey'd\b/g, 'they had')
+    .replace(/\bi'll\b/g, 'i will')
+    .replace(/\byou'll\b/g, 'you will')
+    .replace(/\bhe'll\b/g, 'he will')
+    .replace(/\bshe'll\b/g, 'she will')
+    .replace(/\bwe'll\b/g, 'we will')
+    .replace(/\bthey'll\b/g, 'they will')
+    .replace(/\bit'll\b/g, 'it will')
     // Нормализация разделенных слов (например "i m" -> "i am")
     .replace(/\bi\s+m\b/g, 'i am')
     .replace(/\byou\s+are\b/g, 'you are')
@@ -318,11 +353,212 @@ function wordExistsInText(word: string, text: string): boolean {
 }
 
 /**
- * Проверяет грамматическое задание
+ * Вычисляет расстояние Левенштейна между двумя строками
+ */
+function levenshteinDistance(s1: string, s2: string): number {
+  s1 = s1.toLowerCase();
+  s2 = s2.toLowerCase();
+
+  const costs = new Array();
+  for (let i = 0; i <= s1.length; i++) {
+    let lastValue = i;
+    for (let j = 0; j <= s2.length; j++) {
+      if (i === 0) {
+        costs[j] = j;
+      } else if (j > 0) {
+        let newValue = costs[j - 1];
+        if (s1.charAt(i - 1) !== s2.charAt(j - 1)) {
+          newValue = Math.min(Math.min(newValue, lastValue), costs[j]) + 1;
+        }
+        costs[j - 1] = lastValue;
+        lastValue = newValue;
+      }
+    }
+    if (i > 0) {
+      costs[s2.length] = lastValue;
+    }
+  }
+  return costs[s2.length];
+}
+
+/**
+ * Проверяет наличие слова в тексте с учетом гибкого совпадения (Левенштейн)
+ */
+function checkFlexibleWordExistence(
+  expectedWord: string,
+  answerTokens: string[]
+): boolean {
+  const normalizedExpectedWord = normalizeText(expectedWord);
+  // Порог толерантности: 1/3 длины слова, минимум 1, максимум 2
+  const tolerance = Math.min(Math.max(1, Math.floor(normalizedExpectedWord.length / 3)), 2);
+
+  for (const answerToken of answerTokens) {
+    const normalizedAnswerToken = normalizeText(answerToken);
+    if (
+      normalizedExpectedWord === normalizedAnswerToken ||
+      levenshteinDistance(normalizedExpectedWord, normalizedAnswerToken) <= tolerance
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Вспомогательная функция для нормализации входных данных в массив вариантов (string[][])
+ */
+function ensureArrayOfVariants(input: any): string[][] {
+  if (!input) return [];
+  
+  // 1. Если это уже массив массивов — возвращаем как есть
+  if (Array.isArray(input) && input.length > 0 && Array.isArray(input[0])) {
+    return input as string[][];
+  }
+  
+  // 2. Если это плоский массив
+  if (Array.isArray(input)) {
+    if (input.length === 0) return [];
+    
+    // Проверяем, нет ли внутри вложенных массивов (на случай, если input[0] был пуст, но input[1] - массив)
+    const hasNestedArray = input.some(item => Array.isArray(item));
+    if (hasNestedArray) {
+      return input.map(item => {
+        if (Array.isArray(item)) return item as string[];
+        return String(item).trim().split(/\s+/).filter(Boolean);
+      });
+    }
+
+    // Херистика: если элементы массива — это целые предложения (содержат пробелы),
+    // значит это список вариантов предложений: ["Hello Tom", "Hi Tom"]
+    const hasSentences = input.some(s => typeof s === 'string' && s.trim().includes(' '));
+    if (hasSentences) {
+      return input.map(s => String(s).trim().split(/\s+/).filter(Boolean));
+    }
+    
+    // Иначе это один вариант, разбитый по словам: ["Hello", "Tom"]
+    return [input as string[]];
+  }
+  
+  // 3. Если это строка (одно предложение)
+  if (typeof input === 'string') {
+    // Если строка выглядит как результат принудительного String(array) — "word1,word2,word3"
+    if (input.includes(',') && !input.includes(' ')) {
+      return [input.split(',').filter(Boolean)];
+    }
+    return [input.trim().split(/\s+/).filter(Boolean)];
+  }
+  
+  return [];
+}
+
+/**
+ * Проверяет грамматическое задание (поддерживает несколько вариантов ответа)
  */
 export function validateGrammarDrill(
   answer: string,
   drill: GrammarDrill
+): ValidationResult {
+  if (!answer || !answer.trim()) {
+    return {
+      isCorrect: false,
+      feedback: 'Ответ не может быть пустым.',
+      needsAI: false,
+      missingWords: [],
+      incorrectWords: [],
+      wrongLanguage: false,
+      extraWords: [],
+      orderError: false,
+      duplicateWords: []
+    };
+  }
+
+  // Детальный лог входа для диагностики данных
+  console.log('[GrammarValidator] RAW INPUT:', {
+    expected: drill.expected,
+    required: drill.requiredWords,
+    answer: answer
+  });
+
+  // 1. Гарантированно получаем массивы вариантов
+  const expectedVariants = ensureArrayOfVariants(drill.expected);
+  const requiredVariants = ensureArrayOfVariants(drill.requiredWords);
+
+  console.log(`[GrammarValidator] Вариантов для проверки: ${expectedVariants.length}`);
+
+  // 2. Синхронизируем количество вариантов requiredWords с expected
+  // Если у нас 2 варианта ответа, но 1 набор обязательных слов - используем его для обоих
+  // Если 2 набора - используем по индексу
+  const synchronizedRequired = expectedVariants.map((_, index) => {
+    if (requiredVariants.length === 0) return [];
+    if (requiredVariants.length === 1) return requiredVariants[0];
+    return requiredVariants[index] || requiredVariants[0];
+  });
+
+  // 3. Проверяем каждый вариант по отдельности
+  const results: ValidationResult[] = expectedVariants.map((variant, index) => {
+    const required = synchronizedRequired[index];
+    
+    // Добавим лог для отладки
+    console.log(`[GrammarValidator] Вариант #${index + 1}:`, {
+      expected: variant.join(' '),
+      required: required?.join(' '),
+      answer: answer
+    });
+
+    const singleVariantDrill = {
+      question: drill.question,
+      task: drill.task,
+      expected: variant,
+      requiredWords: required
+    };
+
+    const res = validateSingleVariant(answer, singleVariantDrill);
+    
+    // Если вариант неверный, готовим для него индивидуальный фидбек
+    if (!res.isCorrect) {
+      const variantStr = variant.join(' ').replace(/\s+([.,!?;:])/g, '$1');
+      res.feedback = `Правильный ответ: ${variantStr}`;
+    }
+
+    // Сохраняем метаданные для логов
+    (res as any)._variantIndex = index;
+    (res as any)._variantText = variant.join(' ');
+
+    return res;
+  });
+
+  // 4. Если есть хотя бы один правильный вариант — возвращаем его
+  const correctResults = results.filter(r => r.isCorrect);
+  if (correctResults.length > 0) {
+    const best = correctResults.sort((a, b) => (a.extraWords?.length || 0) - (b.extraWords?.length || 0))[0];
+    console.log(`[GrammarValidator] УСПЕХ: Вариант #${(best as any)._variantIndex + 1} подошёл!`);
+    return best;
+  }
+
+  // 5. Если правильных нет — выбираем наиболее "близкий"
+  const bestError = results.sort((a, b) => {
+    const scoreA = (a.missingWords?.length || 0) + (a.incorrectWords?.length || 0) + (a.numberMismatch ? 1 : 0);
+    const scoreB = (b.missingWords?.length || 0) + (b.incorrectWords?.length || 0) + (b.numberMismatch ? 1 : 0);
+    
+    if (scoreA !== scoreB) return scoreA - scoreB;
+    return (a.extraWords?.length || 0) - (b.extraWords?.length || 0);
+  })[0];
+
+  console.log(`[GrammarValidator] ОШИБКА: Ни один из ${results.length} вариантов не подошёл. Ближайший: #${(bestError as any)._variantIndex + 1}`);
+  return bestError;
+}
+
+/**
+ * Проверяет грамматическое задание (один вариант)
+ */
+function validateSingleVariant(
+  answer: string,
+  drill: { 
+    question: string; 
+    task: string; 
+    expected: string[]; 
+    requiredWords?: string[] 
+  }
 ): ValidationResult {
   if (!answer || !answer.trim()) {
     return {
@@ -388,10 +624,10 @@ export function validateGrammarDrill(
   }).filter(w => w.length > 0);
 
   // Получаем слова из ответа
-  const answerWords = extractWords(answer);
   const normalizedAnswer = normalizeText(answer);
-  const normalizedExpectedWords = expectedWords.map(w => normalizeText(w)).filter(Boolean);
-  const normalizedAnswerWords = answerWords.map(w => normalizeText(w)).filter(Boolean);
+  const normalizedAnswerWords = normalizedAnswer.split(/\s+/).filter(Boolean);
+  
+  const normalizedExpectedWords = expectedWords.flatMap(w => normalizeText(w).split(/\s+/)).filter(Boolean);
   
   // Нормализуем requiredWords для проверки
   const normalizedRequiredWords = drill.requiredWords 
@@ -429,6 +665,22 @@ export function validateGrammarDrill(
       missingWords: [],
       incorrectWords: [],
       wrongLanguage: false
+    };
+  }
+
+  // Быстрая проверка на полное совпадение нормализованных строк
+  const normalizedExpected = normalizeText(expectedString);
+  if (normalizedAnswer === normalizedExpected) {
+    return {
+      isCorrect: true,
+      feedback: '',
+      needsAI: false,
+      missingWords: [],
+      incorrectWords: [],
+      wrongLanguage: false,
+      extraWords: [],
+      orderError: false,
+      duplicateWords: []
     };
   }
   
@@ -697,43 +949,42 @@ export function validateGrammarDrill(
     }
   }
 
+  // Создаем Set для быстрого поиска requiredWords для оптимизации
+  const requiredWordsSet = new Set(normalizedRequiredWords);
+
   // Теперь проверяем наличие всех слов из expected
   for (const expectedWord of expectedWords) {
     const normalizedExpectedWord = normalizeText(expectedWord);
     
-    // Проверяем, является ли это слово частью requiredWords
-    // requiredWords могут быть фразами (например "I am"), поэтому проверяем вхождение
-    const isPartOfRequiredPhrase = normalizedRequiredWords.some(nrw => {
-      // Если requiredWord - это фраза, проверяем вхождение
+    // Проверяем, является ли это слово частью requiredWords (фразы или отдельные слова)
+    const isPartOfRequired = normalizedRequiredWords.some(nrw => {
       if (nrw.includes(' ')) {
-        return nrw.includes(normalizedExpectedWord);
+        return normalizedExpectedWord.includes(nrw) || nrw.includes(normalizedExpectedWord);
       }
-      // Если expectedWord - это фраза, проверяем вхождение
-      if (normalizedExpectedWord.includes(' ')) {
-        return normalizedExpectedWord.includes(nrw);
-      }
-      // Точное совпадение
       return nrw === normalizedExpectedWord;
     });
-    
+
     // Проверяем, является ли это слово сокращением, которое уже найдено в развернутой форме
     const isFoundContraction = foundContractionsInAnswer.has(normalizedExpectedWord);
     
-    // Если слово является частью requiredPhrase или найдено как сокращение, мы уже проверили его выше
-    // Проверяем только если это не часть requiredPhrase и не найденное сокращение
-    if (!isPartOfRequiredPhrase && !isFoundContraction) {
-      // Проверяем наличие слова в ответе
+    // Если слово является обязательным или частью обязательной фразы
+    if (isPartOfRequired) {
+      // Проверяем его точное наличие
       const exists = wordExistsInText(expectedWord, answer);
-      
       if (!exists) {
-        // Слова нет в ответе
+        missingWords.push(expectedWord);
+      }
+    } else if (!isFoundContraction) {
+      // Для необязательных слов, которые не являются сокращениями, используем гибкую проверку
+      const existsFlexibly = checkFlexibleWordExistence(expectedWord, normalizedAnswerWords);
+      if (!existsFlexibly) {
         missingWords.push(expectedWord);
       }
     }
   }
 
   // Проверяем совпадение числа существительных (простое правило по окончанию s/es)
-  const pluralityIssues = checkPlurality(expectedWords, answerWords);
+  const pluralityIssues = checkPlurality(expectedWords, normalizedAnswerWords);
   if (pluralityIssues.length > 0) {
     incorrectWords.push(...pluralityIssues);
   }
@@ -782,4 +1033,3 @@ export function validateGrammarDrill(
     extraWords
   };
 }
-
