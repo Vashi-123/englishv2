@@ -229,7 +229,7 @@ export function VoicePracticeCard({ sessionKey, words, processAudioQueue, onChec
   const promptWord = String(currentWord?.word || '').trim();
 
   return (
-    <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4">
+    <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl border border-brand-primary/40 shadow-[0_24px_80px_rgba(99,102,241,0.28)] p-4">
       <div className="flex items-center justify-between mb-3 px-1">
         <CardHeading
           icon={

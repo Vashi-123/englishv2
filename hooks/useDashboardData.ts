@@ -149,7 +149,7 @@ export const useDashboardData = (
     }
 
     let isMounted = true;
-    void load();
+    const loadPromise = load();
 
     // Принудительное завершение загрузки через 10 секунд на случай зависания
     const forceTimeout = typeof window !== 'undefined' ? window.setTimeout(() => {
@@ -159,6 +159,13 @@ export const useDashboardData = (
         setError(new Error('Загрузка данных заняла слишком много времени. Попробуйте обновить страницу.'));
       }
     }, 10000) : null;
+
+    // Если загрузка завершилась раньше — убираем таймер, чтобы не писать ложные warnings.
+    void loadPromise.finally(() => {
+      if (forceTimeout && typeof window !== 'undefined') {
+        window.clearTimeout(forceTimeout);
+      }
+    });
 
     return () => {
       isMounted = false;
@@ -170,4 +177,3 @@ export const useDashboardData = (
 
   return { data, loading, error, reload: load };
 };
-

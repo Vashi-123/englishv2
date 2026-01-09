@@ -228,8 +228,8 @@ export function ConstructorCard({
   return (
     <div className="space-y-4">
       <div
-        className={`p-4 rounded-2xl border bg-white shadow-lg shadow-slate-900/10 space-y-3 transition-colors w-full max-w-2xl mx-auto relative ${
-          wrongAttempt ? 'border-red-200 bg-red-50' : 'border-gray-200/60'
+        className={`p-4 rounded-2xl border bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] space-y-3 transition-colors w-full max-w-2xl mx-auto relative ${
+          wrongAttempt ? 'border-red-200 bg-red-50' : 'border-brand-primary/40'
         }`}
       >
         <div className="space-y-4">

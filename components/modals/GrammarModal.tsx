@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Book, X } from 'lucide-react';
+import { Book, X, ChevronDown } from 'lucide-react';
 import { parseMarkdown } from '../step4Dialogue/markdown';
 
 interface GrammarCard {
@@ -27,6 +27,42 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
   currentDayId,
   onClose,
 }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const [openCardKey, setOpenCardKey] = useState<string | null>(null);
+
+  const getCardKey = (card: GrammarCard, index: number) => `grammar-${card.day}-${card.lesson}-${index}`;
+
+  const defaultOpenKey = useMemo(() => {
+    if (!cards.length) return null;
+    let targetIndex = cards.findIndex((card) => card.day === currentDayId);
+    if (targetIndex === -1) {
+      for (let i = cards.length - 1; i >= 0; i -= 1) {
+        if (cards[i].day <= currentDayId) {
+          targetIndex = i;
+          break;
+        }
+      }
+    }
+    if (targetIndex === -1) targetIndex = 0;
+    return getCardKey(cards[targetIndex], targetIndex);
+  }, [cards, currentDayId]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setOpenCardKey(defaultOpenKey);
+  }, [isOpen, defaultOpenKey]);
+
+  useEffect(() => {
+    if (!isOpen || !defaultOpenKey) return;
+    const target = cardRefs.current.get(defaultOpenKey);
+    if (!target) return;
+    const frameId = requestAnimationFrame(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [isOpen, defaultOpenKey, cards.length]);
+
   if (!isOpen) return null;
 
   return createPortal(
@@ -70,7 +106,7 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 py-6">
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 py-6">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <div className="relative">
@@ -87,37 +123,63 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
               <div className="space-y-4">
                 {cards.map((card, index) => {
                   const isActive = card.day <= currentDayId;
-                  
+                  const cardKey = getCardKey(card, index);
+                  const isOpen = cardKey === openCardKey;
+
                   return (
                     <div
-                      key={`grammar-${card.day}-${card.lesson}-${index}`}
-                      className={`rounded-3xl border overflow-hidden transition-all ${
+                      key={cardKey}
+                      ref={(el) => {
+                        if (el) cardRefs.current.set(cardKey, el);
+                        else cardRefs.current.delete(cardKey);
+                      }}
+                      className={`rounded-2xl border transition-all ${
                         isActive
-                          ? 'border-gray-200 bg-white shadow-sm hover:border-brand-primary/30'
-                          : 'border-gray-100 bg-gray-50 opacity-60'
+                          ? 'border-gray-200/60 bg-white hover:border-brand-primary/30'
+                          : 'border-gray-200/60 bg-gray-50 opacity-60'
                       }`}
                     >
-                      <div className={`px-5 py-4 border-b ${
-                        isActive
-                          ? 'border-gray-100 bg-gradient-to-r from-brand-primary/5 to-transparent'
-                          : 'border-gray-100 bg-gray-100'
-                      }`}>
-                        <h3 className={`text-lg font-extrabold ${
-                          isActive ? 'text-slate-900' : 'text-gray-500'
-                        }`}>
-                          {card.theme}
-                        </h3>
-                        <p className="text-xs font-semibold text-gray-500 mt-1">
-                          Урок {card.lesson} · День {card.day}
-                        </p>
-                      </div>
-                      <div className="px-5 py-4">
-                        <div className={`text-sm font-medium leading-relaxed whitespace-pre-wrap ${
-                          isActive ? 'text-gray-700' : 'text-gray-400'
-                        }`}>
-                          {parseMarkdown(card.grammar)}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpenCardKey((prev) => (prev === cardKey ? null : cardKey));
+                        }}
+                        aria-expanded={isOpen}
+                        aria-controls={`grammar-card-body-${cardKey}`}
+                        className="w-full text-left px-4 py-3 transition"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
+                              Lesson {card.lesson} · Day {card.day}
+                            </div>
+                            <div className={`mt-1 text-sm font-extrabold ${
+                              isActive ? 'text-gray-900' : 'text-gray-500'
+                            }`}>
+                              {card.theme}
+                            </div>
+                          </div>
+                          <span
+                            className={`mt-0.5 inline-flex items-center justify-center w-7 h-7 rounded-full border transition-all ${
+                              isActive ? 'border-gray-200 bg-white/80 text-gray-500' : 'border-gray-200 bg-white/60 text-gray-400'
+                            } ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+                            aria-hidden="true"
+                          >
+                            <ChevronDown className="w-4 h-4" />
+                          </span>
                         </div>
-                      </div>
+                      </button>
+                      {isOpen ? (
+                        <div id={`grammar-card-body-${cardKey}`} className="px-4 pb-4">
+                          <div className="border-t border-gray-100 pt-3">
+                            <div className={`text-sm font-medium leading-relaxed whitespace-pre-wrap ${
+                              isActive ? 'text-gray-700' : 'text-gray-400'
+                            }`}>
+                              {parseMarkdown(card.grammar)}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

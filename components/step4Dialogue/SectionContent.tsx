@@ -16,11 +16,11 @@ export function SectionContent({ content, extractStructuredSections, renderMarkd
       <div className="space-y-3">
         {structured.map((section, i) => {
           const isTask = /задани/i.test(section.title);
-          const borderClass = isTask ? 'border-brand-primary/60' : 'border-gray-200/60';
+          const borderClass = isTask ? 'border-brand-primary/60' : 'border-brand-primary/40';
           return (
             <div
               key={`${section.title}-${i}`}
-              className={`rounded-2xl border ${borderClass} bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto`}
+              className={`rounded-2xl border ${borderClass} bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] p-4 space-y-4 w-full max-w-2xl mx-auto`}
             >
               <CardHeading>{section.title}</CardHeading>
               <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">

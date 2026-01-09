@@ -37,7 +37,16 @@ const lessonIdCache = new Map<string, string>();
 const getLessonScriptCacheKey = (day: number, lesson: number, level: string) => `${level}:${day}:${lesson}`;
 const getLessonIdCacheKey = (day: number, lesson: number, level: string) => `${level}:${day}:${lesson}`;
 
-const readLessonScriptFromSession = (cacheKey: string): string | null => {
+const readLessonScriptFromLocal = (cacheKey: string): string | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}`);
+  } catch {
+    return null;
+  }
+};
+
+const readLessonScriptFromSessionStorage = (cacheKey: string): string | null => {
   try {
     if (typeof window === 'undefined') return null;
     return window.sessionStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}`);
@@ -46,11 +55,34 @@ const readLessonScriptFromSession = (cacheKey: string): string | null => {
   }
 };
 
+const readLessonScriptVersionFromLocal = (cacheKey: string): string | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}:version`);
+  } catch {
+    return null;
+  }
+};
+
+const readLessonScriptFromSession = (cacheKey: string): string | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    // Check localStorage first (persistent), then sessionStorage (legacy/fallback)
+    const local = readLessonScriptFromLocal(cacheKey);
+    if (local) return local;
+    return readLessonScriptFromSessionStorage(cacheKey);
+  } catch {
+    return null;
+  }
+};
+
 const writeLessonScriptToSession = (cacheKey: string, script: string) => {
   try {
     if (typeof window === 'undefined') return;
-    // sessionStorage keeps cache until tab is closed; avoids growing persistent storage.
-    window.sessionStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}`, script);
+    // Save to localStorage for persistence across sessions
+    window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}`, script);
+    // Also keep sessionStorage for backward compat if needed, but localStorage covers it.
+    // We can clear sessionStorage to save memory if we want, but let's leave it alone or just use local.
   } catch {
     // ignore
   }
@@ -66,6 +98,32 @@ export const peekCachedLessonScript = (day: number, lesson: number, level: strin
     return sessionCached;
   }
   return null;
+};
+
+const isLocalLessonScriptFresh = async (
+  params: { day: number; lesson: number; level: string; localVersion: string | null }
+): Promise<boolean | null> => {
+  try {
+    if (!params.localVersion) return false;
+    const base = supabase
+      .from('lesson_scripts')
+      .select('updated_at')
+      .eq('day', params.day)
+      .eq('lesson', params.lesson)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+
+    const primary = await base.eq('level', params.level).maybeSingle();
+    const { data, error } =
+      !primary.error && primary.data ? primary : await base.maybeSingle();
+
+    if (error) return null;
+    const serverUpdatedAt = (data as any)?.updated_at;
+    if (!serverUpdatedAt) return null;
+    return new Date(serverUpdatedAt) <= new Date(params.localVersion);
+  } catch {
+    return null;
+  }
 };
 
 /**
@@ -889,7 +947,17 @@ export const loadLessonScript = async (
     const cached = lessonScriptCache.get(cacheKey);
     if (cached) return cached;
 
-    const sessionCached = readLessonScriptFromSession(cacheKey);
+    const localCached = readLessonScriptFromLocal(cacheKey);
+    if (localCached) {
+      const localVersion = readLessonScriptVersionFromLocal(cacheKey);
+      const isFresh = await isLocalLessonScriptFresh({ day, lesson, level, localVersion });
+      if (isFresh === true || isFresh === null) {
+        lessonScriptCache.set(cacheKey, localCached);
+        return localCached;
+      }
+    }
+
+    const sessionCached = readLessonScriptFromSessionStorage(cacheKey);
     if (sessionCached) {
       lessonScriptCache.set(cacheKey, sessionCached);
       return sessionCached;
@@ -959,11 +1027,86 @@ export const prefetchLessonScript = async (
  * This is intentionally best-effort and should never block navigation.
  */
 export const prefetchLessonInitData = async (day: number, lesson: number, level: string = 'A1'): Promise<void> => {
+  // Legacy prefetch - no-op now as we use syncAllLessonScripts
+  // But we keep the function signature to avoid breaking imports
+  return;
+};
+
+/**
+ * Sync all lesson scripts for the level to ensure instant opening.
+ * Checks updated_at to only download changed scripts.
+ */
+export const syncAllLessonScripts = async (level: string = 'A1'): Promise<void> => {
   try {
-    // Только загружаем скрипт, сообщения не загружаются
-    await loadLessonInitData(day, lesson, level, { includeScript: true, includeMessages: false });
-  } catch {
-    // ignore prefetch errors
+    if (typeof window === 'undefined') return;
+    
+    // 1. Get server metadata (lightweight)
+    const { data: serverRows, error } = await supabase
+      .from('lesson_scripts')
+      .select('day, lesson, updated_at, lesson_id')
+      .eq('level', level);
+
+    if (error || !serverRows) return;
+
+    // 2. Check what we need to update
+    const toFetchIds: string[] = [];
+    
+    for (const row of serverRows) {
+        const cacheKey = getLessonScriptCacheKey(row.day, row.lesson, level);
+        const storedVersion = window.localStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}:version`);
+        const storedScript = window.localStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}`);
+
+        // Update if:
+        // 1. Script is missing locally
+        // 2. Version is missing locally
+        // 3. Server version is newer than local version
+        if (!storedScript || !storedVersion || new Date(row.updated_at) > new Date(storedVersion)) {
+            toFetchIds.push(row.lesson_id);
+        }
+    }
+
+    if (toFetchIds.length === 0) {
+      console.log('[Sync] All lesson scripts are up to date.');
+      return;
+    }
+
+    console.log(`[Sync] Updating ${toFetchIds.length} lesson scripts...`);
+
+    // 3. Fetch bodies in batches
+    // (A1 level has ~60 lessons, fetching 60 rows is fine for Supabase, 
+    // but let's chunk it just in case of URL limits if it grows)
+    const chunkSize = 20;
+    for (let i = 0; i < toFetchIds.length; i += chunkSize) {
+      const chunkIds = toFetchIds.slice(i, i + chunkSize);
+      
+      const { data: newScripts, error: fetchError } = await supabase
+          .from('lesson_scripts')
+          .select('day, lesson, script, updated_at')
+          .in('lesson_id', chunkIds);
+
+      if (fetchError || !newScripts) continue;
+
+      // 4. Save to LocalStorage (Persistent)
+      for (const row of newScripts) {
+          const cacheKey = getLessonScriptCacheKey(row.day, row.lesson, level);
+          let scriptStr = typeof row.script === 'string' 
+            ? row.script 
+            : JSON.stringify(row.script);
+            
+          // Clean BOM
+          scriptStr = scriptStr.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, '');
+          
+          window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}`, scriptStr);
+          window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}:version`, row.updated_at);
+          
+          // Also update memory cache for immediate access
+          lessonScriptCache.set(cacheKey, scriptStr);
+      }
+    }
+    console.log(`[Sync] Successfully updated ${toFetchIds.length} scripts.`);
+
+  } catch (err) {
+    console.error('[Sync] Error syncing scripts:', err);
   }
 };
 
@@ -973,6 +1116,8 @@ export const clearLessonScriptCacheFor = (day: number, lesson: number, level: st
   try {
     if (typeof window === 'undefined') return;
     window.sessionStorage.removeItem(`${lessonScriptStoragePrefix}${cacheKey}`);
+    window.localStorage.removeItem(`${lessonScriptStoragePrefix}${cacheKey}`);
+    window.localStorage.removeItem(`${lessonScriptStoragePrefix}${cacheKey}:version`);
   } catch {
     // ignore
   }
@@ -991,6 +1136,13 @@ export const clearLessonScriptCache = () => {
       if (key && key.startsWith(lessonScriptStoragePrefix)) keysToRemove.push(key);
     }
     keysToRemove.forEach((k) => window.sessionStorage.removeItem(k));
+
+    const localKeysToRemove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (key && key.startsWith(lessonScriptStoragePrefix)) localKeysToRemove.push(key);
+    }
+    localKeysToRemove.forEach((k) => window.localStorage.removeItem(k));
   } catch {
     // ignore
   }
@@ -1298,4 +1450,3 @@ export const resetUserProgress = async (): Promise<void> => {
     console.error('[resetUserProgress] Error:', error);
   }
 };
-

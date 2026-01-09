@@ -257,6 +257,8 @@ export function useLessonFlow({
         let feedback = '';
         let reactionText: string | undefined = undefined;
         let wasLocalValidation = false; // Флаг для отслеживания локальной проверки ситуаций
+        let aiValidated = false;
+        let validationError = false;
 
         if (stepForInput.type === 'find_the_mistake' && opts?.choice) {
           const task = (script as any)?.find_the_mistake?.tasks?.[Number((stepForInput as any)?.index) || 0];
@@ -418,6 +420,7 @@ export function useLessonFlow({
                 isCorrect = validation.isCorrect;
                 feedback = validation.feedback || '';
                 reactionText = validation.reactionText;
+                aiValidated = true;
                 console.log('[Step4Dialogue] Результат проверки через ИИ:', {
                   stepType: stepForInput.type,
                   isCorrect,
@@ -434,6 +437,7 @@ export function useLessonFlow({
                   ? 'Похоже, связь нестабильна и я не смог проверить ответ. Попробуй отправить ещё раз.'
                   : "Connection seems unstable and I couldn't validate your answer. Please try sending again.";
                 reactionText = undefined;
+                validationError = true;
               }
             }
           }
@@ -463,7 +467,15 @@ export function useLessonFlow({
         }
 
         const advanceSpan = startSpan('advanceLesson', { stepType: stepForInput.type, branch: 'main' });
-        const out = advanceLesson({ script, currentStep: stepForInput, isCorrect, feedback, reactionText });
+        const out = advanceLesson({
+          script,
+          currentStep: stepForInput,
+          isCorrect,
+          feedback,
+          reactionText,
+          aiValidated,
+          validationError,
+        });
         advanceSpan?.('ok', { messages: out.messages.length });
         const messagesWithSnapshot = out.messages.map((m) => ({
           ...m,

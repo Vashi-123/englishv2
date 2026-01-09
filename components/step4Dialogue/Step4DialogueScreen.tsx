@@ -146,6 +146,7 @@ export function Step4DialogueScreen({
   const [isAwaitingModelReply, setIsAwaitingModelReply] = useState(false);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
   const [showIncompleteLessonModal, setShowIncompleteLessonModal] = useState(false);
+  const [pendingWordsSeparator, setPendingWordsSeparator] = useState(false);
 
   const [lessonScript, setLessonScript] = useState<any | null>(() => {
     if (!day || !lesson) return null;
@@ -1703,10 +1704,11 @@ export function Step4DialogueScreen({
 
 
   const lastGrammarScrollTokenRef = useRef<string | null>(null);
-  const grammarHeadingScrollToken = useMemo(() => {
+  const grammarCtaTimerRef = useRef<number | null>(null);
+  const lastGrammarCtaTokenRef = useRef<string | null>(null);
+  const [grammarCtaReady, setGrammarCtaReady] = useState(false);
+  const grammarHeadingTokenForCta = useMemo(() => {
     if (isInitializing) return null;
-    if (currentStep?.type !== 'grammar') return null;
-
     const isGrammarTitle = (value: unknown) => /граммат|grammar/i.test(String(value || ''));
 
     for (let i = visibleMessages.length - 1; i >= 0; i -= 1) {
@@ -1719,7 +1721,28 @@ export function Step4DialogueScreen({
     }
 
     return null;
-  }, [currentStep?.type, isInitializing, separatorTitlesBefore, tryParseJsonMessage, visibleMessages]);
+  }, [isInitializing, separatorTitlesBefore, tryParseJsonMessage, visibleMessages]);
+
+  const grammarHeadingScrollToken = useMemo(() => {
+    if (currentStep?.type !== 'grammar') return null;
+    return grammarHeadingTokenForCta;
+  }, [currentStep?.type, grammarHeadingTokenForCta]);
+
+  const grammarCardToken = useMemo(() => {
+    if (currentStep?.type !== 'grammar') return null;
+    for (let i = visibleMessages.length - 1; i >= 0; i -= 1) {
+      const msg = visibleMessages[i];
+      const parsed = tryParseJsonMessage(msg?.text);
+      if (parsed?.type === 'grammar') return getMessageStableId(msg, i);
+    }
+    return null;
+  }, [currentStep?.type, getMessageStableId, tryParseJsonMessage, visibleMessages]);
+
+  const grammarCtaToken = useMemo(() => {
+    if (grammarGate.gated) return grammarHeadingTokenForCta;
+    if (currentStep?.type !== 'grammar') return null;
+    return grammarCardToken || grammarHeadingScrollToken;
+  }, [currentStep?.type, grammarCardToken, grammarGate.gated, grammarHeadingScrollToken, grammarHeadingTokenForCta]);
 
   const shouldScrollToGrammarHeading =
     Boolean(grammarHeadingScrollToken) && grammarHeadingScrollToken !== lastGrammarScrollTokenRef.current;
@@ -1762,6 +1785,44 @@ export function Step4DialogueScreen({
     });
   }, [grammarHeadingScrollToken, shouldScrollToGrammarHeading]);
 
+  const shouldDelayGrammarCta = Boolean(grammarGate.gated || currentStep?.type === 'grammar');
+
+  useLayoutEffect(() => {
+    if (!shouldDelayGrammarCta) {
+      if (grammarCtaTimerRef.current) {
+        window.clearTimeout(grammarCtaTimerRef.current);
+        grammarCtaTimerRef.current = null;
+      }
+      lastGrammarCtaTokenRef.current = null;
+      setGrammarCtaReady(true);
+      return;
+    }
+
+    if (!grammarCtaToken) {
+      setGrammarCtaReady(false);
+      return;
+    }
+    if (grammarCtaToken === lastGrammarCtaTokenRef.current) return;
+    lastGrammarCtaTokenRef.current = grammarCtaToken;
+
+    if (grammarCtaTimerRef.current) {
+      window.clearTimeout(grammarCtaTimerRef.current);
+    }
+    setGrammarCtaReady(false);
+    grammarCtaTimerRef.current = window.setTimeout(() => {
+      setGrammarCtaReady(true);
+      grammarCtaTimerRef.current = null;
+    }, 1000);
+  }, [grammarCtaToken, shouldDelayGrammarCta]);
+
+  useEffect(() => {
+    return () => {
+      if (grammarCtaTimerRef.current) {
+        window.clearTimeout(grammarCtaTimerRef.current);
+      }
+    };
+  }, []);
+
   useVocabScroll({ showVocab, vocabIndex, vocabRefs, isInitializing, vocabProgressStorageKey });
 
 	  const { restartLesson } = useLessonRestart({
@@ -1770,6 +1831,17 @@ export function Step4DialogueScreen({
 	    level,
 	    setIsLoading,
 	    setIsInitializing,
+	    onBeforeRestart: () => {
+	      // Reset per-lesson caches/refs so restart behaves like a fresh session.
+	      reviewDeckTokenRef.current = null;
+	      lastSrsUpsertSignatureRef.current = null;
+	      ankiReviewLoadedOnceRef.current = null;
+	      reviewedSrsCardIdsRef.current = new Set();
+	      setAnkiReviewItems([]);
+	      setLessonScript(null);
+	    },
+		    // Lesson restart should not clear repetition decks; that's handled by "Start level over".
+		    extraLocalStorageKeys: [],
 	    goalSeenRef,
 	    hasRecordedLessonCompleteRef,
 	    setLessonCompletedPersisted,
@@ -2145,6 +2217,7 @@ export function Step4DialogueScreen({
 	    } catch {
 	      // ignore
 	    }
+	    setPendingWordsSeparator(true);
 	    // Сначала обновляем состояние goalGate, чтобы useMessageDrivenUi правильно обработал words_list
 	    // Важно: сначала устанавливаем goalGateAcknowledged в true, потом goalGatePending в false
 	    // Это гарантирует, что при обработке words_list goalGateAcknowledged уже будет true
@@ -2236,6 +2309,23 @@ export function Step4DialogueScreen({
 	    vocabWords.length,
 	  ]);
 
+  useEffect(() => {
+    if (!pendingWordsSeparator) return;
+    for (let i = 0; i < messages.length; i++) {
+      const msg = messages[i];
+      if (msg.role !== 'model') continue;
+      const parsed = tryParseJsonMessage(msg.text);
+      if (parsed?.type === 'words_list') {
+        setPendingWordsSeparator(false);
+        return;
+      }
+      if (parsed?.type === 'section' && typeof parsed.title === 'string' && /слова|words/i.test(parsed.title)) {
+        setPendingWordsSeparator(false);
+        return;
+      }
+    }
+  }, [messages, pendingWordsSeparator, tryParseJsonMessage]);
+
   const activeCta = useMemo(() => {
     // 1. Goal Gate
     if (showGoalGateCta) {
@@ -2247,7 +2337,7 @@ export function Step4DialogueScreen({
     }
 
     // 2. Grammar Gate
-    if (grammarGate.gated && grammarGate.sectionId) {
+    if (grammarGate.gated && grammarGate.sectionId && grammarCtaReady && grammarHeadingTokenForCta) {
       return {
         label: 'Проверить',
         onClick: () => {
@@ -2301,7 +2391,7 @@ export function Step4DialogueScreen({
 
     // 4.5. Grammar Drills
     // Check if there's a grammar drills card that needs "Проверить" or "Продолжить" button
-    if (currentStep?.type === 'grammar') {
+    if (currentStep?.type === 'grammar' && grammarCtaReady) {
       for (let i = messages.length - 1; i >= 0; i--) {
         const msg = messages[i];
         if (msg.role !== 'model') continue;
@@ -2351,6 +2441,13 @@ export function Step4DialogueScreen({
             label: 'Продолжить',
             onClick: async () => {
               setIsLoading(true);
+              setGrammarDrillsUI((prev) => ({
+                ...prev,
+                [stableId]: {
+                  ...(prev?.[stableId] || ui),
+                  completed: true,
+                },
+              }));
               try {
                 const stepForAnswer = msg.currentStepSnapshot ?? currentStep;
                 await handleStudentAnswer('__grammar_drills_complete__', {
@@ -2652,6 +2749,8 @@ export function Step4DialogueScreen({
     acknowledgeGoalGate,
     isLoading,
     grammarGate,
+    grammarCtaReady,
+    grammarHeadingTokenForCta,
     persistGrammarGateOpened,
     showVocab,
     vocabWords,
@@ -2936,6 +3035,7 @@ export function Step4DialogueScreen({
             language={resolvedLanguage}
             extractStructuredSections={extractStructuredSections}
             renderMarkdown={renderMarkdown}
+            pendingWordsSeparator={pendingWordsSeparator}
             shouldRenderMatchingBlock={shouldRenderMatchingBlock}
             matchingInsertIndexSafe={matchingInsertIndexSafe}
             matchingRef={matchingRef}
@@ -3017,4 +3117,3 @@ export function Step4DialogueScreen({
     </>
   );
 }
-

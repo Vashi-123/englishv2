@@ -226,3 +226,17 @@ export async function applyFindMistakeReview(params: { cardId: number; quality: 
   const { error } = await supabase.rpc('apply_find_mistake_review', { p_card_id: cardId, p_quality: quality });
   if (error) throw error;
 }
+
+export async function resetUserExerciseReviewCards(params: { level: string; targetLang: string }): Promise<void> {
+  await requireAuthUserId();
+  const level = String(params.level || 'A1');
+  const targetLang = String(params.targetLang || 'ru');
+
+  const [ctor, find] = await Promise.all([
+    supabase.from('user_constructor_cards').delete().eq('level', level).eq('target_lang', targetLang),
+    supabase.from('user_find_mistake_cards').delete().eq('level', level).eq('target_lang', targetLang),
+  ]);
+
+  if (ctor.error) throw ctor.error;
+  if (find.error) throw find.error;
+}

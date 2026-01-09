@@ -11,6 +11,8 @@ export function useLessonRestart({
   level,
   setIsLoading,
   setIsInitializing,
+  onBeforeRestart,
+  extraLocalStorageKeys,
   goalSeenRef,
   hasRecordedLessonCompleteRef,
   setLessonCompletedPersisted,
@@ -105,6 +107,9 @@ export function useLessonRestart({
   setAnkiDone: Dispatch<SetStateAction<boolean>>;
 
   initializeChat: (force?: boolean, opts?: { ignoreCompleted?: boolean; forceNewChat?: boolean }) => Promise<void>;
+
+  onBeforeRestart?: () => void;
+  extraLocalStorageKeys?: Array<string | null | undefined>;
 }) {
   const resolvedLevel = level || 'A1';
   const legacyKeyFor = (key: string) => key.replace(`:${resolvedLevel}:`, ':');
@@ -114,6 +119,12 @@ export function useLessonRestart({
     try {
       setIsLoading(true);
       setIsInitializing(true);
+
+      try {
+        onBeforeRestart?.();
+      } catch {
+        // ignore
+      }
 
       goalSeenRef.current = false;
       hasRecordedLessonCompleteRef.current = false;
@@ -169,9 +180,11 @@ export function useLessonRestart({
           storageKeys.findMistakeStorageKey,
           storageKeys.constructorStorageKey,
           storageKeys.ankiDoneStorageKey,
+          ...(extraLocalStorageKeys || []),
         ];
         // Clear localStorage FIRST to prevent useEffect from restoring old state
         for (const k of keys) {
+          if (!k) continue;
           localStorage.removeItem(k);
           const legacy = legacyKeyFor(k);
           if (legacy !== k) localStorage.removeItem(legacy);
@@ -199,12 +212,12 @@ export function useLessonRestart({
       clearChatMessagesCache(day || 1, lesson || 1, resolvedLevel);
 
       // Delete from DB in background with timeout to avoid blocking UI spinner forever.
-      const resetPromise = (async () => {
+      const resetChatPromise = (async () => {
         const attempts = 3;
         for (let i = 0; i < attempts; i += 1) {
           try {
             await resetLessonDialogue(day || 1, lesson || 1, resolvedLevel);
-            break;
+            return;
           } catch (err) {
             if (i === attempts - 1) throw err;
             await new Promise((r) => setTimeout(r, 350 * (i + 1)));
@@ -213,7 +226,7 @@ export function useLessonRestart({
       })();
 
       // Don't block UI on reset: wait a short window, then re-init chat regardless.
-      await Promise.race([resetPromise, new Promise((resolve) => setTimeout(resolve, 3500))]);
+      await Promise.race([resetChatPromise, new Promise((resolve) => setTimeout(resolve, 3500))]);
 
       // Safety: sometimes initializeChat can hang (network/RPC). Race it with a timeout so spinner clears.
       const initResult = await Promise.race([
@@ -230,7 +243,7 @@ export function useLessonRestart({
       }
 
       // Ensure errors from reset are surfaced in logs even if they finished after the race.
-      resetPromise.catch((error) => console.error('[Step4Dialogue] reset lesson background error:', error));
+      resetChatPromise.catch((error) => console.error('[Step4Dialogue] reset chat background error:', error));
     } catch (error) {
       console.error('[Step4Dialogue] Error restarting lesson:', error);
       setIsLoading(false);
@@ -242,6 +255,7 @@ export function useLessonRestart({
     }
   }, [
     day,
+    extraLocalStorageKeys,
     level,
     constructor,
     findMistake,
@@ -251,6 +265,7 @@ export function useLessonRestart({
     initializeChat,
     lesson,
     matching,
+    onBeforeRestart,
     resetTtsState,
     setCurrentStep,
     setGrammarGateOpen,
@@ -262,6 +277,8 @@ export function useLessonRestart({
     setIsLoading,
     setLessonCompletedPersisted,
     setMessages,
+    storageKeys.ankiDoneStorageKey,
+    storageKeys.goalAckStorageKey,
     storageKeys.grammarGateStorageKey,
     storageKeys.constructorStorageKey,
     storageKeys.findMistakeStorageKey,

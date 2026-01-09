@@ -29,7 +29,7 @@ export const MatchingGame: React.FC<Props> = ({
 
   return (
     <div
-      className="bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto mt-4"
+      className="bg-white rounded-2xl border border-brand-primary/40 shadow-[0_24px_80px_rgba(99,102,241,0.28)] p-4 space-y-4 w-full max-w-2xl mx-auto mt-4"
     >
       <div className="flex items-center justify-between">
         <CardHeading

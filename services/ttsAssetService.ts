@@ -19,6 +19,55 @@ let loggedIdbUnavailable = false;
 const urlCache = new Map<string, string | null>();
 const sessionKey = (hash: string) => `tts:assetUrl:${hash}`;
 
+function clearCachedTtsUrl(hash: string) {
+  try {
+    urlCache.delete(hash);
+  } catch {
+    // ignore
+  }
+  try {
+    if (typeof window !== 'undefined') {
+      sessionStorage.removeItem(sessionKey(hash));
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function base64UrlToBase64(input: string): string {
+  const pad = '='.repeat((4 - (input.length % 4)) % 4);
+  return input.replace(/-/g, '+').replace(/_/g, '/') + pad;
+}
+
+function tryDecodeJwtPayload(token: string): any | null {
+  try {
+    const parts = String(token || '').split('.');
+    if (parts.length < 2) return null;
+    const payloadB64 = base64UrlToBase64(parts[1]);
+    const atobFn = (globalThis as any)?.atob as ((s: string) => string) | undefined;
+    if (!atobFn) return null;
+    const json = atobFn(payloadB64);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function isLikelyExpiredSignedUrl(url: string, leewaySeconds: number = 30): boolean {
+  try {
+    const u = new URL(url, typeof window !== 'undefined' ? window.location.href : 'https://localhost');
+    const token = u.searchParams.get('token');
+    if (!token) return false;
+    const payload = tryDecodeJwtPayload(token);
+    const exp = payload?.exp;
+    if (typeof exp !== 'number' || !Number.isFinite(exp)) return false;
+    const now = Math.floor(Date.now() / 1000);
+    return now >= exp - leewaySeconds;
+  } catch {
+    return false;
+  }
+}
+
 function normalizeText(input: string): string {
   return String(input || '').replace(/\s+/g, ' ').trim();
 }
@@ -257,7 +306,10 @@ function extractTtsPhrases(script: any): string[] {
   return out;
 }
 
-async function getTtsAudioUrl(params: { text: string; lang?: string; voice?: string }): Promise<string | null> {
+async function getTtsAudioUrl(
+  params: { text: string; lang?: string; voice?: string },
+  opts?: { bypassCache?: boolean }
+): Promise<string | null> {
   const lang = params.lang || DEFAULT_LANG;
   const voice = params.voice || DEFAULT_VOICE;
   const text = normalizeText(params.text);
@@ -265,46 +317,66 @@ async function getTtsAudioUrl(params: { text: string; lang?: string; voice?: str
 
   // Hash must match server enqueue/worker: sha256(`${lang}|${voice}|${text}`)
   const hash = await sha256Hex(`${lang}|${voice}|${text}`);
-  if (urlCache.has(hash)) {
+  if (!opts?.bypassCache && urlCache.has(hash)) {
     const cached = urlCache.get(hash) ?? null;
-    if (cached) return cached;
-    // Important: don't permanently poison the cache with "missing" while unauthenticated.
-    // RLS can make the row appear missing (empty result) before the session is established.
-    if (!(await hasAuthSession())) return null;
-    urlCache.delete(hash);
+    if (cached) {
+      if (!isLikelyExpiredSignedUrl(cached)) return cached;
+      clearCachedTtsUrl(hash);
+    } else {
+      // Important: don't permanently poison the cache with "missing" while unauthenticated.
+      // RLS can make the row appear missing (empty result) before the session is established.
+      if (!(await hasAuthSession())) return null;
+      urlCache.delete(hash);
+    }
   }
 
   // Cross-reload cache (best-effort).
-  try {
-    const stored = sessionStorage.getItem(sessionKey(hash));
-    if (stored != null) {
-      if (stored === '__missing__') {
-        // Same story as above: ignore "missing" markers once we have an auth session.
-        if (!(await hasAuthSession())) return null;
-        sessionStorage.removeItem(sessionKey(hash));
-      } else {
-        // Back-compat: older builds stored JSON like {"url":"...","expiresAt":...}
-        let value: string | null = stored;
-        const trimmed = stored.trim();
-        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
-          try {
-            const parsed = JSON.parse(trimmed);
-            const parsedUrl = typeof parsed?.url === 'string' ? parsed.url : '';
-            value = parsedUrl || null;
-            if (value) sessionStorage.setItem(sessionKey(hash), value);
-          } catch {
-            value = null;
+  if (!opts?.bypassCache) {
+    try {
+      const stored = sessionStorage.getItem(sessionKey(hash));
+      if (stored != null) {
+        if (stored === '__missing__') {
+          // Same story as above: ignore "missing" markers once we have an auth session.
+          if (!(await hasAuthSession())) return null;
+          sessionStorage.removeItem(sessionKey(hash));
+        } else {
+          // Back-compat: older builds stored JSON like {"url":"...","expiresAt":...}
+          let value: string | null = stored;
+          let expiresAt: number | null = null;
+          const trimmed = stored.trim();
+          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            try {
+              const parsed = JSON.parse(trimmed);
+              const parsedUrl = typeof parsed?.url === 'string' ? parsed.url : '';
+              value = parsedUrl || null;
+              const rawExpiresAt = parsed?.expiresAt;
+              if (typeof rawExpiresAt === 'number' && Number.isFinite(rawExpiresAt)) {
+                expiresAt = rawExpiresAt > 1e12 ? Math.floor(rawExpiresAt / 1000) : Math.floor(rawExpiresAt);
+              }
+              if (value) sessionStorage.setItem(sessionKey(hash), value);
+            } catch {
+              value = null;
+            }
+          }
+
+          const nowS = Math.floor(Date.now() / 1000);
+          const expiredByRecord = expiresAt != null ? nowS >= expiresAt - 30 : false;
+          const expiredByToken = value ? isLikelyExpiredSignedUrl(value) : false;
+
+          if (value && !expiredByRecord && !expiredByToken) {
+            urlCache.set(hash, value);
+            return value;
+          }
+
+          if (expiredByRecord || expiredByToken) {
+            clearCachedTtsUrl(hash);
           }
         }
-        if (value) {
-          urlCache.set(hash, value);
-          return value;
-        }
+        // Same story as above: ignore "missing" markers once we have an auth session.
       }
-      // Same story as above: ignore "missing" markers once we have an auth session.
+    } catch {
+      // ignore (private mode / disabled storage)
     }
-  } catch {
-    // ignore (private mode / disabled storage)
   }
 
   const { data, error } = await supabase
@@ -459,12 +531,20 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
     }
   }
 
-  const remoteUrl = await getTtsAudioUrl({ text, lang, voice });
+  let remoteUrl = await getTtsAudioUrl({ text, lang, voice });
   if (!remoteUrl) return null;
 
   // Download and cache mp3 bytes for stable reuse.
   try {
-    const res = await fetch(remoteUrl);
+    let res = await fetch(remoteUrl);
+    if (!res.ok && (res.status === 400 || res.status === 401 || res.status === 403) && isLikelyExpiredSignedUrl(remoteUrl)) {
+      clearCachedTtsUrl(hash);
+      const fresh = await getTtsAudioUrl({ text, lang, voice }, { bypassCache: true });
+      if (fresh && fresh !== remoteUrl) {
+        remoteUrl = fresh;
+        res = await fetch(remoteUrl);
+      }
+    }
     if (!res.ok) {
       if (!loggedFetchFailHashes.has(hash)) {
         loggedFetchFailHashes.add(hash);
@@ -681,7 +761,16 @@ export async function prefetchTtsForLessonScript(params: {
         }
 
         try {
-          const res = await fetch(remoteUrl);
+          let urlToFetch = remoteUrl;
+          let res = await fetch(urlToFetch);
+          if (!res.ok && (res.status === 400 || res.status === 401 || res.status === 403) && isLikelyExpiredSignedUrl(urlToFetch)) {
+            clearCachedTtsUrl(hash);
+            const fresh = await getTtsAudioUrl({ text, lang, voice }, { bypassCache: true });
+            if (fresh && fresh !== urlToFetch) {
+              urlToFetch = fresh;
+              res = await fetch(urlToFetch);
+            }
+          }
           if (!res.ok) {
             recordFailure(hash, 'http', { status: res.status, statusText: res.statusText });
             continue;

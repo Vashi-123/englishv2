@@ -201,6 +201,21 @@ export async function getAllUserWords(params: {
   return out;
 }
 
+export async function resetUserSrsCards(params: { level: string; targetLang: string }): Promise<void> {
+  await requireAuthUserId();
+  const level = String(params.level || 'A1');
+  const targetLang = String(params.targetLang || 'ru');
+
+  const { error } = await supabase
+    .from('user_srs_cards')
+    .delete()
+    .eq('level', level)
+    .eq('source_lang', 'en')
+    .eq('target_lang', targetLang);
+
+  if (error) throw error;
+}
+
 type GrammarCardRow = { id: number; day: number; lesson: number; theme: string; grammar: string };
 
 export async function upsertGrammarCard(params: {

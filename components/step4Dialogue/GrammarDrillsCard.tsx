@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, BookOpenText } from 'lucide-react';
 import { CardHeading } from './CardHeading';
 import { getExpectedAsString, validateGrammarDrill, type GrammarDrill } from '../../utils/grammarValidator';
 
@@ -18,7 +18,6 @@ export type GrammarDrillsUiState = {
 type Props = {
   explanation: string;
   drills: GrammarDrill[];
-  successText?: string;
   unlocked: boolean;
   extractStructuredSections?: (text: string) => Array<{ title: string; body: string }>;
   renderMarkdown: (text: string) => React.ReactNode;
@@ -64,7 +63,6 @@ const normalizeAnswer = (value: string | string[] | string[][]): string[] => {
 export function GrammarDrillsCard({
   explanation,
   drills,
-  successText,
   unlocked,
   extractStructuredSections,
   renderMarkdown,
@@ -498,9 +496,14 @@ export function GrammarDrillsCard({
 
   return (
     <div className="space-y-4">
-      <div className="p-5 rounded-2xl border border-brand-primary/60 bg-white shadow-lg shadow-slate-900/10 space-y-4 w-full max-w-2xl mx-auto">
+      <div className="p-5 rounded-2xl border border-brand-primary/40 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] space-y-4 w-full max-w-2xl mx-auto">
         <div className="flex items-start justify-between gap-4">
-          <CardHeading>📚 Грамматика</CardHeading>
+          <CardHeading>
+            <span className="inline-flex items-center gap-2">
+              <BookOpenText className="h-4 w-4 text-brand-primary" />
+              Грамматика
+            </span>
+          </CardHeading>
           <span
             className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
               completed
@@ -518,7 +521,7 @@ export function GrammarDrillsCard({
             return (
               <div className="space-y-3">
                 {sections.map((s, idx) => (
-                  <div key={`${s.title}-${idx}`} className="rounded-2xl border border-gray-200/60 bg-slate-50 px-4 py-3 space-y-2">
+                  <div key={`${s.title}-${idx}`} className="rounded-2xl border border-brand-primary/40 bg-slate-50 px-4 py-3 space-y-2">
                     <div className="text-sm font-semibold text-gray-900">{s.title}</div>
                     <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{renderMarkdown(s.body)}</div>
                   </div>
@@ -623,8 +626,8 @@ export function GrammarDrillsCard({
                     </div>
                   </div>
 
-                  {/* Show input only if not all drills are completed or this is not the last drill */}
-                  {!(allCorrect && i === drills.length - 1 && checked.every(Boolean)) && (
+                  {/* Keep the last input visible so the correct state stays obvious before completing */}
+                  {!(completed && i === drills.length - 1 && checked.every(Boolean)) && (
                     <div className="mt-4">
                       <input
                       lang="en"
@@ -697,11 +700,6 @@ export function GrammarDrillsCard({
             })()}
 
 
-            {allCorrect && successText ? (
-              <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                {successText}
-              </div>
-            ) : null}
             </div>
           </>
         ) : null}

@@ -250,6 +250,7 @@ Deno.serve(async (req: Request) => {
             },
             body: JSON.stringify({
               model: MODEL,
+              service_tier: "on_demand",
               messages: requestMessages,
               max_tokens: typeof opts?.max_tokens === "number" ? opts.max_tokens : 200,
               temperature: typeof opts?.temperature === "number" ? opts.temperature : 0.0,

@@ -53,7 +53,7 @@ export function FindTheMistakeCard({
 
   return (
     <div className="space-y-4">
-      <div className="p-5 rounded-3xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 space-y-4 w-full max-w-2xl mx-auto relative">
+      <div className="p-5 rounded-3xl border border-brand-primary/40 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] space-y-4 w-full max-w-2xl mx-auto relative">
         <div className="flex items-start justify-between gap-4">
           <CardHeading>Найди ошибку</CardHeading>
           <span

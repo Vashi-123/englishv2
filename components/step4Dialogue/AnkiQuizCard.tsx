@@ -141,7 +141,7 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
   if (!current) {
     return (
       <div className="w-full max-w-2xl mx-auto">
-        <div className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-3">
+        <div className="rounded-2xl border border-brand-primary/40 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] p-4 space-y-3">
           <div className="flex items-start justify-between gap-4">
             <CardHeading>Повтори слова</CardHeading>
             <span
@@ -171,7 +171,7 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      <div className="rounded-2xl border border-gray-200/60 bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4">
+      <div className="rounded-2xl border border-brand-primary/40 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] p-4 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <CardHeading>Повтори слова</CardHeading>
           {quiz.length > 0 && <div className="text-xs font-bold text-gray-500">{progressLabel}</div>}

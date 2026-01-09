@@ -20,11 +20,12 @@ import {
 } from '../services/generationService';
 import { FREE_LESSON_COUNT, primeBillingProductCache } from '../services/billingService';
 import { formatFirstLessonsRu } from '../services/ruPlural';
-import { getAllUserWords, applySrsReview } from '../services/srsService';
+import { getAllUserWords, applySrsReview, resetUserSrsCards } from '../services/srsService';
+import { resetUserExerciseReviewCards } from '../services/exerciseReviewService';
 import { parseMarkdown } from './step4Dialogue/markdown';
 import { getCacheKeyWithCurrentUser } from '../services/cacheUtils';
 import { debounce } from '../utils/debounce';
-import { setItemObjectAsync, setItemAsync } from '../utils/asyncStorage';
+import { getItemAsync, getItemObjectAsync, setItemObjectAsync, setItemAsync } from '../utils/asyncStorage';
 import { 
   X, 
   AlertTriangle,
@@ -391,6 +392,35 @@ export const AppContent: React.FC<{
 
   const statusStorageKey = userEmail ? getCacheKeyWithCurrentUser(`englishv2:dayCompletedStatus:${level}`) : null;
   const selectedDayStorageKey = userEmail ? getCacheKeyWithCurrentUser(`englishv2:selectedDayId:${level}`) : null;
+
+  useEffect(() => {
+    if (!statusStorageKey && !selectedDayStorageKey) return;
+    let cancelled = false;
+    const hydrateFromStorage = async () => {
+      const [cachedStatus, cachedDayRaw] = await Promise.all([
+        statusStorageKey ? getItemObjectAsync<Record<number, boolean>>(statusStorageKey) : null,
+        selectedDayStorageKey ? getItemAsync(selectedDayStorageKey) : null,
+      ]);
+
+      if (cancelled) return;
+
+      if (cachedStatus && typeof cachedStatus === 'object' && !Array.isArray(cachedStatus)) {
+        setDayCompletedStatus(cachedStatus);
+      }
+
+      if (cachedDayRaw != null) {
+        const parsedDay = Number(cachedDayRaw);
+        if (Number.isFinite(parsedDay) && parsedDay > 0) {
+          setSelectedDayId(parsedDay);
+        }
+      }
+    };
+
+    void hydrateFromStorage();
+    return () => {
+      cancelled = true;
+    };
+  }, [statusStorageKey, selectedDayStorageKey, setDayCompletedStatus, setSelectedDayId]);
 
   // If payment returns the user to the app, check payment status and refresh entitlements
   useEffect(() => {
@@ -1020,6 +1050,15 @@ export const AppContent: React.FC<{
     setIsCheckingStatus(true);
     try {
       await resetUserProgress();
+      // Also clear DB-backed repetition (SRS + exercise review) for this level/lang.
+      // This matches the UX expectation of "Начать уровень сначала".
+      try {
+        const targetLang = language || 'ru';
+        await resetUserSrsCards({ level, targetLang });
+        await resetUserExerciseReviewCards({ level, targetLang });
+      } catch (err) {
+        console.error('[ResetProgress] Failed to reset review tables:', err);
+      }
 
       // "Start level over" must also reset client-side UI caches, otherwise Step4 cards can restore as "completed"
       // even though the DB was wiped.
@@ -1030,6 +1069,22 @@ export const AppContent: React.FC<{
             const k = window.localStorage.key(i);
             if (!k) continue;
             if (k.startsWith('step4dialogue:') || k.startsWith('dialogue_messages_v2:')) {
+              window.localStorage.removeItem(k);
+              i -= 1;
+            }
+          }
+
+          // Also clear local review deck caches (words/constructor/find-mistake) for this level/lang.
+          const lang = language || 'ru';
+          const suffix = `:${level}:${lang}`;
+          for (let i = 0; i < window.localStorage.length; i += 1) {
+            const k = window.localStorage.key(i);
+            if (!k) continue;
+            const isDeckKey =
+              k.startsWith('englishv2:ankiDeck:') ||
+              k.startsWith('englishv2:constructorDeck:') ||
+              k.startsWith('englishv2:findMistakeDeck:');
+            if (isDeckKey && k.endsWith(suffix)) {
               window.localStorage.removeItem(k);
               i -= 1;
             }

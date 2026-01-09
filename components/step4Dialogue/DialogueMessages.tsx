@@ -7,6 +7,7 @@ import { MessageRow } from './MessageRow';
 import { AchievementCard } from './AchievementCard';
 import { tryParseJsonMessage } from './messageParsing';
 import { AnkiQuizCard } from './AnkiQuizCard';
+import { ModuleSeparatorHeading } from './ModuleSeparatorHeading';
 import { Bot, Crown } from 'lucide-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -77,6 +78,7 @@ export function DialogueMessages({
   language,
   extractStructuredSections,
   renderMarkdown,
+  pendingWordsSeparator,
 
   shouldRenderMatchingBlock,
   matchingInsertIndexSafe,
@@ -171,6 +173,7 @@ export function DialogueMessages({
   ) => Promise<void>;
   extractStructuredSections: (...args: any[]) => any;
   renderMarkdown: (text: string) => React.ReactNode;
+  pendingWordsSeparator?: boolean;
 
   shouldRenderMatchingBlock: boolean;
   matchingInsertIndexSafe: number | null;
@@ -216,6 +219,26 @@ export function DialogueMessages({
     }
     return -1;
   })();
+
+  const shouldShowPendingWordsSeparator = useMemo(() => {
+    if (!pendingWordsSeparator) return false;
+
+    const hasWordsMessage = visibleMessages.some((msg) => {
+      if (msg.role !== 'model') return false;
+      const parsed = tryParseJsonMessage(msg.text);
+      if (!parsed) return false;
+      if (parsed?.type === 'words_list') return true;
+      return parsed?.type === 'section' && typeof parsed.title === 'string' && /слова|words/i.test(parsed.title);
+    });
+
+    if (hasWordsMessage) return false;
+
+    const hasQueuedWordsSeparator = Object.values(separatorTitlesBefore).some((titles) =>
+      titles.some((title) => /слова|words/i.test(title))
+    );
+
+    return !hasQueuedWordsSeparator;
+  }, [pendingWordsSeparator, separatorTitlesBefore, visibleMessages]);
   const lastModelWithStepSnapshotIndex = (() => {
     for (let i = visibleMessages.length - 1; i >= 0; i--) {
       const m = visibleMessages[i];
@@ -528,7 +551,7 @@ export function DialogueMessages({
           const isFullCard = isSituationCard || isVocabulary || isTaskCard || Boolean(isSeparatorOnly || showSeparator);
           // Не применяем px-6 к внешнему контейнеру, если это сообщение после завершенного matching,
           // чтобы не затронуть matching карточку. px-6 будет применен только к самому сообщению в MessageRow.
-          const shouldApplyOuterPadding = !isFullCard && !isAfterCompletedMatching;
+          const shouldApplyOuterPadding = (!isFullCard && !isAfterCompletedMatching) || isVocabulary;
 
           return (
             <div key={msgStableId} className={shouldApplyOuterPadding ? 'px-4' : ''}>
@@ -735,6 +758,12 @@ export function DialogueMessages({
               </div>
             </div>
           </>
+        )}
+
+        {shouldShowPendingWordsSeparator && (
+          <div className="px-4">
+            <ModuleSeparatorHeading title="Слова" />
+          </div>
         )}
 
         <div ref={messagesEndRef} />

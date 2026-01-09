@@ -21,6 +21,7 @@ type Props = {
   isLoading?: boolean;
   currentAudioItem?: AudioQueueItem | null;
   processAudioQueue?: (queue: Array<{ text: string; lang: string; kind: string }>, messageId?: string) => void;
+  replayAi?: { text: string; key: string } | null;
   items: Item[];
   renderMarkdown: (text: string) => React.ReactNode;
 };
@@ -38,6 +39,7 @@ export function SituationThreadCard({
   isLoading,
   currentAudioItem,
   processAudioQueue,
+  replayAi,
   items,
   renderMarkdown,
 }: Props) {
@@ -54,6 +56,38 @@ export function SituationThreadCard({
     }
     return -1;
   }, [items]);
+
+  const lastUserIndex = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (items[i].kind === 'user') return i;
+    }
+    return -1;
+  }, [items]);
+
+  const lastUserCorrect = lastUserIndex >= 0 ? items[lastUserIndex].kind === 'user' && items[lastUserIndex].correct : null;
+
+  const feedbackForAi = useMemo(() => {
+    const map = new Map<number, string>();
+    if (lastUserCorrect !== false || lastUserIndex === -1) return map;
+    for (let i = lastUserIndex + 1; i < items.length - 1; i++) {
+      const it = items[i];
+      const next = items[i + 1];
+      if (it.kind === 'ai' && next?.kind === 'feedback') {
+        map.set(i, next.text);
+      }
+    }
+    return map;
+  }, [items, lastUserCorrect, lastUserIndex]);
+
+  const skipFeedbackIndices = useMemo(() => {
+    const set = new Set<number>();
+    if (lastUserCorrect !== false || lastUserIndex === -1) return set;
+    for (const [aiIdx] of feedbackForAi.entries()) {
+      const fbIdx = aiIdx + 1;
+      if (items[fbIdx]?.kind === 'feedback') set.add(fbIdx);
+    }
+    return set;
+  }, [feedbackForAi, items, lastUserCorrect, lastUserIndex]);
 
   const lastAiSignature = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i--) {
@@ -116,6 +150,15 @@ export function SituationThreadCard({
     return () => window.clearTimeout(timer);
   }, [started]);
 
+  useEffect(() => {
+    if (!replayAi?.text || !processAudioQueue) return;
+    if (!started) return;
+    const timer = window.setTimeout(() => {
+      processAudioQueue([{ text: replayAi.text, lang: 'en', kind: 'situation_ai' }], `situation-ai-retry:${replayAi.key}`);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [processAudioQueue, replayAi?.key, replayAi?.text, started]);
+
   const showDialogue = Boolean(started && dialogueVisible);
 
   const renderTaskBanner = (text: string) => (
@@ -133,7 +176,7 @@ export function SituationThreadCard({
   return (
     <div className="w-full">
       <div
-        className="rounded-2xl border border-gray-200/60 bg-white p-4 space-y-5 transition-colors shadow-lg shadow-slate-900/10 w-full max-w-2xl mx-auto relative"
+        className="rounded-2xl border border-brand-primary/40 bg-white p-4 space-y-5 transition-colors shadow-[0_24px_80px_rgba(99,102,241,0.28)] w-full max-w-2xl mx-auto relative"
       >
         <div className="flex items-start justify-between gap-4">
           <CardHeading>Ситуация</CardHeading>
@@ -256,7 +299,9 @@ export function SituationThreadCard({
 	              if (item.kind === 'ai') {
                   const translationVisible = Boolean(shownTranslations[idx]);
                   const hasTranslation = Boolean(item.translation && item.translation.trim());
-                  const hasTask = Boolean(item.task && item.task.trim()) && !shouldHideAiTask;
+                  const feedbackOverride = feedbackForAi.get(idx) || '';
+                  const bannerText = feedbackOverride || (item.task || '');
+                  const hasTask = Boolean(bannerText && bannerText.trim()) && !shouldHideAiTask;
                   const isSpeaking =
                     currentAudioItem?.kind === 'situation_ai' && currentAudioItem?.text === String(item.text || '');
                 return (
@@ -316,7 +361,7 @@ export function SituationThreadCard({
                       </div>
                       {hasTask ? (
                         <div className="pt-2">
-                          {renderTaskBanner(item.task || '')}
+                          {renderTaskBanner(bannerText)}
                         </div>
                       ) : null}
                     </div>
@@ -338,6 +383,9 @@ export function SituationThreadCard({
 	                );
 	              }
 
+              if (skipFeedbackIndices.has(idx)) {
+                return null;
+              }
               return (
                 <div
                   key={`fb-${idx}`}

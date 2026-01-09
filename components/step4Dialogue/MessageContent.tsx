@@ -12,7 +12,7 @@ import { parseSituationMessage } from './situationParsing';
 import { CardHeading } from './CardHeading';
 import { ModuleSeparatorHeading } from './ModuleSeparatorHeading';
 
-// Wrapper component for VocabularyCard with delayed appearance
+// Wrapper component for VocabularyCard (no delay).
 const DelayedVocabularyCard: React.FC<{
   show: boolean;
   words: VocabWord[];
@@ -23,40 +23,17 @@ const DelayedVocabularyCard: React.FC<{
   onPlayExample: (wordItem: VocabWord, wordIndex: number) => void;
   onNextWord: () => void;
 }> = ({ show, words, vocabIndex, currentAudioItem, onRegisterWordEl, onPlayWord, onPlayExample, onNextWord }) => {
-  const [showCard, setShowCard] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowCard(true);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (showCard && cardRef.current) {
-      const timeoutId = setTimeout(() => {
-        cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
-      return () => clearTimeout(timeoutId);
-    }
-  }, [showCard]);
-
-  if (!showCard) return null;
-
   return (
-    <div ref={cardRef}>
-      <VocabularyCard
-        show={show}
-        words={words}
-        vocabIndex={vocabIndex}
-        currentAudioItem={currentAudioItem}
-        onRegisterWordEl={onRegisterWordEl}
-        onPlayWord={onPlayWord}
-        onPlayExample={onPlayExample}
-        onNextWord={onNextWord}
-      />
-    </div>
+    <VocabularyCard
+      show={show}
+      words={words}
+      vocabIndex={vocabIndex}
+      currentAudioItem={currentAudioItem}
+      onRegisterWordEl={onRegisterWordEl}
+      onPlayWord={onPlayWord}
+      onPlayExample={onPlayExample}
+      onNextWord={onNextWord}
+    />
   );
 };
 
@@ -254,6 +231,7 @@ function MessageContentComponent({
     const isFirstSituation = scenarioIndexForCard === 0 && 
       Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0) === 0;
     
+    const isCompletionPayload = Boolean((parsedSituation as any)?.is_completion_step);
     const isActiveScenario =
       (currentStep?.type === 'situations' &&
       typeof currentStep?.index === 'number' &&
@@ -262,7 +240,9 @@ function MessageContentComponent({
       Number(((currentStep as any)?.subIndex) ?? 0) ===
         Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0)) ||
       // Also auto-play first situation if it's the first one and we're in or past situations step
-      (isFirstSituation && (currentStep?.type === 'situations' || currentStep?.type === 'completion'));
+      (isFirstSituation && (currentStep?.type === 'situations' || currentStep?.type === 'completion')) ||
+      // Allow the final "lesson completed" situation step to auto-play after we switch to completion.
+      (isCompletionPayload && currentStep?.type === 'completion');
 
     const hasUserReplyInSituation = (() => {
       // For multi-step situations, we only consider a reply after the latest situation payload.
@@ -289,7 +269,12 @@ function MessageContentComponent({
       candidateScenarioKeys.some((k) => startedSituations[k]) || hasUserReplyInSituation || situationCompletedCorrect;
     scenarioStartedForCard = scenarioStarted;
     shouldAutoPlaySituationAi = Boolean(
-      scenarioStarted && isActiveScenario && aiText && !hasUserReplyInSituation && !situationCompletedCorrect && !isAwaitingModelReply
+      scenarioStarted &&
+        isActiveScenario &&
+        aiText &&
+        !hasUserReplyInSituation &&
+        (!situationCompletedCorrect || String((parsedSituation as any)?.result || '').toLowerCase() === 'correct') &&
+        !isAwaitingModelReply
     );
   }
 
@@ -708,11 +693,11 @@ function MessageContentComponent({
         <div className="space-y-3">
           {structuredSections.map((section, i) => {
             const isTask = /задани/i.test(section.title);
-            const borderClass = isTask ? 'border-brand-primary/60' : 'border-gray-200/60';
+            const borderClass = isTask ? 'border-brand-primary/60' : 'border-brand-primary/40';
             return (
               <div
                 key={`${section.title}-${i}`}
-                className={`rounded-2xl border ${borderClass} bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto animate-[fadeIn_0.3s_ease-out]`}
+                className={`rounded-2xl border ${borderClass} bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] p-4 space-y-4 w-full max-w-2xl mx-auto animate-[fadeIn_0.3s_ease-out]`}
               >
                 <CardHeading>{section.title}</CardHeading>
                 <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
@@ -995,29 +980,55 @@ function MessageContentComponent({
     for (const m of group) {
       if (m.role === 'model') {
         const raw = stripModuleTag(m.text || '').trim();
-        if (!raw.startsWith('{')) continue;
-        try {
-          const p = JSON.parse(raw);
-          if (p?.type !== 'situation') continue;
-          const prevUserCorrect = (p as any)?.prev_user_correct;
-          if (typeof prevUserCorrect === 'boolean') {
-            for (let j = items.length - 1; j >= 0; j--) {
-              if ((items[j] as any)?.kind === 'user') {
-                items[j] = { ...(items[j] as any), correct: prevUserCorrect } as any;
-                break;
+        let handled = false;
+        if (raw.startsWith('{')) {
+          try {
+            const p = JSON.parse(raw);
+            if (p?.type !== 'situation') continue;
+            handled = true;
+            const prevUserCorrect = (p as any)?.prev_user_correct;
+            if (typeof prevUserCorrect === 'boolean') {
+              for (let j = items.length - 1; j >= 0; j--) {
+                if ((items[j] as any)?.kind === 'user') {
+                  items[j] = { ...(items[j] as any), correct: prevUserCorrect } as any;
+                  break;
+                }
               }
             }
+            const aiText = String(p?.ai || '').trim();
+            const resultText = String(p?.result || '').toLowerCase();
+            const isFailure = prevUserCorrect === false || resultText === 'incorrect';
+            if (isFailure) {
+              // Drop the last user turn and any previous correction when the answer is incorrect.
+              for (let j = items.length - 1; j >= 0; j--) {
+                if (items[j].kind === 'user') {
+                  items.splice(j, 1);
+                  break;
+                }
+              }
+              if (items.length > 0 && items[items.length - 1].kind === 'feedback') {
+                items.pop();
+              }
+            }
+            if (aiText) {
+              const translation = String(p?.ai_translation || '').trim();
+              const task = String(p?.task || '').trim();
+              items.push({ kind: 'ai', text: aiText, translation: translation || undefined, task: task || undefined });
+            }
+            const feedback = String(p?.feedback || '').trim();
+            if (feedback) items.push({ kind: 'feedback', text: feedback });
+          } catch {
+            // fall through to plain parsing
           }
-          const aiText = String(p?.ai || '').trim();
+        }
+
+        if (!handled) {
+          const parsedPlain = parseSituationMessage(raw, stripModuleTag);
+          const aiText = String(parsedPlain?.ai || '').trim();
+          const task = String(parsedPlain?.task || '').trim();
           if (aiText) {
-            const translation = String(p?.ai_translation || '').trim();
-            const task = String(p?.task || '').trim();
-            items.push({ kind: 'ai', text: aiText, translation: translation || undefined, task: task || undefined });
+            items.push({ kind: 'ai', text: aiText, task: task || undefined });
           }
-          const feedback = String(p?.feedback || '').trim();
-          if (feedback) items.push({ kind: 'feedback', text: feedback });
-        } catch {
-          // ignore
         }
         continue;
       }
@@ -1079,11 +1090,11 @@ function MessageContentComponent({
       <div className="space-y-3">
         {structuredSections.map((section, i) => {
           const isTask = /задани/i.test(section.title);
-          const borderClass = isTask ? 'border-brand-primary/60' : 'border-gray-200/60';
+          const borderClass = isTask ? 'border-brand-primary/60' : 'border-brand-primary/40';
           return (
             <div
               key={`${section.title}-${i}`}
-              className={`rounded-2xl border ${borderClass} bg-white shadow-lg shadow-slate-900/10 p-4 space-y-4 w-full max-w-2xl mx-auto`}
+              className={`rounded-2xl border ${borderClass} bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] p-4 space-y-4 w-full max-w-2xl mx-auto`}
             >
               <CardHeading>{section.title}</CardHeading>
               <div className="text-gray-900 whitespace-pre-wrap leading-relaxed">
@@ -1215,6 +1226,18 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
   if (prevStartedKeys.length !== nextStartedKeys.length) return false;
   for (const key of prevStartedKeys) {
     if (prev.startedSituations[key] !== next.startedSituations[key]) return false;
+  }
+
+  // Situations: re-render when the grouped messages change (new AI/user/feedback entries).
+  const prevSituationCount = prev.situationGroupMessages?.length ?? 0;
+  const nextSituationCount = next.situationGroupMessages?.length ?? 0;
+  if (prevSituationCount !== nextSituationCount) return false;
+  if (prevSituationCount > 0 && nextSituationCount > 0) {
+    const prevLast = prev.situationGroupMessages?.[prevSituationCount - 1];
+    const nextLast = next.situationGroupMessages?.[nextSituationCount - 1];
+    if (prevLast?.id !== nextLast?.id) return false;
+    if (prevLast?.messageOrder !== nextLast?.messageOrder) return false;
+    if (prevLast?.text !== nextLast?.text) return false;
   }
   
   // Функции и refs не сравниваем (они стабильны через useCallback/useRef)

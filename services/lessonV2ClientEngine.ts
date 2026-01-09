@@ -237,6 +237,8 @@ const buildSituationPayload = (params: {
   continueLabel?: string;
   prevUserCorrect?: boolean;
   isCompletionStep?: boolean;
+  aiValidated?: boolean;
+  validationError?: boolean;
 }) => ({
   type: "situation",
   title: params.title,
@@ -249,14 +251,16 @@ const buildSituationPayload = (params: {
   awaitingContinue: params.awaitingContinue,
   continueLabel: params.continueLabel,
   prev_user_correct: params.prevUserCorrect,
+  ai_validated: params.aiValidated ? true : undefined,
+  validation_error: params.validationError ? true : undefined,
   is_completion_step: params.isCompletionStep ? true : undefined,
   text_exercise:
-    params.awaitingContinue
+    params.awaitingContinue || params.isCompletionStep
       ? undefined
       : typeof params.expected === "string" && params.expected.trim()
       ? { expected: params.expected, instruction: params.task }
       : undefined,
-  input_marker: params.awaitingContinue ? undefined : "<text_input>",
+  input_marker: params.awaitingContinue || params.isCompletionStep ? undefined : "<text_input>",
 });
 
 const makeSection = (title: string, content: string, step: DialogueStep): EngineMessage => ({
@@ -290,6 +294,8 @@ export const advanceLesson = (params: {
   feedback?: string;
   choice?: "A" | "B";
   reactionText?: string;
+  aiValidated?: boolean;
+  validationError?: boolean;
 }): { messages: EngineMessage[]; nextStep: DialogueStep | null } => {
   const script = params.script;
   const stepType = String(params.currentStep?.type || "");
@@ -751,6 +757,7 @@ export const advanceLesson = (params: {
           expected: nextExpected,
           prevUserCorrect: true,
           result: "correct",
+          isCompletionStep: true,
         });
         const messages: EngineMessage[] = [
           { role: "model", text: JSON.stringify(payload), currentStepSnapshot: nextStep },
@@ -804,6 +811,8 @@ export const advanceLesson = (params: {
                 feedback: fb,
                 expected,
                 result: "incorrect",
+                aiValidated: params.aiValidated,
+                validationError: params.validationError,
               })
             ),
             currentStepSnapshot: step,
@@ -838,6 +847,7 @@ export const advanceLesson = (params: {
           expected: nextExpected,
           prevUserCorrect: true,
           result: "correct",
+          isCompletionStep: true,
         });
         const messages: EngineMessage[] = [{ role: "model", text: JSON.stringify(payload), currentStepSnapshot: step }];
         if (situations?.successText) {
