@@ -137,6 +137,43 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+function isPlaceholderToken(token: string): boolean {
+  return /^\[[^\]]+\]$/.test(token.trim());
+}
+
+function stripPlaceholdersFromText(text: string): string {
+  return String(text || '')
+    .replace(/\[[^\]]+\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildNormalizedExpectedTokensWithPlaceholders(expectedWords: string[]): string[] {
+  const tokens: string[] = [];
+  for (const word of expectedWords) {
+    const cleaned = word.replace(/[.,!?;:]+$/g, '').trim();
+    if (!cleaned) continue;
+    if (isPlaceholderToken(cleaned)) {
+      tokens.push(cleaned.toLowerCase());
+      continue;
+    }
+    const normalized = normalizeText(cleaned);
+    if (!normalized) continue;
+    tokens.push(...normalized.split(/\s+/).filter(Boolean));
+  }
+  return tokens;
+}
+
+function matchesWithPlaceholders(expectedTokens: string[], answerTokens: string[]): boolean {
+  if (expectedTokens.length !== answerTokens.length) return false;
+  for (let i = 0; i < expectedTokens.length; i++) {
+    const expectedToken = expectedTokens[i];
+    if (isPlaceholderToken(expectedToken)) continue;
+    if (expectedToken !== answerTokens[i]) return false;
+  }
+  return true;
+}
+
 /**
  * Извлекает числа из текста
  */
@@ -575,7 +612,7 @@ function validateSingleVariant(
   }
 
   // Проверка языка: язык ответа должен совпадать с языком expected
-  const expectedStringForLanguage = getExpectedAsString(drill.expected);
+  const expectedStringForLanguage = stripPlaceholdersFromText(getExpectedAsString(drill.expected));
   const expectedLanguage = detectLanguage(expectedStringForLanguage);
   const answerLanguage = detectLanguage(answer);
   
@@ -618,16 +655,18 @@ function validateSingleVariant(
 
   // Получаем все слова из expected (без пунктуации)
   const expectedArray = getExpectedAsArray(drill.expected);
-  const expectedWords = expectedArray.map(w => {
+  const expectedWordsRaw = expectedArray.map(w => {
     // Убираем пунктуацию для проверки наличия
     return w.replace(/[.,!?;:]+$/g, '').trim();
   }).filter(w => w.length > 0);
+  const expectedWords = expectedWordsRaw.filter(w => !isPlaceholderToken(w));
 
   // Получаем слова из ответа
   const normalizedAnswer = normalizeText(answer);
   const normalizedAnswerWords = normalizedAnswer.split(/\s+/).filter(Boolean);
-  
   const normalizedExpectedWords = expectedWords.flatMap(w => normalizeText(w).split(/\s+/)).filter(Boolean);
+  const expectedTokensWithPlaceholders = buildNormalizedExpectedTokensWithPlaceholders(expectedWordsRaw);
+  const hasPlaceholders = expectedTokensWithPlaceholders.some(isPlaceholderToken);
   
   // Нормализуем requiredWords для проверки
   const normalizedRequiredWords = drill.requiredWords 
@@ -670,7 +709,21 @@ function validateSingleVariant(
 
   // Быстрая проверка на полное совпадение нормализованных строк
   const normalizedExpected = normalizeText(expectedString);
-  if (normalizedAnswer === normalizedExpected) {
+  if (!hasPlaceholders && normalizedAnswer === normalizedExpected) {
+    return {
+      isCorrect: true,
+      feedback: '',
+      needsAI: false,
+      missingWords: [],
+      incorrectWords: [],
+      wrongLanguage: false,
+      extraWords: [],
+      orderError: false,
+      duplicateWords: []
+    };
+  }
+
+  if (hasPlaceholders && matchesWithPlaceholders(expectedTokensWithPlaceholders, normalizedAnswerWords)) {
     return {
       isCorrect: true,
       feedback: '',
@@ -991,8 +1044,9 @@ function validateSingleVariant(
 
   // Лишние слова — примечание, не ошибка
   const extraFound = findExtraWords(normalizedExpectedWords, normalizedAnswerWords);
+  const extraAdjusted = hasPlaceholders ? extraFound.slice(expectedTokensWithPlaceholders.filter(isPlaceholderToken).length) : extraFound;
   // Фильтруем слова, которые являются частью развернутых форм сокращений
-  const filteredExtraWords = extraFound.filter(word => !expandedWordsFromContractions.has(word));
+  const filteredExtraWords = extraAdjusted.filter(word => !expandedWordsFromContractions.has(word));
   if (filteredExtraWords.length > 0) {
     extraWords.push(...filteredExtraWords);
   }

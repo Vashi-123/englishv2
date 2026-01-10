@@ -747,13 +747,11 @@ export function Step4DialogueScreen({
     if (!input.trim()) return;
     const userMsg = input.trim();
     setInput('');
-    setInputMode('hidden');
     await handleStudentAnswer(userMsg);
   }, [handleStudentAnswer, input]);
 
   const onSpeechTranscript = useCallback(
     async (transcript: string) => {
-      setInputMode('hidden');
       await handleStudentAnswer(transcript);
     },
     [handleStudentAnswer]
@@ -3073,6 +3071,7 @@ export function Step4DialogueScreen({
                 onSend={handleSend}
                 placeholder={copy.placeholder}
                 isLoading={isLoading}
+                isDisabled={situationAwaitingStart || (isAwaitingModelReply && currentStep?.type === 'situations')}
                 isRecording={isRecording}
                 isTranscribing={isTranscribing}
                 onToggleRecording={onToggleRecording}

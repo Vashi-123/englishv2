@@ -1020,7 +1020,7 @@ function MessageContentComponent({
       }
     }
 
-    const userAnswerByStep = new Map<number, string>();
+    const userAnswerByStep = new Map<number, { text: string; count: number }>();
     for (let i = 0; i < modelEntries.length; i++) {
       const start = modelEntries[i].idx + 1;
       const end = i + 1 < modelEntries.length ? modelEntries[i + 1].idx : group.length;
@@ -1029,8 +1029,12 @@ function MessageContentComponent({
         if (m.role !== 'user') continue;
         const text = stripModuleTag(m.text || '').trim();
         if (text) {
-          userAnswerByStep.set(modelEntries[i].subIndex, text);
-          break;
+          const key = modelEntries[i].subIndex;
+          const prev = userAnswerByStep.get(key);
+          userAnswerByStep.set(key, {
+            text,
+            count: prev ? prev.count + 1 : 1,
+          });
         }
       }
     }
@@ -1051,9 +1055,18 @@ function MessageContentComponent({
       const aiText = String(payload?.ai || scriptStep?.ai || '').trim();
       const translation = String(payload?.ai_translation || scriptStep?.ai_translation || scriptStep?.aiTranslation || '').trim();
       const rawTaskText = String(payload?.task || scriptStep?.task || '').trim();
-      const taskText = /<lesson_completed>/i.test(rawTaskText) ? '' : rawTaskText;
+      const isCompletionStep = Boolean((payload as any)?.is_completion_step) || /<lesson_completed>/i.test(rawTaskText);
+      const taskText = isCompletionStep ? '' : rawTaskText;
       const feedbackRaw = String(payload?.feedback || '').trim();
-      const hideFeedback = Boolean(feedbackRaw) && userAnswerByStep.has(stepIndex);
+      const isRetryFeedback =
+        /не удалось проверить ответ/i.test(feedbackRaw) ||
+        /связь нестабильна/i.test(feedbackRaw) ||
+        /connection seems unstable/i.test(feedbackRaw);
+      const answerMeta = userAnswerByStep.get(stepIndex);
+      const hideFeedback = Boolean(feedbackRaw) && (
+        (isRetryFeedback && Boolean(answerMeta)) ||
+        (answerMeta ? answerMeta.count > 1 : false)
+      );
       const feedback = hideFeedback ? '' : feedbackRaw;
       const prevUserCorrect = (payload as any)?.prev_user_correct;
       let correct = typeof prevUserCorrect === 'boolean' ? prevUserCorrect : undefined;
@@ -1064,7 +1077,7 @@ function MessageContentComponent({
           correct = nextPrevUserCorrect;
         }
       }
-      const userAnswer = userAnswerByStep.get(stepIndex);
+      const userAnswer = userAnswerByStep.get(stepIndex)?.text;
 
       return {
         id: `scenario-${scenarioIndexForCard ?? 'unknown'}:${stepIndex}`,
@@ -1076,18 +1089,25 @@ function MessageContentComponent({
         userAnswer: correct === false ? undefined : userAnswer,
         correct,
         feedback: feedback || undefined,
+        isCompletionStep,
       };
     }).filter((step) => step.ai || step.userAnswer || step.feedback || step.task);
-
-    const hasUserReplyForSteps = userAnswerByStep.size > 0;
-    const visibleMaxIndex = hasUserReplyForSteps ? Math.min(maxIndex, currentSubIndex) : 0;
-    const visibleSteps = steps.filter((step) => (step as any).index <= visibleMaxIndex);
 
     const lastModelIdx = modelEntries.length ? modelEntries[modelEntries.length - 1].idx : -1;
     const hasUserAfterLastModel = group.slice(lastModelIdx + 1).some(
       (m) => m.role === 'user' && stripModuleTag(m.text || '').trim()
     );
     const pendingAi = Boolean(isAwaitingModelReply && isActiveScenario && hasUserAfterLastModel);
+    const hasUserReplyForSteps = userAnswerByStep.size > 0;
+    const visibleMaxIndex = hasUserReplyForSteps ? Math.min(maxIndex, currentSubIndex) : 0;
+    const visibleSteps = steps
+      .filter((step) => (step as any).index <= visibleMaxIndex)
+      .map((step) => ({
+        ...step,
+        checkmarkReady:
+          step.correct === true &&
+          (step.index < visibleMaxIndex || (step.isCompletionStep && !pendingAi)),
+      }));
 
     return {
       parsedSituation,

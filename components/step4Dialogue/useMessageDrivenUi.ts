@@ -67,10 +67,6 @@ export function useMessageDrivenUi({
       setInputMode('hidden');
       return;
     }
-    if (isAwaitingModelReply) {
-      setInputMode('hidden');
-      return;
-    }
     if (messages.length === 0) return;
     let lastMsg: ChatMessage | null = null;
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -154,6 +150,12 @@ export function useMessageDrivenUi({
 
     let parsed: any = null;
     parsed = tryParseJsonMessage(lastMsg.text);
+
+    if (isAwaitingModelReply) {
+      if (parsed?.type === 'situation') return;
+      setInputMode('hidden');
+      return;
+    }
 
     if (parsed?.type === 'goal') {
       goalSeenRef.current = true;

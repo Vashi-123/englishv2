@@ -10,6 +10,7 @@ type Props = {
   onSend: () => void;
   placeholder: string;
   isLoading: boolean;
+  isDisabled?: boolean;
   isRecording: boolean;
   isTranscribing: boolean;
   onToggleRecording: () => void;
@@ -24,6 +25,7 @@ export function DialogueInputBar({
   onSend,
   placeholder,
   isLoading,
+  isDisabled = false,
   isRecording,
   isTranscribing,
   onToggleRecording,
@@ -70,10 +72,12 @@ export function DialogueInputBar({
           <div className="flex justify-center">
             <button
               type="button"
-              disabled={isLoading || isTranscribing}
+              disabled={isLoading || isTranscribing || isDisabled}
               onClick={onToggleRecording}
               className={`h-14 w-14 flex items-center justify-center rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${
-                isRecording
+                isDisabled
+                  ? 'bg-gray-400 text-white cursor-not-allowed'
+                  : isRecording
                   ? 'bg-red-500 text-white animate-pulse'
                   : isTranscribing
                     ? 'bg-gray-400 text-white cursor-not-allowed'
@@ -95,7 +99,28 @@ export function DialogueInputBar({
             )}
           </div>
         ) : inputMode === 'text' ? (
-          <div className="relative flex items-center gap-3">
+          <div className="w-full">
+            {cta && isDisabled ? (
+              <div className="mb-3">
+                <button
+                  type="button"
+                  onClick={cta.onClick}
+                  disabled={Boolean(cta.disabled || isLoading)}
+                  className="lesson-cta-btn w-full"
+                >
+                  <span className="lesson-cta-shadow"></span>
+                  <span className="lesson-cta-edge"></span>
+                  <span className="lesson-cta-front">
+                    {isLoading && cta.label === 'Проверить' ? (
+                      <span className="h-5 w-5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      cta.label
+                    )}
+                  </span>
+                </button>
+              </div>
+            ) : null}
+            <div className="relative flex items-center gap-3">
             <textarea
               ref={textareaRef}
               value={input}
@@ -104,16 +129,17 @@ export function DialogueInputBar({
               rows={1}
               lang="en"
               className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto text-base"
-              disabled={isLoading}
+              disabled={isDisabled}
             />
             <button
               type="button"
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || isDisabled || !input.trim()}
               onClick={onSend}
               className="p-4 bg-brand-primary text-white rounded-full hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100"
             >
               <Send className="w-5 h-5" />
             </button>
+            </div>
           </div>
         ) : (
           <div className="py-1">

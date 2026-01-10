@@ -12,6 +12,8 @@ type SituationStep = {
   userAnswer?: string;
   correct?: boolean;
   feedback?: string;
+  checkmarkReady?: boolean;
+  isCompletionStep?: boolean;
 };
 
 type Props = {
@@ -107,13 +109,14 @@ export function SituationThreadCard({
     for (const step of steps) {
       if (step.correct !== true) continue;
       if (checkmarkVisible[step.id]) continue;
+      if (step.checkmarkReady !== true) continue;
       pending.push(step.id);
       const timer = window.setTimeout(() => {
         setCheckmarkVisible((prev) => {
           if (prev[step.id]) return prev;
           return { ...prev, [step.id]: true };
         });
-      }, 320);
+      }, 120);
       timers.push(timer);
     }
     if (pending.length > 0) {
