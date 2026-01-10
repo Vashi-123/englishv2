@@ -232,6 +232,10 @@ function MessageContentComponent({
       Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0) === 0;
     
     const isCompletionPayload = Boolean((parsedSituation as any)?.is_completion_step);
+    const isCompletionStep = currentStep?.type === 'completion';
+    const isLastSituationMessage =
+      Boolean(lastSituationModel) &&
+      group.slice(lastSituationModel?.idx + 1).every((m) => m.role !== 'model');
     const isActiveScenario =
       (currentStep?.type === 'situations' &&
       typeof currentStep?.index === 'number' &&
@@ -242,7 +246,11 @@ function MessageContentComponent({
       // Also auto-play first situation if it's the first one and we're in or past situations step
       (isFirstSituation && (currentStep?.type === 'situations' || currentStep?.type === 'completion')) ||
       // Allow the final "lesson completed" situation step to auto-play after we switch to completion.
-      (isCompletionPayload && currentStep?.type === 'completion');
+      (isCompletionPayload && currentStep?.type === 'completion') ||
+      // Allow completion payload to autoplay immediately after it appears, even before currentStep updates.
+      (isCompletionPayload && Boolean(lastSituationModel)) ||
+      // If we already switched to completion, still allow the last situation line to auto-play.
+      (isCompletionStep && isLastSituationMessage);
 
     const hasUserReplyInSituation = (() => {
       // For multi-step situations, we only consider a reply after the latest situation payload.
@@ -268,13 +276,15 @@ function MessageContentComponent({
     const scenarioStarted =
       candidateScenarioKeys.some((k) => startedSituations[k]) || hasUserReplyInSituation || situationCompletedCorrect;
     scenarioStartedForCard = scenarioStarted;
+    const allowAutoplayWhileAwaiting = isCompletionPayload || isLastSituationMessage;
+    const allowAutoplayAfterReply = isCompletionPayload || isLastSituationMessage;
     shouldAutoPlaySituationAi = Boolean(
       scenarioStarted &&
         isActiveScenario &&
         aiText &&
-        !hasUserReplyInSituation &&
+        (!hasUserReplyInSituation || allowAutoplayAfterReply) &&
         (!situationCompletedCorrect || String((parsedSituation as any)?.result || '').toLowerCase() === 'correct') &&
-        !isAwaitingModelReply
+        (!isAwaitingModelReply || allowAutoplayWhileAwaiting)
     );
   }
 
@@ -909,7 +919,8 @@ function MessageContentComponent({
     }
   }
 
-  if (isSituationCard) {
+  const situationView = useMemo(() => {
+    if (!isSituationCard) return null;
     const group = situationGroupMessages && situationGroupMessages.length > 0 ? situationGroupMessages : [msg];
     const firstModel = group.find((m) => m.role === 'model');
     const scenarioIndexForCard =
@@ -972,96 +983,158 @@ function MessageContentComponent({
         ? String(lastSituationModel.payload.continueLabel)
         : 'Далее';
 
-    const items: Array<
-      | { kind: 'ai'; text: string; translation?: string; task?: string }
-      | { kind: 'user'; text: string; correct?: boolean }
-      | { kind: 'feedback'; text: string }
-    > = [];
-    for (const m of group) {
-      if (m.role === 'model') {
-        const raw = stripModuleTag(m.text || '').trim();
-        let handled = false;
-        if (raw.startsWith('{')) {
-          try {
-            const p = JSON.parse(raw);
-            if (p?.type !== 'situation') continue;
-            handled = true;
-            const prevUserCorrect = (p as any)?.prev_user_correct;
-            if (typeof prevUserCorrect === 'boolean') {
-              for (let j = items.length - 1; j >= 0; j--) {
-                if ((items[j] as any)?.kind === 'user') {
-                  items[j] = { ...(items[j] as any), correct: prevUserCorrect } as any;
-                  break;
-                }
-              }
-            }
-            const aiText = String(p?.ai || '').trim();
-            const resultText = String(p?.result || '').toLowerCase();
-            const isFailure = prevUserCorrect === false || resultText === 'incorrect';
-            if (isFailure) {
-              // Drop the last user turn and any previous correction when the answer is incorrect.
-              for (let j = items.length - 1; j >= 0; j--) {
-                if (items[j].kind === 'user') {
-                  items.splice(j, 1);
-                  break;
-                }
-              }
-              if (items.length > 0 && items[items.length - 1].kind === 'feedback') {
-                items.pop();
-              }
-            }
-            if (aiText) {
-              const translation = String(p?.ai_translation || '').trim();
-              const task = String(p?.task || '').trim();
-              items.push({ kind: 'ai', text: aiText, translation: translation || undefined, task: task || undefined });
-            }
-            const feedback = String(p?.feedback || '').trim();
-            if (feedback) items.push({ kind: 'feedback', text: feedback });
-          } catch {
-            // fall through to plain parsing
-          }
-        }
+    const scenario = scenarioIndexForCard != null ? (lessonScript as any)?.situations?.scenarios?.[scenarioIndexForCard] : null;
+    const stepsFromScript = Array.isArray(scenario?.steps) ? scenario.steps : [];
+    const payloadByStep = new Map<number, any>();
+    const modelEntries: Array<{ idx: number; subIndex: number; payload: any }> = [];
 
-        if (!handled) {
-          const parsedPlain = parseSituationMessage(raw, stripModuleTag);
-          const aiText = String(parsedPlain?.ai || '').trim();
-          const task = String(parsedPlain?.task || '').trim();
-          if (aiText) {
-            items.push({ kind: 'ai', text: aiText, task: task || undefined });
-          }
+    for (let i = 0; i < group.length; i++) {
+      const m = group[i];
+      if (m.role !== 'model') continue;
+      const raw = stripModuleTag(m.text || '').trim();
+      if (raw.startsWith('{')) {
+        try {
+          const p = JSON.parse(raw);
+          if (p?.type !== 'situation') continue;
+          const subIndex =
+            typeof (m.currentStepSnapshot as any)?.subIndex === 'number'
+              ? Number((m.currentStepSnapshot as any).subIndex)
+              : typeof (p as any)?.subIndex === 'number'
+                ? Number((p as any).subIndex)
+                : 0;
+          payloadByStep.set(subIndex, p);
+          modelEntries.push({ idx: i, subIndex, payload: p });
+          continue;
+        } catch {
+          // fall through to plain parsing
         }
-        continue;
       }
-      if (m.role === 'user') {
-        const text = stripModuleTag(m.text || '').trim();
-        if (text) items.push({ kind: 'user', text });
+      const parsedPlain = parseSituationMessage(raw, stripModuleTag);
+      const aiText = String(parsedPlain?.ai || '').trim();
+      if (aiText) {
+        payloadByStep.set(0, {
+          ai: aiText,
+          task: parsedPlain?.task,
+        });
+        modelEntries.push({ idx: i, subIndex: 0, payload: payloadByStep.get(0) });
       }
     }
 
+    const userAnswerByStep = new Map<number, string>();
+    for (let i = 0; i < modelEntries.length; i++) {
+      const start = modelEntries[i].idx + 1;
+      const end = i + 1 < modelEntries.length ? modelEntries[i + 1].idx : group.length;
+      for (let j = start; j < end; j++) {
+        const m = group[j];
+        if (m.role !== 'user') continue;
+        const text = stripModuleTag(m.text || '').trim();
+        if (text) {
+          userAnswerByStep.set(modelEntries[i].subIndex, text);
+          break;
+        }
+      }
+    }
+
+    const maxPayloadIndex = payloadByStep.size ? Math.max(...Array.from(payloadByStep.keys())) : -1;
+    const maxScriptIndex = stepsFromScript.length ? stepsFromScript.length - 1 : -1;
+    const currentSubIndex =
+      typeof (lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex === 'number'
+        ? Number((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex)
+        : typeof (currentStep as any)?.subIndex === 'number'
+          ? Number((currentStep as any)?.subIndex)
+          : 0;
+    const maxIndex = Math.max(maxPayloadIndex, maxScriptIndex, currentSubIndex);
+
+    const steps = Array.from({ length: Math.max(0, maxIndex + 1) }, (_, stepIndex) => {
+      const scriptStep = stepsFromScript[stepIndex] || {};
+      const payload = payloadByStep.get(stepIndex) || {};
+      const aiText = String(payload?.ai || scriptStep?.ai || '').trim();
+      const translation = String(payload?.ai_translation || scriptStep?.ai_translation || scriptStep?.aiTranslation || '').trim();
+      const rawTaskText = String(payload?.task || scriptStep?.task || '').trim();
+      const taskText = /<lesson_completed>/i.test(rawTaskText) ? '' : rawTaskText;
+      const feedbackRaw = String(payload?.feedback || '').trim();
+      const hideFeedback = Boolean(feedbackRaw) && userAnswerByStep.has(stepIndex);
+      const feedback = hideFeedback ? '' : feedbackRaw;
+      const prevUserCorrect = (payload as any)?.prev_user_correct;
+      let correct = typeof prevUserCorrect === 'boolean' ? prevUserCorrect : undefined;
+      if (typeof correct !== 'boolean') {
+        const nextPayload = payloadByStep.get(stepIndex + 1) || {};
+        const nextPrevUserCorrect = (nextPayload as any)?.prev_user_correct;
+        if (typeof nextPrevUserCorrect === 'boolean') {
+          correct = nextPrevUserCorrect;
+        }
+      }
+      const userAnswer = userAnswerByStep.get(stepIndex);
+
+      return {
+        id: `scenario-${scenarioIndexForCard ?? 'unknown'}:${stepIndex}`,
+        index: stepIndex,
+        ai: aiText || undefined,
+        translation: translation || undefined,
+        task: taskText || undefined,
+        taskVisible: Boolean(taskText) && !userAnswerByStep.has(stepIndex),
+        userAnswer: correct === false ? undefined : userAnswer,
+        correct,
+        feedback: feedback || undefined,
+      };
+    }).filter((step) => step.ai || step.userAnswer || step.feedback || step.task);
+
+    const hasUserReplyForSteps = userAnswerByStep.size > 0;
+    const visibleMaxIndex = hasUserReplyForSteps ? Math.min(maxIndex, currentSubIndex) : 0;
+    const visibleSteps = steps.filter((step) => (step as any).index <= visibleMaxIndex);
+
+    const lastModelIdx = modelEntries.length ? modelEntries[modelEntries.length - 1].idx : -1;
+    const hasUserAfterLastModel = group.slice(lastModelIdx + 1).some(
+      (m) => m.role === 'user' && stripModuleTag(m.text || '').trim()
+    );
+    const pendingAi = Boolean(isAwaitingModelReply && isActiveScenario && hasUserAfterLastModel);
+
+    return {
+      parsedSituation,
+      scenarioIndexForCard,
+      lastSituationModel,
+      isActiveScenario,
+      showContinue,
+      continueLabel,
+      visibleSteps,
+      pendingAi,
+    };
+  }, [
+    currentStep,
+    isAwaitingModelReply,
+    isSituationCard,
+    lessonScript,
+    msg,
+    parsed,
+    situationGroupMessages,
+    stripModuleTag,
+  ]);
+
+  if (isSituationCard && situationView) {
     return (
       <SituationThreadCard
-        title={(parsedSituation as any).title}
-        situation={(parsedSituation as any).situation}
-        task={(parsedSituation as any).task}
-        ai={(parsedSituation as any).ai}
+        title={(situationView.parsedSituation as any).title}
+        situation={(situationView.parsedSituation as any).situation}
+        task={(situationView.parsedSituation as any).task}
+        ai={(situationView.parsedSituation as any).ai}
         completedCorrect={situationCompletedCorrect}
-        showContinue={showContinue}
-        continueLabel={continueLabel}
+        showContinue={situationView.showContinue}
+        continueLabel={situationView.continueLabel}
         started={scenarioStartedForCard}
-        isLoading={Boolean(isAwaitingModelReply) && Boolean(isActiveScenario)}
+        isLoading={Boolean(isAwaitingModelReply) && Boolean(situationView.isActiveScenario)}
         currentAudioItem={currentAudioItem}
         processAudioQueue={processAudioQueue}
         onContinue={
-          showContinue
+          situationView.showContinue
             ? async () => {
-                const baseStep = lastSituationModel?.msg?.currentStepSnapshot ?? currentStep;
+                const baseStep = situationView.lastSituationModel?.msg?.currentStepSnapshot ?? currentStep;
                 if (!baseStep) return;
                 const stepForAdvance = (() => {
                   if ((baseStep as any)?.type !== 'situations') return baseStep;
                   if (!(baseStep as any)?.awaitingContinue) return baseStep;
                   if (typeof (baseStep as any)?.nextIndex === 'number' && Number.isFinite((baseStep as any).nextIndex)) return baseStep;
-                  if (scenarioIndexForCard == null) return baseStep;
-                  return { ...(baseStep as any), nextIndex: scenarioIndexForCard + 1, nextSubIndex: 0 };
+                  if (situationView.scenarioIndexForCard == null) return baseStep;
+                  return { ...(baseStep as any), nextIndex: situationView.scenarioIndexForCard + 1, nextSubIndex: 0 };
                 })();
                 if (!stepForAdvance) return;
                 setIsLoading(true);
@@ -1078,7 +1151,8 @@ function MessageContentComponent({
               }
             : undefined
         }
-        items={items}
+        steps={situationView.visibleSteps}
+        pendingAi={situationView.pendingAi}
         renderMarkdown={renderMarkdown}
       />
     );

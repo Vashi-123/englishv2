@@ -359,9 +359,9 @@ export function useLessonFlow({
                       extraWords: localResult.extraWords
                     });
                     validateSpan?.('ok', { isCorrect, local: true });
-                    // Показываем три точки на 1000мс перед показом следующего сообщения
+                    // Показываем три точки на паузе перед показом следующего сообщения
                     // isAwaitingModelReply уже установлен в true в начале функции, просто ждем
-                    await pauseMilliseconds(1000);
+                    await pauseMilliseconds(1400);
                   } else if (!localResult.isCorrect) {
                     // Локальная проверка дала результат, но ответ неправильный - передаем на ИИ
                     needsAI = true;
@@ -481,6 +481,11 @@ export function useLessonFlow({
           ...m,
           currentStepSnapshot: m.currentStepSnapshot ?? stepForInput,
         }));
+
+        if (stepForInput.type === 'situations' && wasLocalValidation) {
+          await pauseMilliseconds(500);
+          await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+        }
 
         const completionPayloadIdx = (() => {
           for (let i = 0; i < messagesWithSnapshot.length; i += 1) {

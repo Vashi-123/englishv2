@@ -159,9 +159,11 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
             <button
               type="button"
               onClick={finish}
-              className="py-4 text-sm font-bold rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white/95 shadow-lg shadow-brand-primary/20 hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 active:shadow-md transition-all duration-200"
+              className="anki-btn anki-btn--primary"
             >
-              Продолжить
+              <span className="anki-btn-shadow"></span>
+              <span className="anki-btn-edge"></span>
+              <span className="anki-btn-front">Продолжить</span>
             </button>
           </div>
         </div>
@@ -189,17 +191,15 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
             const picked = selected === v;
             const correct = v === correctText;
             const showResult = wasCorrect !== null;
-            const cls = (() => {
+            const state = (() => {
               if (!showResult) {
-                return picked
-                  ? 'border-brand-primary bg-brand-primary/10 text-brand-primary'
-                  : 'border-gray-200 bg-white text-gray-900';
+                return picked ? 'selected' : 'idle';
               }
-              if (picked && correct) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
-              if (picked && !correct) return 'border-red-200 bg-red-50 text-red-900';
+              if (picked && correct) return 'correct';
+              if (picked && !correct) return 'wrong';
               // Show correct answer in green when wrong answer was selected
-              if (wasCorrect === false && correct) return 'border-emerald-200 bg-emerald-50 text-emerald-900';
-              return 'border-gray-200 bg-white text-gray-500';
+              if (wasCorrect === false && correct) return 'correct';
+              return 'muted';
             })();
 
             return (
@@ -233,9 +233,11 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
                   })();
                 }}
                 style={{ WebkitTapHighlightColor: 'transparent' }}
-                className={`px-4 py-3 rounded-2xl border text-sm font-bold shadow-sm transition-transform transition-colors disabled:opacity-100 select-none active:scale-[0.98] ${cls}`}
+                className={`anki-btn anki-btn--${state}`}
               >
-                {v || '—'}
+                <span className="anki-btn-shadow"></span>
+                <span className="anki-btn-edge"></span>
+                <span className="anki-btn-front">{v || '—'}</span>
               </button>
             );
           })}

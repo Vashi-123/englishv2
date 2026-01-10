@@ -1,12 +1,18 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Bot, Check, Languages } from 'lucide-react';
 import type { AudioQueueItem } from '../../types';
 import { CardHeading } from './CardHeading';
 
-type Item =
-  | { kind: 'ai'; text: string; translation?: string; task?: string }
-  | { kind: 'user'; text: string; correct?: boolean }
-  | { kind: 'feedback'; text: string };
+type SituationStep = {
+  id: string;
+  ai?: string;
+  translation?: string;
+  task?: string;
+  taskVisible?: boolean;
+  userAnswer?: string;
+  correct?: boolean;
+  feedback?: string;
+};
 
 type Props = {
   title?: string;
@@ -22,7 +28,8 @@ type Props = {
   currentAudioItem?: AudioQueueItem | null;
   processAudioQueue?: (queue: Array<{ text: string; lang: string; kind: string }>, messageId?: string) => void;
   replayAi?: { text: string; key: string } | null;
-  items: Item[];
+  steps: SituationStep[];
+  pendingAi?: boolean;
   renderMarkdown: (text: string) => React.ReactNode;
 };
 
@@ -40,115 +47,50 @@ export function SituationThreadCard({
   currentAudioItem,
   processAudioQueue,
   replayAi,
-  items,
+  steps,
+  pendingAi = false,
   renderMarkdown,
 }: Props) {
-  const [shownTranslations, setShownTranslations] = useState<Record<number, boolean>>({});
-  const [revealStage, setRevealStage] = useState<0 | 1 | 2>(2);
-  const revealTokenRef = useRef(0);
+  const [shownTranslations, setShownTranslations] = useState<Record<string, boolean>>({});
   const [dialogueVisible, setDialogueVisible] = useState<boolean>(Boolean(started));
-
-  const lastCorrectUserIndex = useMemo(() => {
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      if (it.kind !== 'user') continue;
-      if (it.correct === true) return i;
-    }
-    return -1;
-  }, [items]);
-
-  const lastUserIndex = useMemo(() => {
-    for (let i = items.length - 1; i >= 0; i--) {
-      if (items[i].kind === 'user') return i;
-    }
-    return -1;
-  }, [items]);
-
-  const lastUserCorrect = lastUserIndex >= 0 ? items[lastUserIndex].kind === 'user' && items[lastUserIndex].correct : null;
-
-  const feedbackForAi = useMemo(() => {
-    const map = new Map<number, string>();
-    if (lastUserCorrect !== false || lastUserIndex === -1) return map;
-    for (let i = lastUserIndex + 1; i < items.length - 1; i++) {
-      const it = items[i];
-      const next = items[i + 1];
-      if (it.kind === 'ai' && next?.kind === 'feedback') {
-        map.set(i, next.text);
-      }
-    }
-    return map;
-  }, [items, lastUserCorrect, lastUserIndex]);
-
-  const skipFeedbackIndices = useMemo(() => {
-    const set = new Set<number>();
-    if (lastUserCorrect !== false || lastUserIndex === -1) return set;
-    for (const [aiIdx] of feedbackForAi.entries()) {
-      const fbIdx = aiIdx + 1;
-      if (items[fbIdx]?.kind === 'feedback') set.add(fbIdx);
-    }
-    return set;
-  }, [feedbackForAi, items, lastUserCorrect, lastUserIndex]);
-
-  const lastAiSignature = useMemo(() => {
-    for (let i = items.length - 1; i >= 0; i--) {
-      const it = items[i];
-      if (it.kind !== 'ai') continue;
-      const text = (it.text || '').trim();
-      const t = (it.translation || '').trim();
-      const taskText = (it.task || '').trim();
-      if (!text && !t && !taskText) continue;
-      return `${text}|||${t}|||${taskText}`;
-    }
-    return '';
-  }, [items]);
-
-  const lastAiSignatureRef = useRef<string>('');
-  useLayoutEffect(() => {
-    if (!started) {
-      setRevealStage(0);
-      lastAiSignatureRef.current = lastAiSignature;
-      return;
-    }
-    // Only stage-reveal while we are actually awaiting a reply (prevents "flash then hide" on history load/hydration).
-    if (!isLoading) {
-      lastAiSignatureRef.current = lastAiSignature;
-      return;
-    }
-    const hasNewAi = Boolean(lastAiSignature) && lastAiSignature !== lastAiSignatureRef.current;
-    lastAiSignatureRef.current = lastAiSignature;
-
-    const shouldStageReveal = hasNewAi && lastCorrectUserIndex !== -1;
-    if (!shouldStageReveal) return;
-
-    revealTokenRef.current += 1;
-    const token = revealTokenRef.current;
-    setRevealStage(0);
-
-    const t1 = window.setTimeout(() => {
-      if (revealTokenRef.current !== token) return;
-      setRevealStage(1);
-    }, 350);
-
-    const t2 = window.setTimeout(() => {
-      if (revealTokenRef.current !== token) return;
-      setRevealStage(2);
-    }, 850);
-
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-    };
-  }, [isLoading, lastAiSignature, lastCorrectUserIndex, started]);
+  const [checkmarkVisible, setCheckmarkVisible] = useState<Record<string, boolean>>({});
+  const dialogueRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!started) {
       setDialogueVisible(false);
       return;
     }
-    setRevealStage(2);
     const timer = window.setTimeout(() => setDialogueVisible(true), 260);
     return () => window.clearTimeout(timer);
   }, [started]);
+
+  const showDialogue = Boolean(started && dialogueVisible);
+
+  useEffect(() => {
+    if (!showDialogue) return;
+    const el = dialogueRef.current;
+    if (!el) return;
+
+    const findScrollContainer = (node: HTMLElement | null): HTMLElement | null => {
+      if (!node) return null;
+      const style = window.getComputedStyle(node);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        return node;
+      }
+      return findScrollContainer(node.parentElement);
+    };
+
+    const container = findScrollContainer(el);
+    const handle = window.requestAnimationFrame(() => {
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight - container.clientHeight, behavior: 'smooth' });
+      } else {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+    return () => window.cancelAnimationFrame(handle);
+  }, [showDialogue]);
 
   useEffect(() => {
     if (!replayAi?.text || !processAudioQueue) return;
@@ -159,11 +101,46 @@ export function SituationThreadCard({
     return () => window.clearTimeout(timer);
   }, [processAudioQueue, replayAi?.key, replayAi?.text, started]);
 
-  const showDialogue = Boolean(started && dialogueVisible);
+  useEffect(() => {
+    const timers: number[] = [];
+    const pending: string[] = [];
+    for (const step of steps) {
+      if (step.correct !== true) continue;
+      if (checkmarkVisible[step.id]) continue;
+      pending.push(step.id);
+      const timer = window.setTimeout(() => {
+        setCheckmarkVisible((prev) => {
+          if (prev[step.id]) return prev;
+          return { ...prev, [step.id]: true };
+        });
+      }, 320);
+      timers.push(timer);
+    }
+    if (pending.length > 0) {
+      setCheckmarkVisible((prev) => {
+        let changed = false;
+        const next = { ...prev };
+        for (const id of pending) {
+          if (!next[id]) {
+            next[id] = true;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }
+    return () => {
+      timers.forEach((t) => window.clearTimeout(t));
+    };
+  }, [steps]);
 
-  const renderTaskBanner = (text: string) => (
+  const renderTaskBanner = (text: string, isVisible = true) => (
     <div className="w-full flex justify-center">
-      <div className="w-full max-w-[560px]">
+      <div
+        className={`w-full max-w-[560px] overflow-hidden transition-all duration-300 ease-out ${
+          isVisible ? 'max-h-40 opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-1'
+        }`}
+      >
         <div className="rounded-2xl border border-dashed border-brand-primary/25 bg-gradient-to-br from-brand-primary/6 via-brand-secondary/8 to-brand-accent/6 px-4 py-3 shadow-sm">
           <div className="text-center text-[12px] font-semibold text-gray-900 whitespace-pre-wrap leading-relaxed">
             {renderMarkdown(text)}
@@ -222,11 +199,12 @@ export function SituationThreadCard({
             </div>
           ) : (
 	          <div
+              ref={dialogueRef}
 	            className={`mt-4 rounded-2xl border p-3 space-y-3 ${
 	              completedCorrect ? 'border-green-200 bg-green-50/60' : 'border-gray-100 bg-gray-50/60'
 	            }`}
 	          >
-		            {ai && !items.some((it) => it.kind === 'ai') && (
+		            {ai && steps.length === 0 && (
 		              <div className="space-y-2 mb-6">
                     <div className="flex justify-start items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
@@ -269,46 +247,21 @@ export function SituationThreadCard({
                   </div>
 		            )}
 
-	            {items.map((item, idx) => {
-              const shouldHideAi = item.kind === 'ai' && revealStage === 0 && lastCorrectUserIndex !== -1 && idx > lastCorrectUserIndex;
-              if (shouldHideAi) {
-                return (
-                  <div key={`ai-${idx}-pending`} className="space-y-2 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="flex justify-start items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
-                        <Bot className="w-4 h-4" />
-                      </div>
-                      <div className="rounded-2xl bg-white px-4 py-3 border border-gray-100 shadow-sm">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce delay-100"></div>
-                          <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce delay-200"></div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
+	            {steps.map((step) => {
+                const translationVisible = Boolean(shownTranslations[step.id]);
+                const hasTranslation = Boolean(step.translation && step.translation.trim());
+                const hasAi = Boolean(step.ai && step.ai.trim());
+                const hasTask = Boolean(step.task && step.task.trim());
+                const hasUser = Boolean(step.userAnswer && step.userAnswer.trim());
+                const isSpeaking =
+                  currentAudioItem?.kind === 'situation_ai' && currentAudioItem?.text === String(step.ai || '');
 
-              const shouldHideAiTask =
-                  item.kind === 'ai' &&
-                  revealStage < 2 &&
-                  lastCorrectUserIndex !== -1 &&
-                  idx > lastCorrectUserIndex;
-
-	              if (item.kind === 'ai') {
-                  const translationVisible = Boolean(shownTranslations[idx]);
-                  const hasTranslation = Boolean(item.translation && item.translation.trim());
-                  const feedbackOverride = feedbackForAi.get(idx) || '';
-                  const bannerText = feedbackOverride || (item.task || '');
-                  const hasTask = Boolean(bannerText && bannerText.trim()) && !shouldHideAiTask;
-                  const isSpeaking =
-                    currentAudioItem?.kind === 'situation_ai' && currentAudioItem?.text === String(item.text || '');
                 return (
-                  <div key={`ai-${idx}`} className="space-y-2 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <div className="flex justify-start items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
-                        <Bot className="w-4 h-4" />
+                  <div key={step.id} className="space-y-2 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    {hasAi && (
+                      <div className="flex justify-start items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-white text-brand-primary flex items-center justify-center flex-shrink-0 border border-gray-100">
+                          <Bot className="w-4 h-4" />
                         </div>
                         <div className="max-w-[92%]">
                           <div
@@ -316,7 +269,7 @@ export function SituationThreadCard({
                             tabIndex={processAudioQueue ? 0 : undefined}
                             onClick={
                               processAudioQueue
-                                ? () => processAudioQueue([{ text: String(item.text || ''), lang: 'en', kind: 'situation_ai' }])
+                                ? () => processAudioQueue([{ text: String(step.ai || ''), lang: 'en', kind: 'situation_ai' }])
                                 : undefined
                             }
                             onKeyDown={
@@ -324,7 +277,7 @@ export function SituationThreadCard({
                                 ? (e) => {
                                     if (e.key === 'Enter' || e.key === ' ') {
                                       e.preventDefault();
-                                      processAudioQueue([{ text: String(item.text || ''), lang: 'en', kind: 'situation_ai' }]);
+                                      processAudioQueue([{ text: String(step.ai || ''), lang: 'en', kind: 'situation_ai' }]);
                                     }
                                   }
                                 : undefined
@@ -333,7 +286,7 @@ export function SituationThreadCard({
                               isSpeaking ? 'bg-brand-primary/5 border-brand-primary/30 text-brand-primary' : 'border-gray-100 text-gray-900'
                             } ${processAudioQueue ? 'cursor-pointer hover:bg-gray-50' : ''}`}
                           >
-                            <div className="whitespace-pre-wrap leading-relaxed">{renderMarkdown(item.text)}</div>
+                            <div className="whitespace-pre-wrap leading-relaxed">{renderMarkdown(step.ai || '')}</div>
 
                             {hasTranslation && (
                               <>
@@ -341,17 +294,17 @@ export function SituationThreadCard({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setShownTranslations((prev) => ({ ...prev, [idx]: !prev[idx] }));
+                                    setShownTranslations((prev) => ({ ...prev, [step.id]: !prev[step.id] }));
                                   }}
                                   className="absolute -top-2 -right-2 inline-flex items-center justify-center rounded-lg bg-white border border-gray-200 p-1 text-gray-400 hover:text-brand-primary hover:bg-brand-primary/5 transition-colors shadow-sm"
                                   aria-label={translationVisible ? 'Скрыть перевод' : 'Показать перевод'}
                                   title={translationVisible ? 'Скрыть перевод' : 'Показать перевод'}
                                 >
                                   <Languages className="w-3 h-3" />
-	                                </button>
+                                </button>
                                 {translationVisible && (
                                   <div className="mt-2 rounded-xl bg-gray-50 border border-gray-100 px-3 py-2 text-[13px] font-semibold text-gray-600 whitespace-pre-wrap leading-relaxed">
-                                    {renderMarkdown(item.translation || '')}
+                                    {renderMarkdown(step.translation || '')}
                                   </div>
                                 )}
                               </>
@@ -359,48 +312,38 @@ export function SituationThreadCard({
                           </div>
                         </div>
                       </div>
-                      {hasTask ? (
-                        <div className="pt-2">
-                          {renderTaskBanner(bannerText)}
-                        </div>
-                      ) : null}
-                    </div>
-	                );
-	              }
+                    )}
 
-	              if (item.kind === 'user') {
-	                return (
-	                  <div key={`u-${idx}`} className="flex justify-end">
-	                    <div className="relative max-w-[80%] inline-flex rounded-2xl bg-brand-primary/10 text-brand-primary px-6 py-3 text-base font-bold whitespace-pre-wrap leading-relaxed shadow-sm">
-	                      {renderMarkdown(item.text)}
-                        {item.correct === true && (
-                        <div className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25 flex items-center justify-center ring-2 ring-white">
-                          <Check className="w-4 h-4" />
-                        </div>
-                        )}
-	                    </div>
-	                  </div>
-	                );
-	              }
+                    {hasTask ? (
+                      <div className="pt-2">
+                        {renderTaskBanner(step.task || '', step.taskVisible !== false)}
+                      </div>
+                    ) : null}
 
-              if (skipFeedbackIndices.has(idx)) {
-                return null;
-              }
-              return (
-                <div
-                  key={`fb-${idx}`}
-                  className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-sm whitespace-pre-wrap leading-relaxed"
-                >
-                  {renderMarkdown(item.text)}
-                </div>
-              );
-            })} 
+                    {hasUser && (
+                      <div className="flex justify-end">
+                        <div className="relative max-w-[80%] inline-flex rounded-2xl bg-brand-primary/10 text-brand-primary px-6 py-3 text-base font-bold whitespace-pre-wrap leading-relaxed shadow-sm">
+                          {renderMarkdown(step.userAnswer || '')}
+                          {step.correct === true && checkmarkVisible[step.id] && (
+                            <div className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-gradient-to-br from-emerald-500 to-green-500 text-white shadow-lg shadow-emerald-500/25 flex items-center justify-center ring-2 ring-white">
+                              <Check className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {step.feedback ? (
+                      <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-amber-800 text-sm whitespace-pre-wrap leading-relaxed">
+                        {renderMarkdown(step.feedback)}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })} 
 
             {(() => {
-              const lastItem = items[items.length - 1];
-              // Show dots only while we are waiting for a response and the last item is from the user.
-              // When a new AI message is staged (revealStage===0), we render an in-thread placeholder bubble above instead.
-              const showDots = Boolean(isLoading) && !showContinue && lastItem?.kind === 'user';
+              const showDots = Boolean(isLoading || pendingAi) && !showContinue;
               if (!showDots) return null;
 
               return (

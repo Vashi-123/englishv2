@@ -123,13 +123,17 @@ export function DialogueInputBar({
                 type="button"
                 onClick={cta.onClick}
                 disabled={Boolean(cta.disabled || isLoading)}
-                className="w-full h-14 rounded-xl border border-brand-primary/40 bg-brand-primary/10 text-brand-primary font-semibold hover:bg-brand-primary/15 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="lesson-cta-btn w-full"
               >
-                {isLoading && cta.label === 'Проверить' ? (
-                  <span className="h-5 w-5 border-2 border-brand-primary/50 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  cta.label
-                )}
+                <span className="lesson-cta-shadow"></span>
+                <span className="lesson-cta-edge"></span>
+                <span className="lesson-cta-front">
+                  {isLoading && cta.label === 'Проверить' ? (
+                    <span className="h-5 w-5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    cta.label
+                  )}
+                </span>
               </button>
             ) : null}
           </div>

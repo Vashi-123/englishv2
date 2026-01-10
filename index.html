@@ -156,6 +156,264 @@
           font-size: 14px;
         }
       }
+
+      .lesson-cta-btn {
+        position: relative;
+        border: none;
+        background: transparent;
+        padding: 0;
+        cursor: pointer;
+        outline-offset: 4px;
+        transition: filter 250ms;
+        user-select: none;
+        touch-action: manipulation;
+      }
+
+      .lesson-cta-shadow {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        background: hsl(0deg 0% 0% / 0.25);
+        will-change: transform;
+        transform: translateY(2px);
+        transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
+      }
+
+      .lesson-cta-edge {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 12px;
+        background: linear-gradient(
+          to left,
+          #C7D2FE 0%,
+          #A5B4FC 8%,
+          #A5B4FC 92%,
+          #C7D2FE 100%
+        );
+      }
+
+      .lesson-cta-front {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        position: relative;
+        padding: 12px 27px;
+        min-height: 56px;
+        border-radius: 12px;
+        font-size: 1.05rem;
+        font-weight: 600;
+        color: #6366F1;
+        background: #EEF2FF;
+        border: 1px solid rgba(99, 102, 241, 0.28);
+        will-change: transform;
+        transform: translateY(-4px);
+        transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
+      }
+
+      .lesson-cta-btn:hover {
+        filter: brightness(110%);
+      }
+
+      .lesson-cta-btn:hover .lesson-cta-front {
+        transform: translateY(-6px);
+        transition: transform 250ms cubic-bezier(.3, .7, .4, 1.5);
+      }
+
+      .lesson-cta-btn:active .lesson-cta-front {
+        transform: translateY(-2px);
+        transition: transform 34ms;
+      }
+
+      .lesson-cta-btn:hover .lesson-cta-shadow {
+        transform: translateY(4px);
+        transition: transform 250ms cubic-bezier(.3, .7, .4, 1.5);
+      }
+
+      .lesson-cta-btn:active .lesson-cta-shadow {
+        transform: translateY(1px);
+        transition: transform 34ms;
+      }
+
+      .lesson-cta-btn:focus:not(:focus-visible) {
+        outline: none;
+      }
+
+      .lesson-cta-btn:disabled {
+        cursor: not-allowed;
+        filter: grayscale(0.1) brightness(0.9);
+      }
+
+      .lesson-cta-btn:disabled .lesson-cta-front {
+        background: #E0E7FF;
+        border-color: rgba(99, 102, 241, 0.18);
+        transform: translateY(-2px);
+      }
+
+      .anki-btn {
+        position: relative;
+        border: none;
+        background: transparent;
+        padding: 0;
+        cursor: pointer;
+        outline-offset: 4px;
+        transition: filter 250ms;
+        user-select: none;
+        touch-action: manipulation;
+        width: 100%;
+      }
+
+      .anki-btn-shadow {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 14px;
+        background: hsl(0deg 0% 0% / 0.2);
+        will-change: transform;
+        transform: translateY(1px);
+        transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
+      }
+
+      .anki-btn-edge {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        border-radius: 14px;
+        background: linear-gradient(
+          to left,
+          #6EE7B7 0%,
+          #34D399 8%,
+          #34D399 92%,
+          #6EE7B7 100%
+        );
+      }
+
+      .anki-btn-front {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        padding: 8px 16px;
+        min-height: 40px;
+        border-radius: 14px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #065F46;
+        background: #ECFDF5;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        will-change: transform;
+        transform: translateY(-3px);
+        transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
+      }
+
+      .anki-btn:hover {
+        filter: brightness(103%);
+      }
+
+      .anki-btn:hover .anki-btn-front {
+        transform: translateY(-4px);
+        transition: transform 250ms cubic-bezier(.3, .7, .4, 1.5);
+      }
+
+      .anki-btn:active .anki-btn-front {
+        transform: translateY(-1px);
+        transition: transform 34ms;
+      }
+
+      .anki-btn:hover .anki-btn-shadow {
+        transform: translateY(2px);
+        transition: transform 250ms cubic-bezier(.3, .7, .4, 1.5);
+      }
+
+      .anki-btn:active .anki-btn-shadow {
+        transform: translateY(0px);
+        transition: transform 34ms;
+      }
+
+      .anki-btn:focus:not(:focus-visible) {
+        outline: none;
+      }
+
+      .anki-btn:disabled {
+        cursor: not-allowed;
+        filter: grayscale(0.05) brightness(0.98);
+      }
+
+      .anki-btn:disabled .anki-btn-front {
+        transform: translateY(-1px);
+      }
+
+      .anki-btn--idle .anki-btn-edge {
+        background: linear-gradient(to left, #E5E7EB 0%, #D1D5DB 8%, #D1D5DB 92%, #E5E7EB 100%);
+      }
+
+      .anki-btn--idle .anki-btn-front {
+        color: #111827;
+        background: #FFFFFF;
+        border-color: rgba(17, 24, 39, 0.12);
+      }
+
+      .anki-btn--selected .anki-btn-edge {
+        background: linear-gradient(to left, #6EE7B7 0%, #34D399 8%, #34D399 92%, #6EE7B7 100%);
+      }
+
+      .anki-btn--selected .anki-btn-front {
+        color: #047857;
+        background: #D1FAE5;
+        border-color: rgba(16, 185, 129, 0.35);
+      }
+
+      .anki-btn--correct .anki-btn-edge {
+        background: linear-gradient(to left, #34D399 0%, #10B981 8%, #10B981 92%, #34D399 100%);
+      }
+
+      .anki-btn--correct .anki-btn-front {
+        color: #065F46;
+        background: #A7F3D0;
+        border-color: rgba(16, 185, 129, 0.45);
+      }
+
+      .anki-btn--wrong .anki-btn-edge {
+        background: linear-gradient(to left, #FCA5A5 0%, #F87171 8%, #F87171 92%, #FCA5A5 100%);
+      }
+
+      .anki-btn--wrong .anki-btn-front {
+        color: #991B1B;
+        background: #FEE2E2;
+        border-color: rgba(239, 68, 68, 0.45);
+      }
+
+      .anki-btn--muted .anki-btn-edge {
+        background: linear-gradient(to left, #E5E7EB 0%, #D1D5DB 8%, #D1D5DB 92%, #E5E7EB 100%);
+      }
+
+      .anki-btn--muted .anki-btn-front {
+        color: #6B7280;
+        background: #F3F4F6;
+        border-color: rgba(107, 114, 128, 0.2);
+      }
+
+      .anki-btn--primary .anki-btn-edge {
+        background: linear-gradient(to left, #6EE7B7 0%, #34D399 8%, #34D399 92%, #6EE7B7 100%);
+      }
+
+      .anki-btn--primary .anki-btn-front {
+        color: #064E3B;
+        background: #BBF7D0;
+        border-color: rgba(16, 185, 129, 0.45);
+        font-size: 0.95rem;
+        padding: 10px 22px;
+      }
     </style>
   <script type="importmap">
 {
