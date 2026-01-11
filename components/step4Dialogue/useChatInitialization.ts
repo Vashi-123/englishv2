@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import type { ChatMessage } from '../../types';
-import { loadLessonInitData, loadLessonScript, peekCachedLessonScript } from '../../services/generationService';
+import { loadLessonInitData, peekCachedLessonScript } from '../../services/generationService';
 import { createInitialLessonMessages, type LessonScriptV2 } from '../../services/lessonV2ClientEngine';
 import { isStep4DebugEnabled } from './debugFlags';
 import type { Step4PerfEventInput } from './useLessonPerfLog';
@@ -182,18 +182,10 @@ export function useChatInitialization({
         // ОПТИМИЗАЦИЯ: Параллельная загрузка данных
         // loadLessonInitData уже загружает все в одном RPC, но ensureLessonContext можно выполнить параллельно
         const initLoadSpan = startSpan('loadLessonInitData', { includeScript: !lessonScript });
-        
-        // 1. Принудительная проверка скрипта через умный загрузчик (проверяет updated_at и кеш)
-        const scriptPromise = loadLessonScript(day || 1, lesson || 1, level || 'A1');
-        
-        // 2. Загрузка метаданных (без скрипта)
-        const initDataPromise = loadLessonInitData(day || 1, lesson || 1, level || 'A1', {
-          includeScript: false, // Всегда false, так как мы грузим скрипт отдельно
-          includeMessages: opts?.includeMessages !== false,
+        const initData = await loadLessonInitData(day || 1, lesson || 1, level || 'A1', {
+          includeScript: !lessonScript, // Only load script if not already loaded
+          includeMessages: opts?.includeMessages !== false, // allow skip messages on forced restart
         });
-
-        const [scriptRaw, initData] = await Promise.all([scriptPromise, initDataPromise]);
-
         lessonIdRef.current = initData.lessonId || lessonIdRef.current;
         if (opts?.forceNewChat) {
           initData.messages = [];
@@ -201,7 +193,7 @@ export function useChatInitialization({
         }
         initLoadSpan?.('ok', {
           hasMessages: !!(initData.messages && initData.messages.length > 0),
-          hasScript: !!scriptRaw,
+          hasScript: !!initData.script,
           completed: !!initData.progress?.completed,
         });
 
@@ -225,16 +217,11 @@ export function useChatInitialization({
         }
 
         // Process script if loaded
-        if (scriptRaw) {
-          try {
-             const parsed = JSON.parse(scriptRaw);
-             setLessonScript(parsed as LessonScriptV2);
-             console.log('[Step4Dialogue] Lesson script loaded/verified:', !!parsed, !!parsed?.words);
-          } catch (e) {
-             console.error('[Step4Dialogue] Failed to parse loaded script:', e);
-          }
-        } else if (!lessonScript) {
-          console.warn('[Step4Dialogue] No script loaded and lessonScript is null');
+        if (initData.script && !lessonScript) {
+          setLessonScript(initData.script as LessonScriptV2);
+          console.log('[Step4Dialogue] Lesson script loaded from initData:', !!initData.script, !!(initData.script as LessonScriptV2)?.words);
+        } else if (!initData.script && !lessonScript) {
+          console.warn('[Step4Dialogue] No script in initData and lessonScript is null');
         }
 
         // Сообщения не загружаются - всегда начинаем с начала
@@ -244,12 +231,13 @@ export function useChatInitialization({
 
         // Ensure we have the script
         let script: LessonScriptV2;
-        // Мы уже обновили state выше, но React state updates are async, поэтому используем scriptRaw
-        if (scriptRaw) {
-          script = JSON.parse(scriptRaw) as LessonScriptV2;
-        } else if (lessonScript) {
+        if (lessonScript) {
           script = lessonScript;
-          console.log('[Step4Dialogue] Using existing lessonScript from state (fallback)');
+          console.log('[Step4Dialogue] Using existing lessonScript from state');
+        } else if (initData.script) {
+          script = initData.script as LessonScriptV2;
+          setLessonScript(script);
+          console.log('[Step4Dialogue] Parsed script from initData.script:', !!script, !!script?.words);
         } else {
           // Fallback: load script via ensureLessonScript
           console.log('[Step4Dialogue] Loading script via ensureLessonScript fallback');

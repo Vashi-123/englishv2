@@ -29,7 +29,7 @@ const getIdentityFilter = async (): Promise<{ column: 'user_id'; value: string }
 
 // In-memory lesson script cache to make Step4 openings instant after prefetch.
 const lessonScriptCache = new Map<string, string>();
-const lessonScriptStoragePrefix = 'englishv2:lessonScript:';
+export const lessonScriptStoragePrefix = 'englishv2:lessonScript:';
 
 // In-memory lesson ID cache to avoid repeated queries
 const lessonIdCache = new Map<string, string>();
@@ -76,11 +76,14 @@ const readLessonScriptFromSession = (cacheKey: string): string | null => {
   }
 };
 
-const writeLessonScriptToSession = (cacheKey: string, script: string) => {
+const writeLessonScriptToSession = (cacheKey: string, script: string, version?: string | null) => {
   try {
     if (typeof window === 'undefined') return;
     // Save to localStorage for persistence across sessions
     window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}`, script);
+    if (version) {
+      window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}:version`, version);
+    }
     // Also keep sessionStorage for backward compat if needed, but localStorage covers it.
     // We can clear sessionStorage to save memory if we want, but let's leave it alone or just use local.
   } catch {
@@ -118,14 +121,22 @@ const isLocalLessonScriptFresh = async (
       !primary.error && primary.data ? primary : await base.maybeSingle();
 
     if (error) {
-      console.warn("[isLocalLessonScriptFresh] Error checking freshness:", error);
-      return null;
+      console.warn("[isLocalLessonScriptFresh] Error checking freshness, forcing refresh:", error);
+      return false; // Force refresh on error
     }
+    
     const serverUpdatedAt = (data as any)?.updated_at;
-    if (!serverUpdatedAt) return null;
-    return new Date(serverUpdatedAt) <= new Date(params.localVersion);
-  } catch {
-    return null;
+    if (!serverUpdatedAt) {
+        console.warn("[isLocalLessonScriptFresh] No server updated_at found, forcing refresh");
+        return false; // Force refresh if no server data
+    }
+
+    const isFresh = new Date(serverUpdatedAt) <= new Date(params.localVersion);
+    console.log(`[isLocalLessonScriptFresh] day=${params.day} lesson=${params.lesson} server=${serverUpdatedAt} local=${params.localVersion} fresh=${isFresh}`);
+    return isFresh;
+  } catch (err) {
+    console.warn("[isLocalLessonScriptFresh] Exception checking freshness:", err);
+    return false; // Force refresh on exception
   }
 };
 
@@ -951,23 +962,20 @@ export const loadLessonScript = async (
     if (cached) return cached;
 
     const localCached = readLessonScriptFromLocal(cacheKey);
-    let usedLocalCache = false;
-    
     if (localCached) {
       const localVersion = readLessonScriptVersionFromLocal(cacheKey);
       const isFresh = await isLocalLessonScriptFresh({ day, lesson, level, localVersion });
-      
-      // Strict freshness check: only use local if we are sure it is fresh (isFresh === true)
-      // If isFresh is null (error/offline) or false (stale), we try to fetch from network.
-      if (isFresh === true) {
+      if (isFresh === true || isFresh === null) {
         lessonScriptCache.set(cacheKey, localCached);
         return localCached;
       }
     }
 
-    // Удаляем проверку sessionStorage, так как она может вернуть устаревшие данные, 
-    // минуя проверку версии (isLocalLessonScriptFresh).
-    // Мы полагаемся на localStorage + проверку версии выше.
+    const sessionCached = readLessonScriptFromSessionStorage(cacheKey);
+    if (sessionCached) {
+      lessonScriptCache.set(cacheKey, sessionCached);
+      return sessionCached;
+    }
 
     const base = supabase
       .from('lesson_scripts')
@@ -987,33 +995,22 @@ export const loadLessonScript = async (
         console.log("[loadLessonScript] No script found for day:", day, "lesson:", lesson);
         return null;
       }
-      console.error("[loadLessonScript] Error loading lesson script from DB:", error);
-      
-      // Fallback: If DB fetch fails (e.g. offline) and we have local cache (even if potentialy stale/unchecked), use it.
-      if (localCached) {
-        console.warn("[loadLessonScript] Network failed, falling back to local cache (potentially stale).");
-        lessonScriptCache.set(cacheKey, localCached);
-        return localCached;
-      }
-      
+      console.error("[loadLessonScript] Error loading lesson script:", error);
       return null;
     }
 
     const raw = (data as any)?.script != null ? JSON.stringify((data as any).script) : null;
+    const updatedAt = (data as any)?.updated_at;
 
     if (typeof raw !== "string") return null;
 
     // Some DB rows may contain a leading BOM/zero-width characters which break JSON.parse on the client.
     const cleaned = raw.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, "");
-    lessonScriptCache.set(cacheKey, cleaned);
-    writeLessonScriptToSession(cacheKey, cleaned);
     
-    // CRITICAL FIX: Also update the version in localStorage so subsequent checks are accurate.
-    if ((data as any)?.updated_at) {
-       if (typeof window !== 'undefined') {
-          window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}:version`, (data as any).updated_at);
-       }
-    }
+    console.log(`[loadLessonScript] Loaded fresh script for day=${day} lesson=${lesson}, version=${updatedAt}`);
+    
+    lessonScriptCache.set(cacheKey, cleaned);
+    writeLessonScriptToSession(cacheKey, cleaned, updatedAt);
 
     // Start background audio prefetch together with lesson_script caching.
     void prefetchTtsForLessonScript({ lessonCacheKey: cacheKey, scriptJsonString: cleaned });

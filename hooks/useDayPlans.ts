@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { DayPlan } from '../types';
 import { supabase } from '../services/supabaseClient';
-import { clearLessonScriptCacheFor } from '../services/generationService';
+import { clearLessonScriptCacheFor, lessonScriptStoragePrefix } from '../services/generationService';
 import type { ApiDayPlan } from '../types/api';
 
 // План берём из lesson_scripts (level = 'A1'), подписываемся на realtime.
@@ -102,6 +102,17 @@ export const useDayPlans = (level: string = 'A1') => {
             
             window.sessionStorage.setItem(themeKey, theme);
             if (updatedAt) window.sessionStorage.setItem(updatedAtKey, updatedAt);
+
+            // Check persistent lesson script version (localStorage)
+            // This fixes the issue where closing the tab (clearing sessionStorage) broke invalidation logic.
+            const scriptCacheKey = `${level}:${row.day}:${row.lesson}`;
+            const scriptVersionKey = `${lessonScriptStoragePrefix}${scriptCacheKey}:version`;
+            const localScriptVersion = window.localStorage.getItem(scriptVersionKey);
+
+            if (localScriptVersion && updatedAt && localScriptVersion !== updatedAt) {
+              shouldClearFromStorage = true;
+              console.log(`[useDayPlans] Detected stale script for day=${row.day} lesson=${row.lesson}. Local=${localScriptVersion}, Server=${updatedAt}`);
+            }
           }
         } catch {
           // ignore
@@ -181,8 +192,10 @@ export const useDayPlans = (level: string = 'A1') => {
           // Invalidate cache immediately on UPDATE/INSERT to ensure fresh scripts
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
             const newRow = payload.new as { day?: number; lesson?: number; level?: string };
+            console.log('[useDayPlans] Realtime update detected:', payload.new);
             if (newRow?.day && newRow?.lesson && newRow?.level === level) {
               clearLessonScriptCacheFor(newRow.day, newRow.lesson, level);
+              console.log(`[useDayPlans] Cleared cache for day=${newRow.day} lesson=${newRow.lesson}`);
             }
           }
           // Reload plans to update UI

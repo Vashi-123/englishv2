@@ -188,10 +188,8 @@ export function Step4DialogueScreen({
   const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (lessonScript) {
-      console.log('[Step4DialogueScreen] FULL LESSON SCRIPT:', lessonScript);
-    }
-  }, [lessonScript]);
+    // Logging removed
+  }, [lessonScript, day, lesson, resolvedLevel]);
 
   const [showTranslations, setShowTranslations] = useState<Record<number, boolean>>({});
 

@@ -16,6 +16,7 @@ import {
   prefetchLessonInitData,
   prefetchLessonScript,
   resetUserProgress,
+  syncAllLessonScripts,
   upsertLessonProgress,
 } from '../services/generationService';
 import { FREE_LESSON_COUNT, primeBillingProductCache } from '../services/billingService';
@@ -148,6 +149,14 @@ export const AppContent: React.FC<{
 
   // Day plans management
   const dayPlans = dashboardData?.dayPlans || [];
+
+  // Background sync of lesson scripts to ensure freshness
+  useEffect(() => {
+    if (dayPlans.length > 0) {
+      void syncAllLessonScripts(level);
+    }
+  }, [dayPlans.length, level]);
+
   const planLoading = dashboardLoading;
   const planError = null; // Error handled by useDashboardData
   const reloadPlans = reloadDashboard;
