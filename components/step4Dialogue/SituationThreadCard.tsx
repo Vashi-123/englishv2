@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, Check, Languages } from 'lucide-react';
 import type { AudioQueueItem } from '../../types';
 import { CardHeading } from './CardHeading';
@@ -56,7 +56,165 @@ export function SituationThreadCard({
   const [shownTranslations, setShownTranslations] = useState<Record<string, boolean>>({});
   const [dialogueVisible, setDialogueVisible] = useState<boolean>(Boolean(started));
   const [checkmarkVisible, setCheckmarkVisible] = useState<Record<string, boolean>>({});
+  const [delayedTasksVisible, setDelayedTasksVisible] = useState<Record<string, boolean>>({});
+  const [pendingTaskReady, setPendingTaskReady] = useState<Record<string, boolean>>({});
   const dialogueRef = useRef<HTMLDivElement | null>(null);
+  const taskTimersRef = useRef<Record<string, number>>({});
+  const taskTimerStartedAtRef = useRef<Record<string, number>>({});
+  const stepsSignatureRef = useRef<string | null>(null);
+  const autoplaySeenRef = useRef<Record<string, boolean>>({});
+  const autoplayFinishedRef = useRef<Record<string, boolean>>({});
+
+  const normalizeAiText = useCallback((text?: string) => {
+    if (!text) return '';
+    return String(text).replace(/\s+/g, ' ').trim();
+  }, []);
+
+  const isAutoPlayingText = useCallback(
+    (text?: string) => {
+      const normalized = normalizeAiText(text);
+      if (!normalized) return false;
+      const currentKind = currentAudioItem?.kind;
+      const currentText = normalizeAiText(currentAudioItem?.text);
+      return currentKind === 'situation_ai' && currentText === normalized;
+    },
+    [currentAudioItem, normalizeAiText]
+  );
+
+  const clearTaskTimer = useCallback((key: string) => {
+    const timer = taskTimersRef.current[key];
+    if (timer) {
+      window.clearTimeout(timer);
+      delete taskTimersRef.current[key];
+    }
+  }, []);
+
+  const markPendingReady = useCallback((key: string) => {
+    setPendingTaskReady((prev) => {
+      if (prev[key]) return prev;
+      return { ...prev, [key]: true };
+    });
+  }, []);
+
+  const startTaskTimer = useCallback(
+    (key: string, useDelay: boolean) => {
+      clearTaskTimer(key);
+      taskTimerStartedAtRef.current[key] = Date.now();
+      if (!useDelay) {
+        markPendingReady(key);
+        return;
+      }
+      taskTimersRef.current[key] = window.setTimeout(() => {
+        markPendingReady(key);
+        delete taskTimersRef.current[key];
+      }, 500);
+    },
+    [clearTaskTimer, markPendingReady]
+  );
+
+  useEffect(() => {
+    return () => {
+      Object.keys(taskTimersRef.current).forEach((key) => {
+        const timer = taskTimersRef.current[key];
+        if (timer) window.clearTimeout(timer);
+      });
+      taskTimersRef.current = {};
+      taskTimerStartedAtRef.current = {};
+      autoplaySeenRef.current = {};
+      autoplayFinishedRef.current = {};
+    };
+  }, []);
+
+  useEffect(() => {
+    clearTaskTimer('initial');
+    taskTimerStartedAtRef.current['initial'] = 0;
+    autoplaySeenRef.current['initial'] = false;
+    autoplayFinishedRef.current['initial'] = false;
+    setPendingTaskReady((prev) => ({ ...prev, initial: false }));
+    setDelayedTasksVisible((prev) => ({ ...prev, initial: false }));
+    if (!task) return;
+    startTaskTimer('initial', Boolean(normalizeAiText(ai)));
+    return () => clearTaskTimer('initial');
+  }, [ai, task, normalizeAiText, startTaskTimer, clearTaskTimer]);
+
+  useEffect(() => {
+    const signature = steps
+      .map((step) => `${step.id}:${Boolean(step.task)}:${normalizeAiText(step.ai)}`)
+      .join('|');
+    if (stepsSignatureRef.current === signature) {
+      return;
+    }
+    stepsSignatureRef.current = signature;
+
+    steps.forEach((step) => {
+      const key = step.id;
+      clearTaskTimer(key);
+      taskTimerStartedAtRef.current[key] = 0;
+      autoplaySeenRef.current[key] = false;
+      autoplayFinishedRef.current[key] = false;
+      setPendingTaskReady((prev) => ({ ...prev, [key]: false }));
+      setDelayedTasksVisible((prev) => ({ ...prev, [key]: false }));
+      if (step.task) {
+        startTaskTimer(key, Boolean(normalizeAiText(step.ai)));
+      }
+    });
+  }, [steps, normalizeAiText, startTaskTimer, clearTaskTimer]);
+
+  useEffect(() => {
+    const updateAutoplayState = (key: string, text?: string) => {
+      const normalized = normalizeAiText(text);
+      if (!normalized) return;
+      const currentText = normalizeAiText(currentAudioItem?.text);
+      const isSame = currentAudioItem?.kind === 'situation_ai' && currentText === normalized;
+      if (isSame) {
+        autoplaySeenRef.current[key] = true;
+        autoplayFinishedRef.current[key] = false;
+        return;
+      }
+      if (autoplaySeenRef.current[key]) {
+        autoplayFinishedRef.current[key] = true;
+      }
+    };
+
+    if (task) updateAutoplayState('initial', ai);
+    steps.forEach((step) => {
+      if (step.task) updateAutoplayState(step.id, step.ai);
+    });
+  }, [ai, task, steps, currentAudioItem, normalizeAiText]);
+
+  useEffect(() => {
+    const shouldAllowAfterGrace = (key: string) => {
+      const startedAt = taskTimerStartedAtRef.current[key] || 0;
+      if (!startedAt) return false;
+      return Date.now() - startedAt >= 1500;
+    };
+
+    const updateTaskVisibility = (key: string, text?: string) => {
+      if (!pendingTaskReady[key]) return;
+      if (delayedTasksVisible[key]) return;
+
+      const normalizedText = normalizeAiText(text);
+      const hasSeenAutoplay = normalizedText ? autoplaySeenRef.current[key] : false;
+      const finishedAutoplay = normalizedText ? autoplayFinishedRef.current[key] : true;
+
+      // Only set to true if autoplay is finished OR there was no autoplay
+      if (finishedAutoplay || !normalizedText) {
+        setDelayedTasksVisible((prev) => {
+          if (prev[key]) return prev;
+          return { ...prev, [key]: true };
+        });
+      }
+    };
+
+    if (task) {
+      updateTaskVisibility('initial', ai);
+    }
+    steps.forEach((step) => {
+      if (step.task) {
+        updateTaskVisibility(step.id, step.ai);
+      }
+    });
+  }, [ai, steps, task, pendingTaskReady, delayedTasksVisible, currentAudioItem, normalizeAiText]);
 
   useEffect(() => {
     if (!started) {
@@ -237,29 +395,30 @@ export function SituationThreadCard({
                               ? 'bg-brand-primary/5 border-brand-primary/30 text-brand-primary'
                               : 'bg-white border-gray-100 text-gray-900'
                           } ${processAudioQueue ? 'cursor-pointer hover:bg-gray-50' : ''}`}
-                        >
+                          >
                           {renderMarkdown(ai)}
                         </div>
                       </div>
                     </div>
                     {task ? (
                       <div className="pt-2">
-                        {renderTaskBanner(task)}
+                        {renderTaskBanner(task, Boolean(delayedTasksVisible['initial']) && !isAutoPlayingText(ai))}
                       </div>
                     ) : null}
                   </div>
 		            )}
 
-	            {steps.map((step) => {
-                const translationVisible = Boolean(shownTranslations[step.id]);
-                const hasTranslation = Boolean(step.translation && step.translation.trim());
-                const hasAi = Boolean(step.ai && step.ai.trim());
-                const hasTask = Boolean(step.task && step.task.trim());
-                const hasUser = Boolean(step.userAnswer && step.userAnswer.trim());
-                const isSpeaking =
-                  currentAudioItem?.kind === 'situation_ai' && currentAudioItem?.text === String(step.ai || '');
+            {steps.map((step) => {
+              const translationVisible = Boolean(shownTranslations[step.id]);
+              const hasTranslation = Boolean(step.translation && step.translation.trim());
+              const hasAi = Boolean(step.ai && step.ai.trim());
+              const hasTask = Boolean(step.task && step.task.trim());
+              const taskVisible = step.taskVisible !== false && Boolean(delayedTasksVisible[step.id]) && !(step.ai && isAutoPlayingText(step.ai));
+              const hasUser = Boolean(step.userAnswer && step.userAnswer.trim());
+              const isSpeaking =
+                currentAudioItem?.kind === 'situation_ai' && currentAudioItem?.text === String(step.ai || '');
 
-                return (
+              return (
                   <div key={step.id} className="space-y-2 mb-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     {hasAi && (
                       <div className="flex justify-start items-center gap-3">
@@ -319,7 +478,7 @@ export function SituationThreadCard({
 
                     {hasTask ? (
                       <div className="pt-2">
-                        {renderTaskBanner(step.task || '', step.taskVisible !== false)}
+                        {renderTaskBanner(step.task || '', taskVisible)}
                       </div>
                     ) : null}
 
