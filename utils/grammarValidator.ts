@@ -80,6 +80,8 @@ function normalizeText(text: string): string {
     // Знак вопроса оставляем для проверки вопросов (удаляем только в конце, если нужно)
     // Нормализация пробелов
     .replace(/\s+/g, ' ')
+    // Синонимы приветствий
+    .replace(/\bhi\b/g, 'hello')
     // Разворачивание сокращений (с апострофом)
     .replace(/\bi'm\b/g, 'i am')
     .replace(/\byou're\b/g, 'you are')
@@ -804,8 +806,8 @@ function validateSingleVariant(
   }> = [];
 
   for (const contraction of contractions) {
-    // Используем matchAll для поиска всех вхождений (без флага 'i', чтобы сохранить регистр)
-    const expectedRegex = new RegExp(contraction.pattern.source, 'g');
+    // Используем matchAll для поиска всех вхождений (с флагом 'i', чтобы найти в любом регистре)
+    const expectedRegex = new RegExp(contraction.pattern.source, 'gi');
     const expectedMatches = Array.from(expectedString.matchAll(expectedRegex));
     
     if (expectedMatches.length === 0) continue;

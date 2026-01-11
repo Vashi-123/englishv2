@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Book, X, ChevronDown } from 'lucide-react';
+import { Book, X, ChevronDown, Search } from 'lucide-react';
 import { parseMarkdown } from '../step4Dialogue/markdown';
 
 interface GrammarCard {
@@ -30,38 +30,75 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [openCardKey, setOpenCardKey] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
-  const getCardKey = (card: GrammarCard, index: number) => `grammar-${card.day}-${card.lesson}-${index}`;
+  // Reset search when modal opens/closes
+  useEffect(() => {
+    if (!isOpen) setSearchQuery('');
+  }, [isOpen]);
+
+  const getCardKey = (card: GrammarCard) => `grammar-${card.day}-${card.lesson}-${card.theme}`;
+
+  const filteredCards = useMemo(() => {
+    if (!searchQuery.trim()) return cards;
+    const lowerQuery = searchQuery.toLowerCase();
+    return cards.filter((card) => 
+      (card.theme || '').toLowerCase().includes(lowerQuery) || 
+      (card.grammar || '').toLowerCase().includes(lowerQuery)
+    );
+  }, [cards, searchQuery]);
 
   const defaultOpenKey = useMemo(() => {
     if (!cards.length) return null;
-    let targetIndex = cards.findIndex((card) => card.day === currentDayId);
-    if (targetIndex === -1) {
+    let targetCard = cards.find((card) => card.day === currentDayId);
+    
+    if (!targetCard) {
+      // Find the last card that is <= currentDayId
       for (let i = cards.length - 1; i >= 0; i -= 1) {
         if (cards[i].day <= currentDayId) {
-          targetIndex = i;
+          targetCard = cards[i];
           break;
         }
       }
     }
-    if (targetIndex === -1) targetIndex = 0;
-    return getCardKey(cards[targetIndex], targetIndex);
+    
+    if (!targetCard && cards.length > 0) {
+      targetCard = cards[0];
+    }
+    
+    return targetCard ? getCardKey(targetCard) : null;
   }, [cards, currentDayId]);
 
   useEffect(() => {
     if (!isOpen) return;
-    setOpenCardKey(defaultOpenKey);
-  }, [isOpen, defaultOpenKey]);
+    // Only set default open key if we are not searching (which is true on open due to reset)
+    if (!searchQuery) {
+        setOpenCardKey(defaultOpenKey);
+    }
+  }, [isOpen, defaultOpenKey, searchQuery]);
 
   useEffect(() => {
-    if (!isOpen || !defaultOpenKey) return;
+    if (!isOpen || !defaultOpenKey || searchQuery) return;
     const target = cardRefs.current.get(defaultOpenKey);
-    if (!target) return;
+    const container = scrollContainerRef.current;
+
+    if (!target || !container) return;
+
     const frameId = requestAnimationFrame(() => {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const targetTop = target.getBoundingClientRect().top;
+      const containerTop = container.getBoundingClientRect().top;
+      const scrollTop = container.scrollTop;
+      
+      // Скроллим так, чтобы сверху был отступ 5px
+      const offset = targetTop - containerTop - 5;
+      
+      container.scrollTo({ 
+        top: scrollTop + offset, 
+        behavior: 'smooth' 
+      });
     });
     return () => cancelAnimationFrame(frameId);
-  }, [isOpen, defaultOpenKey, cards.length]);
+  }, [isOpen, defaultOpenKey, cards.length, searchQuery]);
 
   if (!isOpen) return null;
 
@@ -83,7 +120,7 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
           }`}
         >
           <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 mb-4">
               <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
                 <Book className="w-7 h-7 text-brand-primary" />
               </div>
@@ -104,6 +141,19 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
+            
+            <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Search className="h-4 w-4 text-gray-400" />
+                </div>
+                <input
+                    type="text"
+                    placeholder="Поиск по темам..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary/50 transition duration-150 ease-in-out text-sm font-medium"
+                />
+            </div>
           </div>
 
           <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-5 sm:px-6 lg:px-8 py-6">
@@ -113,17 +163,21 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
                   <div className="w-12 h-12 border-4 border-gray-200 border-t-brand-primary rounded-full animate-spin" />
                 </div>
               </div>
-            ) : cards.length === 0 ? (
+            ) : filteredCards.length === 0 ? (
               <div className="text-center py-12">
                 <Book className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-600 font-medium">Пока нет изученной грамматики</p>
-                <p className="text-sm text-gray-500 mt-2">Грамматика появится здесь после прохождения уроков</p>
+                <p className="text-gray-600 font-medium">
+                  {searchQuery ? 'Ничего не найдено' : 'Пока нет изученной грамматики'}
+                </p>
+                <p className="text-sm text-gray-500 mt-2">
+                  {searchQuery ? 'Попробуйте изменить запрос' : 'Грамматика появится здесь после прохождения уроков'}
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
-                {cards.map((card, index) => {
+                {filteredCards.map((card) => {
                   const isActive = card.day <= currentDayId;
-                  const cardKey = getCardKey(card, index);
+                  const cardKey = getCardKey(card);
                   const isOpen = cardKey === openCardKey;
 
                   return (

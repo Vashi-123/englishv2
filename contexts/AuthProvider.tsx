@@ -668,10 +668,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // On iOS/Safari, returning via back-forward cache can keep stale state (white screen).
       // Refresh auth session on restore.
       if (e.persisted) {
-        // ОПТИМИЗАЦИЯ: Не ставим loading=true если сессия уже есть, чтобы не перерисовывать весь интерфейс
-        if (!sessionRef.current) {
-          setLoading(true);
-        }
+        // ОПТИМИЗАЦИЯ: Не ставим loading=true, чтобы не сбрасывать состояние форм (ввод email/пароля)
+        // if (!sessionRef.current) {
+        //   setLoading(true);
+        // }
         void refreshSession();
       }
     };
@@ -688,17 +688,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             } catch {
               // ignore
             }
-            // ОПТИМИЗАЦИЯ: Не ставим loading=true если сессия уже есть, чтобы не перерисовывать весь интерфейс
-            if (!sessionRef.current) {
-              setLoading(true);
-            }
+            // ОПТИМИЗАЦИЯ: Не ставим loading=true, чтобы не сбрасывать состояние форм (ввод email/пароля)
+            // if (!sessionRef.current) {
+            //   setLoading(true);
+            // }
             void refreshSession();
           })();
         } else {
-          // ОПТИМИЗАЦИЯ: Не ставим loading=true если сессия уже есть, чтобы не перерисовывать весь интерфейс
-          if (!sessionRef.current) {
-            setLoading(true);
-          }
+          // ОПТИМИЗАЦИЯ: Не ставим loading=true, чтобы не сбрасывать состояние форм (ввод email/пароля)
+          // if (!sessionRef.current) {
+          //   setLoading(true);
+          // }
           void refreshSession();
         }
       }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '../../services/supabaseClient';
-import { Apple, Chrome, Mail, Lock, LogIn, UserPlus, Loader2 } from 'lucide-react';
+import { Mail, Lock, LogIn, UserPlus, Loader2 } from 'lucide-react';
 import { openAuthSession } from '../../services/authSession';
 
 type PartnerAuthScreenProps = {
@@ -13,6 +13,10 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [password2, setPassword2] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpDigits, setOtpDigits] = useState<string[]>(Array(6).fill(''));
+  const [resetStage, setResetStage] = useState<'request' | 'code' | 'password'>('request');
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
   const oauthCompletionRef = useRef<{ startedAt: number; completed: boolean } | null>(null);
@@ -20,9 +24,15 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
   const [message, setMessage] = useState<string | null>(null);
 
   const minPasswordOk = password.trim().length >= 6;
+  const resetReady =
+    resetStage === 'request'
+      ? Boolean(email)
+      : resetStage === 'code'
+        ? Boolean(email) && otp.trim().length === 6
+        : Boolean(email) && password.trim().length >= 6 && password2.trim().length >= 6;
   const canSubmit =
     !loading &&
-    (mode === 'reset' ||
+    ((mode === 'reset' && resetReady) ||
       (mode === 'login' && Boolean(email) && minPasswordOk) ||
       (mode === 'signup' && Boolean(email) && minPasswordOk));
   
@@ -43,7 +53,7 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
     }
   })();
   
-  const showOAuth = (mode === 'login' || mode === 'signup');
+  const showOAuth = mode === 'login';
   // Partner signups should NOT see the consumer paywall; we route through /auth/confirm with a partner flag
   // so EmailConfirmScreen can show a partner-specific success screen and redirect to /partners.
   const emailConfirmUrl = (() => {
@@ -156,12 +166,55 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
           setError('Заполни email');
           return;
         }
-        const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-          email,
-          { redirectTo: emailConfirmUrl }
-        );
-        if (resetError) throw resetError;
-        setMessage('Мы отправили письмо для сброса пароля. Откройте ссылку из письма и вернитесь в приложение.');
+        if (resetStage === 'request') {
+          const { error: otpError } = await supabase.auth.signInWithOtp({
+            email,
+            options: { shouldCreateUser: false },
+          });
+          if (otpError) throw otpError;
+          setMessage('Мы отправили код на email. Введи его ниже.');
+          setResetStage('code');
+          return;
+        }
+        if (resetStage === 'code') {
+          if (!otp || otp.length !== 6) {
+            setError('Введи 6-значный код из письма');
+            return;
+          }
+          const { data, error: verifyError } = await supabase.auth.verifyOtp({
+            email,
+            token: otp,
+            type: 'email',
+          });
+          if (verifyError) throw verifyError;
+          if (data?.session) {
+            await supabase.auth.setSession(data.session);
+          }
+          setMessage('Код подтвержден. Придумай новый пароль.');
+          setResetStage('password');
+          return;
+        }
+        if (!otp) {
+          setError('Введи код из письма');
+          return;
+        }
+        if (!password || password.length < 6) {
+          setError('Пароль должен быть минимум 6 символов');
+          return;
+        }
+        if (password !== password2) {
+          setError('Пароли не совпадают');
+          return;
+        }
+        const { error: updateError } = await supabase.auth.updateUser({ password });
+        if (updateError) throw updateError;
+        setMessage('Пароль обновлён. Теперь можно войти с новым паролем.');
+        setMode('login');
+        setPassword('');
+        setPassword2('');
+        setOtp('');
+        setOtpDigits(Array(6).fill(''));
+        setResetStage('request');
         return;
       }
       if (mode === 'login') {
@@ -494,8 +547,31 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                         <span className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <>
-                          <Chrome className="w-4 h-4" />
-                          Войти через Google
+                          <svg
+                            className="w-4 h-4"
+                            viewBox="0 0 512 512"
+                            xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden="true"
+                            focusable="false"
+                          >
+                            <path
+                              fill="#FBBB00"
+                              d="M113.47 309.408 95.648 375.94l-65.139 1.378C11.042 341.211 0 299.9 0 256c0-42.451 10.324-82.483 28.624-117.732h.014l57.992 10.632 25.404 57.644c-5.317 15.501-8.215 32.141-8.215 49.456 0 18.792 3.404 36.797 9.651 53.408Z"
+                            />
+                            <path
+                              fill="#518EF8"
+                              d="M507.527 208.176C510.467 223.662 512 239.655 512 256c0 18.328-1.927 36.206-5.598 53.451-12.462 58.683-45.025 109.925-90.134 146.187l-.014-.014-73.044-3.727-10.338-64.535c29.932-17.554 53.324-45.025 65.646-77.911H261.626v-101.275h138.887l107.014-.001Z"
+                            />
+                            <path
+                              fill="#28B446"
+                              d="m416.253 455.624.014.014C372.396 490.901 316.666 512 256 512c-97.491 0-182.252-54.491-225.491-134.681l82.961-67.91c21.619 57.698 77.278 98.771 142.53 98.771 28.047 0 54.323-7.582 76.87-20.818l83.383 68.262Z"
+                            />
+                            <path
+                              fill="#F14336"
+                              d="m419.404 58.936-82.933 67.896C313.136 112.246 285.552 103.82 256 103.82c-66.729 0-123.429 42.957-143.965 102.724l-83.397-68.276h-.014C71.23 56.123 157.06 0 256 0c62.115 0 119.068 22.126 163.404 58.936Z"
+                            />
+                          </svg>
+                          Google
                         </>
                       )}
                     </button>
@@ -509,8 +585,23 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                         <span className="h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
                       ) : (
                         <>
-                          <Apple className="w-4 h-4" />
-                          Войти через Apple
+                          <svg
+                            className="w-4 h-4"
+                            viewBox="0 0 22.773 22.773"
+                            xmlns="http://www.w3.org/2000/svg"
+                            aria-hidden="true"
+                            focusable="false"
+                          >
+                            <path
+                              fill="currentColor"
+                              d="M15.769 0c.053 0 .106 0 .162 0 .13 1.606-.483 2.806-1.228 3.675-.731.863-1.732 1.7-3.351 1.573-.108-1.583.506-2.694 1.25-3.561C13.292.879 14.557.16 15.769 0Z"
+                            />
+                            <path
+                              fill="currentColor"
+                              d="M20.67 16.716c0 .016 0 .03 0 .045-.455 1.378-1.104 2.559-1.896 3.655-.723.995-1.609 2.334-3.191 2.334-1.367 0-2.275-.879-3.676-.903-1.482-.024-2.297.735-3.652.926h-.462c-.995-.144-1.798-.932-2.383-1.642-1.725-2.098-3.058-4.808-3.306-8.276v-1.019c.105-2.482 1.311-4.5 2.914-5.478.846-.52 2.009-.963 3.304-.765.555.086 1.122.276 1.619.464.471.181 1.06.502 1.618.485.378-.011.754-.208 1.135-.347 1.116-.403 2.21-.865 3.652-.648 1.733.262 2.963 1.032 3.723 2.22-1.466.933-2.625 2.339-2.427 4.74.198 2.422 1.466 3.698 3.05 4.45Z"
+                            />
+                          </svg>
+                          Apple
                         </>
                       )}
                     </button>
@@ -573,6 +664,10 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                       onClick={() => {
                         setMode('reset');
                         setPassword('');
+                        setPassword2('');
+                        setOtp('');
+                        setResetStage('request');
+                        setOtpDigits(Array(6).fill(''));
                         setError(null);
                         setMessage(null);
                       }}
@@ -580,6 +675,81 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                       Забыл пароль?
                     </button>
                   </div>
+                )}
+
+                {mode === 'reset' && resetStage === 'code' && (
+                  <>
+                    <label className="block space-y-2">
+                      <div className="text-sm font-semibold text-slate-800">Код из письма</div>
+                      <div className="flex items-center justify-center gap-3">
+                        {otpDigits.map((digit, idx) => (
+                          <input
+                            key={idx}
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+                            maxLength={1}
+                            value={digit}
+                            onChange={(e) => {
+                              const raw = e.target.value.replace(/\\D/g, '');
+                              const nextDigit = raw.slice(-1);
+                              const next = [...otpDigits];
+                              next[idx] = nextDigit;
+                              setOtpDigits(next);
+                              setOtp(next.join(''));
+                              if (nextDigit && e.currentTarget.nextElementSibling instanceof HTMLInputElement) {
+                                e.currentTarget.nextElementSibling.focus();
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Backspace' && !otpDigits[idx]) {
+                                if (e.currentTarget.previousElementSibling instanceof HTMLInputElement) {
+                                  e.currentTarget.previousElementSibling.focus();
+                                }
+                              }
+                            }}
+                            className={`h-12 w-10 rounded-xl border border-transparent text-center text-lg font-semibold text-slate-900 outline-none transition duration-200 ${digit ? 'bg-brand-primary/10' : 'bg-slate-200'} focus:bg-brand-primary/10 focus:ring-2 focus:ring-brand-primary/20`}
+                          />
+                        ))}
+                      </div>
+                    </label>
+                  </>
+                )}
+
+                {mode === 'reset' && resetStage === 'password' && (
+                  <>
+                    <label className="block space-y-2">
+                      <div className="text-sm font-semibold text-slate-800">Новый пароль</div>
+                      <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:border-brand-primary/60 focus-within:ring-2 focus-within:ring-brand-primary/10 transition">
+                        <Lock className="w-4 h-4 text-gray-400" />
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full bg-transparent outline-none text-base"
+                          placeholder="Минимум 6 символов"
+                          minLength={6}
+                          autoComplete="new-password"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="block space-y-2">
+                      <div className="text-sm font-semibold text-slate-800">Повтори пароль</div>
+                      <div className="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 bg-white focus-within:border-brand-primary/60 focus-within:ring-2 focus-within:ring-brand-primary/10 transition">
+                        <Lock className="w-4 h-4 text-gray-400" />
+                        <input
+                          type="password"
+                          value={password2}
+                          onChange={(e) => setPassword2(e.target.value)}
+                          className="w-full bg-transparent outline-none text-base"
+                          placeholder="Повтори пароль"
+                          minLength={6}
+                          autoComplete="new-password"
+                        />
+                      </div>
+                    </label>
+                  </>
                 )}
 
                 {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">{error}</div>}
@@ -598,7 +768,7 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                   ) : mode === 'reset' ? (
                     <>
                       <Mail className="w-4 h-4" />
-                      Отправить ссылку
+                      {resetStage === 'request' ? 'Отправить код' : resetStage === 'code' ? 'Проверить код' : 'Сбросить пароль'}
                     </>
                   ) : mode === 'login' ? (
                     <>
@@ -622,6 +792,11 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                         className="text-brand-primary font-semibold hover:underline"
                         onClick={() => {
                           setMode('login');
+                          setPassword('');
+                          setPassword2('');
+                          setOtp('');
+                          setResetStage('request');
+                          setOtpDigits(Array(6).fill(''));
                           setError(null);
                           setMessage(null);
                         }}
@@ -638,6 +813,10 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                         onClick={() => {
                           setMode('signup');
                           setPassword('');
+                          setPassword2('');
+                          setOtp('');
+                          setResetStage('request');
+                          setOtpDigits(Array(6).fill(''));
                           setError(null);
                           setMessage(null);
                         }}
@@ -654,6 +833,10 @@ export const PartnerAuthScreen: React.FC<PartnerAuthScreenProps> = ({ onAuthSucc
                         onClick={() => {
                           setMode('login');
                           setPassword('');
+                          setPassword2('');
+                          setOtp('');
+                          setResetStage('request');
+                          setOtpDigits(Array(6).fill(''));
                           setError(null);
                           setMessage(null);
                         }}

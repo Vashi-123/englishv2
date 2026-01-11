@@ -111,7 +111,9 @@ const LandingPage: React.FC = () => {
 
   // Автоматический редирект на /app при наличии сессии
   useEffect(() => {
-    if (!loading && session?.user?.id) {
+    // Если идет процесс сброса пароля (в AuthScreen), не делаем авто-редирект
+    const isResetting = sessionStorage.getItem('englishv2_reset_flow') === '1';
+    if (!loading && session?.user?.id && !isResetting) {
       navigate('/app', { replace: true });
     }
   }, [loading, session, navigate]);
@@ -136,7 +138,8 @@ const LandingPage: React.FC = () => {
   }
 
   // Если есть сессия, но мы все еще на LandingPage, показываем лоадер и ждем редиректа
-  if (session?.user?.id) {
+  const isResetting = sessionStorage.getItem('englishv2_reset_flow') === '1';
+  if (session?.user?.id && !isResetting) {
     return <LoadingScreen />;
   }
 

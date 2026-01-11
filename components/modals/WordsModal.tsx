@@ -225,7 +225,13 @@ export const WordsModal: React.FC<WordsModalProps> = ({
                     return (
                       <div
                         key={word.id}
-                        className="w-full rounded-2xl border border-gray-200 bg-white hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all p-4"
+                        onClick={() => {
+                          const normalizedWord = String(word.word || '').replace(/\s+/g, ' ').trim();
+                          if (normalizedWord) {
+                            processAudioQueue([{ text: normalizedWord, lang: 'en', kind: 'word' }]);
+                          }
+                        }}
+                        className="w-full rounded-2xl border border-gray-200 bg-white hover:border-brand-primary/30 hover:bg-brand-primary/5 transition-all p-4 cursor-pointer"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex-1">
