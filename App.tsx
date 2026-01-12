@@ -455,7 +455,6 @@ const PartnerPage: React.FC = () => {
     <PartnerAuthScreen
       onAuthSuccess={async () => {
         await refreshSession();
-        navigate('/partners', { replace: true });
       }}
     />
   );

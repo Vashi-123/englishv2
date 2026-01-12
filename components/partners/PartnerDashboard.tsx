@@ -49,7 +49,6 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   const [selectedMonthIndex, setSelectedMonthIndex] = useState<number | null>(null);
   const [paymentsPage, setPaymentsPage] = useState(1);
   const [payoutsPage, setPayoutsPage] = useState(1);
@@ -276,17 +275,6 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
     return '—';
   };
 
-  const toggleMonth = (monthKey: string) => {
-    setExpandedMonths(prev => {
-      const next = new Set(prev);
-      if (next.has(monthKey)) {
-        next.delete(monthKey);
-      } else {
-        next.add(monthKey);
-      }
-      return next;
-    });
-  };
 
   // Получаем все месяцы включая текущий (даже если платежей нет)
   const getAllMonths = () => {
@@ -1033,76 +1021,6 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
           </div>
         )}
 
-        {/* Monthly History */}
-        {stats?.monthlyStats && stats.monthlyStats.length > 0 && (
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm overflow-hidden mb-6 sm:mb-8">
-            <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-              <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary" />
-                <h2 className="text-base sm:text-lg font-black text-slate-900">История по месяцам</h2>
-              </div>
-            </div>
-            
-            <div className="divide-y divide-gray-200">
-              {stats.monthlyStats.slice().reverse().map((month) => {
-                const isExpanded = expandedMonths.has(month.monthKey);
-                return (
-                  <div key={month.monthKey} className="hover:bg-gray-50 transition-colors">
-                    <button
-                      onClick={() => toggleMonth(month.monthKey)}
-                      className="w-full px-4 sm:px-6 py-4 flex items-center justify-between gap-4 text-left"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-base sm:text-lg font-bold text-slate-900">{month.month}</h3>
-                          <span className="text-xs font-semibold text-gray-500">({month.monthKey})</span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3 sm:gap-4">
-                          <div>
-                            <p className="text-xs text-gray-600 mb-1">Выручка</p>
-                            <p className="text-sm sm:text-base font-bold text-emerald-600">
-                              {formatCurrency(month.revenue, month.currency)}
-                            </p>
-                          </div>
-                          <div>
-                            <p className="text-xs text-gray-600 mb-1">Платежей</p>
-                            <p className="text-sm sm:text-base font-bold text-slate-900">
-                              {month.totalPayments}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="shrink-0">
-                        {isExpanded ? (
-                          <ChevronUp className="w-5 h-5 text-gray-400" />
-                        ) : (
-                          <ChevronDown className="w-5 h-5 text-gray-400" />
-                        )}
-                      </div>
-                    </button>
-                    
-                    {isExpanded && (
-                      <div className="px-4 sm:px-6 pb-4 pt-2 border-t border-gray-100">
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          <div className="bg-gray-50 rounded-xl p-4">
-                            <p className="text-xs font-semibold text-gray-600 mb-2">Выручка</p>
-                            <p className="text-xl font-black text-emerald-600">
-                              {formatCurrency(month.revenue, month.currency)}
-                            </p>
-                          </div>
-                          <div className="bg-gray-50 rounded-xl p-4">
-                            <p className="text-xs font-semibold text-gray-600 mb-2">Платежей</p>
-                            <p className="text-xl font-black text-slate-900">{month.totalPayments}</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {/* Monthly Chart */}
         {chartData && chartData.length > 0 && (
