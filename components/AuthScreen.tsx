@@ -101,12 +101,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
       (mode === 'login' && Boolean(email) && minPasswordOk) ||
       (mode === 'signup' && Boolean(email) && minPasswordOk));
 
-  const rawRedirectTo = import.meta.env.VITE_SITE_URL || window.location.origin;
+  const isNative = Capacitor.isNativePlatform();
+  const isIOS = Capacitor.getPlatform() === 'ios';
+
+  const rawRedirectTo = (isNative ? import.meta.env.VITE_SITE_URL : window.location.origin) || window.location.origin;
   const redirectTo =
     rawRedirectTo.startsWith('http://') || rawRedirectTo.startsWith('https://') ? rawRedirectTo : undefined;
   const emailConfirmUrl = redirectTo ? `${redirectTo}/auth/confirm` : `${window.location.origin}/auth/confirm`;
-  const isNative = Capacitor.isNativePlatform();
-  const isIOS = Capacitor.getPlatform() === 'ios';
   const oauthRedirectTo = isNative ? (import.meta.env.VITE_OAUTH_REDIRECT_TO || 'englishv2://auth') : redirectTo;
   const OAUTH_IN_PROGRESS_KEY = 'englishv2:oauthInProgress';
   const oauthRedirectScheme = (() => {

@@ -114,35 +114,23 @@ const LandingPage: React.FC = () => {
     return <LoadingScreen />;
   }
 
-  // Показываем интро-экраны
-  const shouldShowIntro = !isNativePlatform || (isNativePlatform && showIntro && !hasLoggedIn);
-  if (shouldShowIntro) {
-    return (
-      <IntroScreen
-        onNext={() => {
-          if (isNativePlatform) {
-            setShowIntro(false);
-          }
-          // Если есть сессия, после интро сразу в приложение
-          if (session?.user?.id) {
-            navigate('/app', { replace: true });
-          }
-        }}
-      />
-    );
-  }
-
   // Если есть сессия и интро уже не нужно показывать (или прошли его), 
-  // перекидываем в /app. Но только если мы не на вебе, где интро всегда доступно.
-  if (session?.user?.id && isNativePlatform) {
+  // перекидываем в /app.
+  if (session?.user?.id) {
     return <Navigate to="/app" replace />;
   }
+
+  // Показываем интро-экраны
+  const shouldShowIntro = !isNativePlatform || (isNativePlatform && showIntro && !hasLoggedIn);
 
   // После интро показываем форму входа
   return (
     <AuthScreen
       onAuthSuccess={async () => {
         await refreshSession();
+        // Ждем обновления сессии и распространения контекста
+        await new Promise(r => setTimeout(r, 200));
+        
         const paidParam = new URLSearchParams(location.search).get('paid');
         const savedShowPaywall = sessionStorage.getItem('showPaywall');
         sessionStorage.removeItem('showPaywall');
@@ -152,7 +140,7 @@ const LandingPage: React.FC = () => {
         } else if (savedShowPaywall === '1') {
           redirectUrl = '/app?showPaywall=1';
         }
-        navigate(redirectUrl);
+        navigate(redirectUrl, { replace: true });
       }}
     />
   );
@@ -260,6 +248,9 @@ const AppPage: React.FC = () => {
     <AuthScreen
       onAuthSuccess={async () => {
         await refreshSession();
+        // Ждем обновления сессии и распространения контекста
+        await new Promise(r => setTimeout(r, 200));
+
         // После успешного входа остаемся на /app, где покажется AppContent
         const savedShowPaywall = sessionStorage.getItem('showPaywall');
         sessionStorage.removeItem('showPaywall');
@@ -268,6 +259,7 @@ const AppPage: React.FC = () => {
         } else if (savedShowPaywall === '1') {
           navigate('/app?showPaywall=1', { replace: true });
         } else {
+          // Принудительно обновляем текущий маршрут
           navigate('/app', { replace: true });
         }
       }}
