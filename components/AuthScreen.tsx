@@ -3,15 +3,17 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { supabase } from '../services/supabaseClient';
 import { createClient } from '@supabase/supabase-js';
-import { Lock, LogIn, Mail, UserPlus, Check } from 'lucide-react';
+import { Lock, LogIn, Mail, UserPlus, Check, ArrowLeft } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
 import { openAuthSession } from '../services/authSession';
+import { useNavigate } from 'react-router-dom';
 
 type AuthScreenProps = {
   onAuthSuccess?: () => void;
 };
 
 export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
+  const navigate = useNavigate();
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -565,17 +567,22 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
       <div className="w-full max-w-lg flex-1 min-h-0 py-[clamp(16px,3vh,40px)]">
         <div className="w-full bg-white border border-gray-100 shadow-xl rounded-3xl flex flex-col min-h-0 max-h-[calc(100dvh-32px)]">
           <div className="p-[clamp(16px,3vh,32px)] flex flex-col gap-[clamp(12px,2vh,24px)] min-h-0">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">{copy.auth.welcome}</p>
-                <h2 className="text-2xl font-black text-slate-900 mt-1">
-                  {mode === 'login'
-                    ? copy.auth.loginTitle
-                    : mode === 'signup'
-                      ? copy.auth.signupTitle
-                      : 'Сброс пароля'}
-                </h2>
-              </div>
+
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-black text-slate-900 mt-1">
+                {mode === 'login'
+                  ? copy.auth.loginTitle
+                  : mode === 'signup'
+                    ? copy.auth.signupTitle
+                    : 'Сброс пароля'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => navigate('/intro')}
+                className="flex items-center gap-2 text-xs font-medium text-gray-400 hover:text-brand-primary transition-colors p-1 -mr-1.5 rounded-xl hover:bg-gray-50 active:bg-gray-100"
+              >
+                <span>На главную страницу</span>
+              </button>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pr-1 -mr-1 space-y-5">

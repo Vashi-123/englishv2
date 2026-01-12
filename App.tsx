@@ -543,6 +543,7 @@ const AppRouter: React.FC = () => {
           <Routes>
             {/* Публичные маршруты */}
             <Route path="/" element={<LandingPage />} />
+            <Route path="/intro" element={<IntroScreen onNext={() => window.location.href = '/'} />} />
             <Route path="/app" element={<AppPage />} />
             {/* EmailConfirmScreen только для веб, на iOS редирект в /app */}
             {!isNativeIos && <Route path="/auth/confirm" element={<EmailConfirmPage />} />}
