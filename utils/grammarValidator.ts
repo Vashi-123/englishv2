@@ -471,6 +471,7 @@ function ensureArrayOfVariants(input: any): string[][] {
     // значит это список вариантов предложений: ["Hello Tom", "Hi Tom"]
     const hasSentences = input.some(s => typeof s === 'string' && s.trim().includes(' '));
     if (hasSentences) {
+      // Сохраняем исходный регистр для requiredWords (важно для проверки I'M vs i'm)
       return input.map(s => String(s).trim().split(/\s+/).filter(Boolean));
     }
     
@@ -709,48 +710,6 @@ function validateSingleVariant(
     };
   }
 
-  // Быстрая проверка на полное совпадение нормализованных строк
-  const normalizedExpected = normalizeText(expectedString);
-  if (!hasPlaceholders && normalizedAnswer === normalizedExpected) {
-    return {
-      isCorrect: true,
-      feedback: '',
-      needsAI: false,
-      missingWords: [],
-      incorrectWords: [],
-      wrongLanguage: false,
-      extraWords: [],
-      orderError: false,
-      duplicateWords: []
-    };
-  }
-
-  if (hasPlaceholders && matchesWithPlaceholders(expectedTokensWithPlaceholders, normalizedAnswerWords)) {
-    return {
-      isCorrect: true,
-      feedback: '',
-      needsAI: false,
-      missingWords: [],
-      incorrectWords: [],
-      wrongLanguage: false,
-      extraWords: [],
-      orderError: false,
-      duplicateWords: []
-    };
-  }
-  
-  // Проверка дублирования слов (по нормализованным токенам)
-  const duplicateWordsFound = checkDuplicates(normalizedAnswerWords);
-  if (duplicateWordsFound.length > 0) {
-    duplicateWords.push(...duplicateWordsFound);
-  }
-  
-  // Проверка разрывов слов (лишние пробелы внутри слов)
-  const wordBreakIssues = checkWordBreaks(expectedWords, normalizedAnswerWords);
-  if (wordBreakIssues.length > 0) {
-    incorrectWords.push(...wordBreakIssues);
-  }
-  
   // Проверка апострофов в сокращениях
   // Если в expected есть сокращение с апострофом, проверяем, что в ответе оно тоже есть
   const contractions = [
@@ -805,6 +764,9 @@ function validateSingleVariant(
     isUppercase: boolean;
   }> = [];
 
+  // Для проверки на верхний регистр используем requiredWords, если они есть
+  const requiredWordsString = drill.requiredWords ? drill.requiredWords.join(' ') : '';
+
   for (const contraction of contractions) {
     // Используем matchAll для поиска всех вхождений (с флагом 'i', чтобы найти в любом регистре)
     const expectedRegex = new RegExp(contraction.pattern.source, 'gi');
@@ -813,7 +775,11 @@ function validateSingleVariant(
     if (expectedMatches.length === 0) continue;
 
     const matches = expectedMatches.map(m => m[0]);
-    const isUppercase = matches.some(match => match === match.toUpperCase());
+    
+    // Проверяем регистр в requiredWords вместо expected
+    const requiredRegex = new RegExp(contraction.pattern.source, 'gi');
+    const requiredMatches = Array.from(requiredWordsString.matchAll(requiredRegex));
+    const isUppercase = requiredMatches.some(match => match[0] === match[0].toUpperCase());
     
     expectedContractions.push({
       contraction,
@@ -866,16 +832,22 @@ function validateSingleVariant(
       return expandedWords.every(word => answerWordsNormalized.includes(word));
     });
 
-    // Если сокращение с большой буквы в expected, а в answer развернутая форма - ошибка
+    // Если сокращение с большой буквы в expected (теперь в requiredWords), а в answer развернутая форма - ошибка
     if (isUppercase && (hasExpandedForm || hasExpandedWordsSeparately)) {
-      return {
-        isCorrect: false,
-        feedback: `Нужно использовать сокращение "${contraction.name}" вместо развернутой формы.`,
-        needsAI: false,
-        missingWords: [],
-        incorrectWords: [],
-        wrongLanguage: false
-      };
+      // Но перед ошибкой проверяем, не является ли это просто вопросом регистра для самого сокращения
+      // (т.е. если написали "i'm" маленькими, это должно быть ок, если только мы не проверяем полную идентичность)
+      const answerHasLowercaseContraction = answer.toLowerCase().includes(contraction.name.toLowerCase());
+      
+      if (!answerHasLowercaseContraction) {
+        return {
+          isCorrect: false,
+          feedback: `Нужно использовать сокращение "${contraction.name}" вместо развернутой формы.`,
+          needsAI: false,
+          missingWords: [],
+          incorrectWords: [],
+          wrongLanguage: false
+        };
+      }
     }
 
     // Если нет ни сокращения, ни развернутой формы - ошибка
@@ -901,6 +873,48 @@ function validateSingleVariant(
         expandedWordsFromContractions.add(word);
       }
     }
+  }
+
+  // Быстрая проверка на полное совпадение нормализованных строк
+  const normalizedExpected = normalizeText(expectedString);
+  if (!hasPlaceholders && normalizedAnswer === normalizedExpected) {
+    return {
+      isCorrect: true,
+      feedback: '',
+      needsAI: false,
+      missingWords: [],
+      incorrectWords: [],
+      wrongLanguage: false,
+      extraWords: [],
+      orderError: false,
+      duplicateWords: []
+    };
+  }
+
+  if (hasPlaceholders && matchesWithPlaceholders(expectedTokensWithPlaceholders, normalizedAnswerWords)) {
+    return {
+      isCorrect: true,
+      feedback: '',
+      needsAI: false,
+      missingWords: [],
+      incorrectWords: [],
+      wrongLanguage: false,
+      extraWords: [],
+      orderError: false,
+      duplicateWords: []
+    };
+  }
+  
+  // Проверка дублирования слов (по нормализованным токенам)
+  const duplicateWordsFound = checkDuplicates(normalizedAnswerWords);
+  if (duplicateWordsFound.length > 0) {
+    duplicateWords.push(...duplicateWordsFound);
+  }
+  
+  // Проверка разрывов слов (лишние пробелы внутри слов)
+  const wordBreakIssues = checkWordBreaks(expectedWords, normalizedAnswerWords);
+  if (wordBreakIssues.length > 0) {
+    incorrectWords.push(...wordBreakIssues);
   }
   
   // Сначала проверяем requiredWords как фразы (например "I am")

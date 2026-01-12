@@ -15,9 +15,17 @@ export const LandingPage: React.FC = () => {
       {/* Header */}
       <header className="w-full px-6 py-4 border-b border-gray-200 bg-white/80 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-brand-primary to-brand-secondary"></div>
-            <span className="text-xl font-black text-slate-900">GoPractice</span>
+          <div className="flex items-center gap-3 group cursor-pointer">
+            <div className="relative">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary shadow-lg shadow-brand-primary/20 flex items-center justify-center transition-transform group-hover:scale-110 duration-300">
+                <div className="w-5 h-5 border-3 border-white rounded-full border-t-transparent animate-[spin_3s_linear_infinite]"></div>
+                <div className="absolute inset-0 bg-white/20 rounded-2xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              </div>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-xl font-black text-slate-900 leading-none tracking-tighter">GoPractice</span>
+              <span className="text-[10px] font-bold text-brand-primary uppercase tracking-[0.2em] leading-none mt-1">Level Up Your English</span>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button

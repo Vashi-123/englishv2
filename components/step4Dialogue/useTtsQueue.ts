@@ -283,6 +283,7 @@ export function useTtsQueue() {
   return {
     isPlayingQueue,
     playedMessageIds,
+    playedMessageIdsRef,
     currentAudioItem,
     processAudioQueue,
     resetTtsState,

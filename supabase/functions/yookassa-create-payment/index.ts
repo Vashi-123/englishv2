@@ -169,34 +169,52 @@ Deno.serve(async (req: Request) => {
     
     // Если нет userId, но есть email - проверяем, есть ли пользователь с таким email
     if (!userId && userEmail) {
-      // Ищем пользователя по email через admin API (используем listUsers с фильтром по email)
-      // Получаем список пользователей и ищем по email
-      const { data: usersData, error: listError } = await supabase.auth.admin.listUsers();
-      if (!listError && usersData?.users) {
-        const foundUser = usersData.users.find((u: any) => 
-          u.email && u.email.toLowerCase() === userEmail.toLowerCase()
-        );
-        if (foundUser?.id) {
-          userId = foundUser.id;
-          console.log("[yookassa-create-payment] found existing user", { requestId, userId, email: userEmail });
-        }
+      // Ищем пользователя по email в user_entitlements
+      const { data: entitlementUser, error: entitlementError } = await supabase
+        .from("user_entitlements")
+        .select("user_id")
+        .eq("email", userEmail.toLowerCase()) // email в user_entitlements хранится в нижнем регистре
+        .maybeSingle();
+
+      if (entitlementError) {
+        console.error("[yookassa-create-payment] Error searching user in entitlements:", entitlementError);
+        // Продолжаем, возможно, пользователь есть, но без записи в entitlements (маловероятно из-за триггера)
+      } else if (entitlementUser?.user_id) {
+        userId = entitlementUser.user_id;
+        console.log("[yookassa-create-payment] Found existing user via entitlements", { requestId, userId, email: userEmail });
       }
-      
-      // Если пользователя нет - создаем его
+
+      // Если пользователя все еще нет - создаем его
       if (!userId) {
         console.log("[yookassa-create-payment] creating user for email", { requestId, email: userEmail });
         const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
           email: userEmail,
           email_confirm: true, // Автоматически подтверждаем email
-          password: crypto.randomUUID(), // Генерируем случайный пароль (пользователь сможет сбросить его)
+          password: crypto.randomUUID(), // Генерируем случайный пароль
         });
-        
+
         if (createError) {
-          console.error("[yookassa-create-payment] failed to create user", { requestId, error: createError });
-          return json(500, { ok: false, error: "Failed to create user account", requestId });
-        }
-        
-        if (newUser?.user?.id) {
+          // Если пользователь все-таки существует (например, из-за какой-то аномалии или гонки)
+          if (createError.message?.includes("already registered") || createError.status === 400) {
+             console.warn("[yookassa-create-payment] User already registered, attempting re-fetch via entitlements.", { email: userEmail });
+             // Повторный поиск после ошибки создания, чтобы получить user_id
+             const { data: recheckEntitlementUser } = await supabase
+                .from("user_entitlements")
+                .select("user_id")
+                .eq("email", userEmail.toLowerCase())
+                .maybeSingle();
+             if (recheckEntitlementUser?.user_id) {
+                 userId = recheckEntitlementUser.user_id;
+                 console.log("[yookassa-create-payment] Found existing user after create error", { requestId, userId, email: userEmail });
+             } else {
+                 console.error("[yookassa-create-payment] Failed to find existing user even after create error", { requestId, error: createError });
+                 return json(500, { ok: false, error: "Failed to create or find user account", requestId });
+             }
+          } else {
+            console.error("[yookassa-create-payment] failed to create user", { requestId, error: createError });
+            return json(500, { ok: false, error: "Failed to create user account", requestId });
+          }
+        } else if (newUser?.user?.id) {
           userId = newUser.user.id;
           console.log("[yookassa-create-payment] user created", { requestId, userId, email: userEmail });
         }
@@ -245,6 +263,7 @@ Deno.serve(async (req: Request) => {
         amount_value: 0,
         amount_currency: currency,
         description,
+        promo_code: priced.appliedPromo || null,
         metadata: { return_url: returnUrl, entitlement: "premium", promo_code: priced.appliedPromo || null, product_key: productKey, granted: true },
       });
       return json(200, {
@@ -268,6 +287,7 @@ Deno.serve(async (req: Request) => {
         amount_value: Number(priced.amountValue),
         amount_currency: currency,
         description,
+        promo_code: priced.appliedPromo || null,
         metadata: { return_url: returnUrl, entitlement: "premium", promo_code: priced.appliedPromo || null, product_key: productKey },
       })
       .select("id")

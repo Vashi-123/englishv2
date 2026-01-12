@@ -105,6 +105,7 @@ type Props = {
   stripModuleTag: (text: string) => string;
   grammarExerciseCompleted?: boolean;
   startedSituations: Record<string, boolean>;
+  playedMessageIdsRef: React.MutableRefObject<Set<string>>; // Добавлено
 };
 
 function MessageContentComponent({
@@ -152,6 +153,7 @@ function MessageContentComponent({
   lessonId,
   userId,
   language,
+  playedMessageIdsRef,
 }: Props) {
   const persistFindMistakePatch = (patch: Record<string, any>) => {
     try {

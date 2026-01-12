@@ -109,15 +109,6 @@ const LandingPage: React.FC = () => {
   const location = useLocation();
   const isNativePlatform = typeof window !== 'undefined' && Capacitor.isNativePlatform();
 
-  // Автоматический редирект на /app при наличии сессии
-  useEffect(() => {
-    // Если идет процесс сброса пароля (в AuthScreen), не делаем авто-редирект
-    const isResetting = sessionStorage.getItem('englishv2_reset_flow') === '1';
-    if (!loading && session?.user?.id && !isResetting) {
-      navigate('/app', { replace: true });
-    }
-  }, [loading, session, navigate]);
-
   // Показываем LoadingScreen пока идет загрузка сессии
   if (loading) {
     return <LoadingScreen />;
@@ -132,15 +123,19 @@ const LandingPage: React.FC = () => {
           if (isNativePlatform) {
             setShowIntro(false);
           }
+          // Если есть сессия, после интро сразу в приложение
+          if (session?.user?.id) {
+            navigate('/app', { replace: true });
+          }
         }}
       />
     );
   }
 
-  // Если есть сессия, но мы все еще на LandingPage, показываем лоадер и ждем редиректа
-  const isResetting = sessionStorage.getItem('englishv2_reset_flow') === '1';
-  if (session?.user?.id && !isResetting) {
-    return <LoadingScreen />;
+  // Если есть сессия и интро уже не нужно показывать (или прошли его), 
+  // перекидываем в /app. Но только если мы не на вебе, где интро всегда доступно.
+  if (session?.user?.id && isNativePlatform) {
+    return <Navigate to="/app" replace />;
   }
 
   // После интро показываем форму входа
@@ -554,6 +549,7 @@ const AppRouter: React.FC = () => {
             {!isNativeIos && <Route path="/auth/confirm" element={<EmailConfirmPage />} />}
             <Route path="/check" element={<CheckStatusScreen />} />
             <Route path="/partners" element={<PartnerPage />} />
+            <Route path="/partners/" element={<PartnerPage />} />
 
             {/* 404 - редирект на главную */}
             <Route path="*" element={<Navigate to="/" replace />} />

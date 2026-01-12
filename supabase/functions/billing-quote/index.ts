@@ -104,11 +104,8 @@ Deno.serve(async (req: Request) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
   try {
-    // Require auth to reduce brute-force guessing of promo codes.
-    const token = getBearerToken(req);
-    if (!token) return json(401, { ok: false, error: "Missing Authorization" });
-    const { error: authError } = await supabase.auth.getUser(token);
-    if (authError) return json(401, { ok: false, error: "Invalid session" });
+    // NOTE: Auth check is disabled to allow unauthenticated promo code validation.
+    // This increases the risk of brute-force guessing of promo codes.
 
     const body = (await req.json()) as ReqBody;
     const productKey = typeof body?.productKey === "string" && body.productKey.trim() ? body.productKey.trim() : DEFAULT_PRODUCT_KEY;
