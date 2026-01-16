@@ -27,6 +27,7 @@ interface CourseProgressProps {
   dayCompletedStatus: Record<number, boolean>;
   paywallEnabled: boolean;
   isPremium: boolean;
+  isAdmin?: boolean; // Admin users bypass progress locks
   freeBoundaryIdx: number;
   resolvedFreeLessonCount: number;
   entitlementsLoading: boolean;
@@ -50,6 +51,7 @@ const CourseProgressComponent: React.FC<CourseProgressProps> = ({
   dayCompletedStatus,
   paywallEnabled,
   isPremium,
+  isAdmin = false,
   freeBoundaryIdx,
   resolvedFreeLessonCount,
   entitlementsLoading,
@@ -92,9 +94,9 @@ const CourseProgressComponent: React.FC<CourseProgressProps> = ({
                 <div key={`plan-label-${d.day}`} className="min-w-[46px] flex justify-center">
                   {idx === freeBoundaryIdx + 1 ? (
                     <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-extrabold text-amber-700">
-                    <Crown className="w-3 h-3" />
-                    Premium
-                  </div>
+                      <Crown className="w-3 h-3" />
+                      Premium
+                    </div>
                   ) : null}
                 </div>
               ))}
@@ -109,7 +111,8 @@ const CourseProgressComponent: React.FC<CourseProgressProps> = ({
               const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
               const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
               const lessonNumber = d.lesson ?? d.day;
-              const isLockedByProgress = idx > 0 && !prevCompleted;
+              // Admin users bypass progress-based locks
+              const isLockedByProgress = !isAdmin && idx > 0 && !prevCompleted;
               const isLockedByPaywall =
                 paywallEnabled && !isPremium && lessonNumber > resolvedFreeLessonCount;
               const isLocked = isLockedByProgress || isLockedByPaywall;
@@ -134,16 +137,15 @@ const CourseProgressComponent: React.FC<CourseProgressProps> = ({
                         ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_4px_12px_rgba(251,191,36,0.2)] hover:shadow-[0_6px_16px_rgba(251,191,36,0.3)]'
                         : isActual && !isSelected
                           ? 'bg-gradient-to-br from-brand-primary/10 via-brand-primary/5 to-brand-secondary/10 border-brand-primary/50 text-slate-900 shadow-sm hover:shadow-md hover:scale-[1.02]'
-                        : isSelected
-                          ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105'
-                          : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
+                          : isSelected
+                            ? 'bg-gradient-to-br from-brand-primary to-brand-primaryLight text-white border-brand-primary shadow-md shadow-brand-primary/20 scale-105'
+                            : 'bg-white border-brand-primary/25 text-gray-700 hover:border-brand-primary/55 hover:bg-brand-primary/5 hover:shadow-sm hover:scale-[1.02]'
                       }
-                      ${
-                        isLockedByPaywall
-                          ? 'opacity-95 cursor-pointer border-amber-200 bg-amber-50/70 hover:bg-amber-50 hover:border-amber-300'
-                          : isLockedByProgress
-                            ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
-                            : 'cursor-pointer'
+                      ${isLockedByPaywall
+                        ? 'opacity-95 cursor-pointer border-amber-200 bg-amber-50/70 hover:bg-amber-50 hover:border-amber-300'
+                        : isLockedByProgress
+                          ? 'opacity-50 cursor-not-allowed border-gray-200 hover:border-gray-200 bg-gray-50 hover:bg-gray-50'
+                          : 'cursor-pointer'
                       }
                     `}
                   >
@@ -161,13 +163,13 @@ const CourseProgressComponent: React.FC<CourseProgressProps> = ({
                         ? 'bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
                         : isActual && !isSelected
                           ? 'bg-gradient-to-br from-brand-primary to-brand-secondary text-white shadow-md ring-2 ring-brand-primary/25'
-                        : isSelected
-                          ? 'bg-white text-brand-primary shadow-md'
-                          : isLockedByPaywall
-                            ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/80'
-                            : isLocked
-                              ? 'bg-gray-50 text-gray-700'
-                              : 'bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/25'
+                          : isSelected
+                            ? 'bg-white text-brand-primary shadow-md'
+                            : isLockedByPaywall
+                              ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/80'
+                              : isLocked
+                                ? 'bg-gray-50 text-gray-700'
+                                : 'bg-brand-primary/10 text-brand-primary ring-1 ring-brand-primary/25'
                       }
                     `}>
                       {isDayCompleted ? (
@@ -180,9 +182,8 @@ const CourseProgressComponent: React.FC<CourseProgressProps> = ({
                         <Lock className={`w-4 h-4 ${isSelected ? 'text-brand-primary' : 'text-gray-400'}`} />
                       ) : (
                         <span
-                          className={`text-xs font-bold ${
-                            isSelected ? 'text-brand-primary' : isActual ? 'text-white' : 'text-gray-700'
-                          }`}
+                          className={`text-xs font-bold ${isSelected ? 'text-brand-primary' : isActual ? 'text-white' : 'text-gray-700'
+                            }`}
                         >
                           {d.lesson ?? d.day}
                         </span>
@@ -215,7 +216,8 @@ const CourseProgressComponent: React.FC<CourseProgressProps> = ({
                 const prevDay = idx > 0 ? dayPlans[idx - 1] : null;
                 const prevCompleted = prevDay ? dayCompletedStatus[prevDay.day] === true : true;
                 const lessonNumber = d.lesson ?? d.day;
-                const isLockedByProgress = idx > 0 && !prevCompleted;
+                // Admin users bypass progress-based locks
+                const isLockedByProgress = !isAdmin && idx > 0 && !prevCompleted;
                 const isLockedByPaywall =
                   !entitlementsLoading &&
                   !isPremium &&
@@ -234,15 +236,14 @@ const CourseProgressComponent: React.FC<CourseProgressProps> = ({
                       onDaySelect(d.day);
                     }}
                     disabled={isLockedByProgress && !isLockedByPaywall}
-                    className={`w-full rounded-2xl border px-4 py-3 text-left transition ${
-                      isSelected
+                    className={`w-full rounded-2xl border px-4 py-3 text-left transition ${isSelected
                         ? 'border-brand-primary bg-brand-primary/5'
                         : isLockedByProgress
                           ? 'border-gray-200/60 bg-gray-50 opacity-60 cursor-not-allowed'
                           : isLockedByPaywall
                             ? 'border-amber-200 bg-amber-50/70 cursor-pointer hover:border-amber-300'
                             : 'border-gray-200/60 bg-white hover:border-brand-primary/30'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div>

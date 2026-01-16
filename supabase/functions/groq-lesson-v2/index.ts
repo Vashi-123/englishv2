@@ -239,7 +239,7 @@ Deno.serve(async (req: Request) => {
       requestMessages: any[],
       opts?: { max_tokens?: number; temperature?: number }
     ): Promise<{ text: string; success: boolean; provider?: string }> => {
-      
+
       // -- Helper for Cerebras --
       const executeCerebras = async (): Promise<{ text: string; success: boolean; provider: string }> => {
         if (!CEREBRAS_API_KEY) throw new Error("Missing CEREBRAS_API_KEY");
@@ -334,7 +334,7 @@ Deno.serve(async (req: Request) => {
           return result;
         } catch (err: any) {
           const isAuthError = err.message?.includes("status 401") || err.message?.toLowerCase().includes("unauthorized");
-          
+
           if (isAuthError) {
             console.error("[groq-lesson-v2] 🚨 CEREBRAS AUTH ERROR: Invalid API Key. Please check your Supabase secrets.", err);
           } else {
@@ -379,21 +379,21 @@ Deno.serve(async (req: Request) => {
 
         const wordsBlock = wordsItems.length
           ? [
-              "Слова:",
-              ...wordsItems.map((w: any, i: number) => {
-                const word = safeText(w?.word);
-                const translation = safeText(w?.translation);
-                const context = safeText(w?.context);
-                const contextTranslation = safeText(w?.context_translation);
-                return [
-                  `${i + 1}. ${word}${translation ? ` — ${translation}` : ""}`,
-                  context ? `   Пример: ${context}` : "",
-                  contextTranslation ? `   Перевод примера: ${contextTranslation}` : "",
-                ]
-                  .filter(Boolean)
-                  .join("\n");
-              }),
-            ].join("\n")
+            "Слова:",
+            ...wordsItems.map((w: any, i: number) => {
+              const word = safeText(w?.word);
+              const translation = safeText(w?.translation);
+              const context = safeText(w?.context);
+              const contextTranslation = safeText(w?.context_translation);
+              return [
+                `${i + 1}. ${word}${translation ? ` — ${translation}` : ""}`,
+                context ? `   Пример: ${context}` : "",
+                contextTranslation ? `   Перевод примера: ${contextTranslation}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n");
+            }),
+          ].join("\n")
           : "";
 
         const grammarExplanation = safeText((script as any)?.grammar?.explanation);
@@ -414,89 +414,89 @@ Deno.serve(async (req: Request) => {
         const constructorTasks = Array.isArray((script as any)?.constructor?.tasks) ? (script as any).constructor.tasks : [];
         const constructorBlock = constructorTasks.length
           ? [
-              "Конструктор:",
-              ...constructorTasks.map((t: any, i: number) => {
-                const words = Array.isArray(t?.words) ? t.words.map((x: any) => safeText(x)).filter(Boolean) : [];
-                const correct = Array.isArray(t?.correct)
-                  ? t.correct.map((x: any) => safeText(x)).filter(Boolean).join(" ")
-                  : safeText(t?.correct);
-                const translation = safeText(t?.translation);
-                return [
-                  `${i + 1}. Слова: ${words.join(" ")}`,
-                  correct ? `   Correct: ${correct}` : "",
-                  translation ? `   Перевод: ${translation}` : "",
-                ]
-                  .filter(Boolean)
-                  .join("\n");
-              }),
-            ].join("\n")
+            "Конструктор:",
+            ...constructorTasks.map((t: any, i: number) => {
+              const words = Array.isArray(t?.words) ? t.words.map((x: any) => safeText(x)).filter(Boolean) : [];
+              const correct = Array.isArray(t?.correct)
+                ? t.correct.map((x: any) => safeText(x)).filter(Boolean).join(" ")
+                : safeText(t?.correct);
+              const translation = safeText(t?.translation);
+              return [
+                `${i + 1}. Слова: ${words.join(" ")}`,
+                correct ? `   Correct: ${correct}` : "",
+                translation ? `   Перевод: ${translation}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n");
+            }),
+          ].join("\n")
           : "";
 
         const findTasks = Array.isArray((script as any)?.find_the_mistake?.tasks) ? (script as any).find_the_mistake.tasks : [];
         const findBlock = findTasks.length
           ? [
-              "Найди ошибку:",
-              ...findTasks.map((t: any, i: number) => {
-                const options = Array.isArray(t?.options) ? t.options.map((x: any) => safeText(x)).filter(Boolean) : [];
-                const answer = safeText(t?.answer);
-                const explanation = safeText(t?.explanation);
-                return [
-                  `${i + 1}. A) ${options[0] || ""}`,
-                  `   B) ${options[1] || ""}`,
-                  answer ? `   Ответ: ${answer}` : "",
-                  explanation ? `   Объяснение: ${explanation}` : "",
-                ]
-                  .filter(Boolean)
-                  .join("\n");
-              }),
-            ].join("\n")
+            "Найди ошибку:",
+            ...findTasks.map((t: any, i: number) => {
+              const options = Array.isArray(t?.options) ? t.options.map((x: any) => safeText(x)).filter(Boolean) : [];
+              const answer = safeText(t?.answer);
+              const explanation = safeText(t?.explanation);
+              return [
+                `${i + 1}. A) ${options[0] || ""}`,
+                `   B) ${options[1] || ""}`,
+                answer ? `   Ответ: ${answer}` : "",
+                explanation ? `   Объяснение: ${explanation}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n");
+            }),
+          ].join("\n")
           : "";
 
         const scenarios = Array.isArray((script as any)?.situations?.scenarios) ? (script as any).situations.scenarios : [];
         const situationsBlock = scenarios.length
           ? [
-              "Ситуации:",
-              ...scenarios.map((s: any, i: number) => {
-                const title = safeText(s?.title);
-                const situation = safeText(s?.situation);
-                const steps = Array.isArray(s?.steps) ? s.steps : null;
-                if (steps && steps.length > 0) {
-                  return [
-                    `${i + 1}. ${title}`,
-                    situation ? `   Описание: ${situation}` : "",
-                    ...steps.map((st: any, j: number) => {
-                      const ai = safeText(st?.ai);
-                      const aiTr = safeText(st?.ai_translation);
-                      const task = safeText(st?.task);
-                      const expected = safeText(st?.expected_answer);
-                      return [
-                        `   Шаг ${j + 1}:`,
-                        ai ? `     AI: ${ai}` : "",
-                        aiTr ? `     Перевод AI: ${aiTr}` : "",
-                        task ? `     Задача: ${task}` : "",
-                        expected ? `     Expected: ${expected}` : "",
-                      ]
-                        .filter(Boolean)
-                        .join("\n");
-                    }),
-                  ]
-                    .filter(Boolean)
-                    .join("\n");
-                }
-                const ai = safeText(s?.ai);
-                const task = safeText(s?.task);
-                const expected = safeText(s?.expected_answer);
+            "Ситуации:",
+            ...scenarios.map((s: any, i: number) => {
+              const title = safeText(s?.title);
+              const situation = safeText(s?.situation);
+              const steps = Array.isArray(s?.steps) ? s.steps : null;
+              if (steps && steps.length > 0) {
                 return [
                   `${i + 1}. ${title}`,
                   situation ? `   Описание: ${situation}` : "",
-                  ai ? `   AI: ${ai}` : "",
-                  task ? `   Задача: ${task}` : "",
-                  expected ? `   Expected: ${expected}` : "",
+                  ...steps.map((st: any, j: number) => {
+                    const ai = safeText(st?.ai);
+                    const aiTr = safeText(st?.ai_translation);
+                    const task = safeText(st?.task);
+                    const expected = safeText(st?.expected_answer);
+                    return [
+                      `   Шаг ${j + 1}:`,
+                      ai ? `     AI: ${ai}` : "",
+                      aiTr ? `     Перевод AI: ${aiTr}` : "",
+                      task ? `     Задача: ${task}` : "",
+                      expected ? `     Expected: ${expected}` : "",
+                    ]
+                      .filter(Boolean)
+                      .join("\n");
+                  }),
                 ]
                   .filter(Boolean)
                   .join("\n");
-              }),
-            ].join("\n")
+              }
+              const ai = safeText(s?.ai);
+              const task = safeText(s?.task);
+              const expected = safeText(s?.expected_answer);
+              return [
+                `${i + 1}. ${title}`,
+                situation ? `   Описание: ${situation}` : "",
+                ai ? `   AI: ${ai}` : "",
+                task ? `   Задача: ${task}` : "",
+                expected ? `   Expected: ${expected}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n");
+            }),
+          ].join("\n")
           : "";
 
         const completion = safeText((script as any)?.completion);
@@ -536,8 +536,8 @@ Lesson context (for you):\n\n${lessonContext}`;
 
       const history = Array.isArray(tutorMessages)
         ? tutorMessages
-            .filter((m) => m && (m.role === "user" || m.role === "model") && typeof m.text === "string" && m.text.trim())
-            .slice(-12)
+          .filter((m) => m && (m.role === "user" || m.role === "model") && typeof m.text === "string" && m.text.trim())
+          .slice(-12)
         : [];
 
       const toGroqRole = (role: "user" | "model") => (role === "model" ? "assistant" : "user");
@@ -625,6 +625,7 @@ Lesson context (for you):\n\n${lessonContext}`;
       expected: string; // Может содержать варианты через " OR "
       studentAnswer: string;
       extra?: string;
+      task?: string; // Задание для напоминания при неверном ответе (для ситуаций)
     }): Promise<{ isCorrect: boolean; feedback: string; provider?: string }> => {
       if (!params.studentAnswer) {
         return { isCorrect: true, feedback: "", provider: "empty_input" };
@@ -643,7 +644,7 @@ Lesson context (for you):\n\n${lessonContext}`;
       // Fast path: if the only differences are punctuation/capitalization, accept without LLM validation.
       const answerNorm = normalizeLenient(params.studentAnswer);
       const expectedVariants = params.expected.split(" OR ");
-      
+
       for (const variant of expectedVariants) {
         const variantNorm = normalizeLenient(variant);
         if (variantNorm && answerNorm && variantNorm === answerNorm) {
@@ -651,7 +652,38 @@ Lesson context (for you):\n\n${lessonContext}`;
         }
       }
 
-      const validatorSystemPrompt = `Ты валидатор ответов ученика по заранее заданному сценарию урока.
+      // Специальный промт для ситуаций (английский язык)
+      const situationsSystemPrompt = `Ты валидатор ответов ученика в сценарии изучения английского языка.
+Ожидаемый ответ должен быть на АНГЛИЙСКОМ языке.
+
+Правила лениентности (ВАЖНО):
+- ИГНОРИРУЙ точки, запятые и восклицательные знаки в конце предложения — они НЕ влияют на правильность.
+- Вопросительный знак (?) ВАЖЕН — если ожидается вопрос, он должен быть вопросом.
+- ИГНОРИРУЙ регистр букв (заглавные/строчные) — "Hello" = "hello" = "HELLO".
+- ПРИНИМАЙ сокращения как эквивалент полной формы: "I'm" = "I am", "don't" = "do not", "it's" = "it is" и т.д.
+
+Отвечай ТОЛЬКО валидным JSON. Вот два примера:
+
+ПРИМЕР 1 — Правильный ответ:
+{
+  "isCorrect": true,
+  "feedback": ""
+}
+
+ПРИМЕР 2 — Неправильный ответ (задание было "Спросите, как пройти к станции"):
+{
+  "isCorrect": false,
+  "feedback": "Нужно использовать 'Excuse me' в начале вопроса. Задание: Спросите, как пройти к станции."
+}
+
+Никогда не добавляй другие поля кроме isCorrect и feedback.
+Если ответ не на английском языке — это неверный ответ.
+При неверном ответе ОБЯЗАТЕЛЬНО добавь в конец feedback напоминание задания в формате: "Задание: ${params.task || ""}"`;
+
+
+      const validatorSystemPrompt = params.step === "situations"
+        ? situationsSystemPrompt
+        : `Ты валидатор ответов ученика по заранее заданному сценарию урока.
 Отвечай ТОЛЬКО валидным JSON:
 {
   "isCorrect": true/false,
@@ -664,7 +696,7 @@ Lesson context (for you):\n\n${lessonContext}`;
 - используй все заданные слова, но допускай логичные перестановки;
 - игнорируй регистр, заглавные буквы, знаки пунктуации (включая !/?/.,);
 - не требуй дословного совпадения с эталоном, если грамматика и смысл корректны;
-- мелкие опечатки и пунктуация сами по себе не делают ответ неправильным.` 
+- мелкие опечатки и пунктуация сами по себе не делают ответ неправильным.`
         : "";
 
       const grammarDrillRules = params.step === "grammar_drill"
@@ -765,7 +797,7 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       const drillIndexRaw = (currentStep as any)?.subIndex;
       const drillIndex = typeof drillIndexRaw === "number" && Number.isFinite(drillIndexRaw) && drillIndexRaw >= 0 ? drillIndexRaw : null;
       const drills = Array.isArray(script.grammar?.drills) ? script.grammar.drills : [];
-      
+
       if (drillIndex !== null && drills.length > drillIndex) {
         // This is a grammar drill validation
         const drill = drills[drillIndex];
@@ -863,7 +895,17 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
       });
     }
 
-    const validation = await validateAnswer({ step: stepType, expected, studentAnswer, extra });
+    // Для ситуаций передаем task для напоминания при неверном ответе
+    let taskForReminder: string | undefined;
+    if (currentStep.type === "situations") {
+      const scenario = script.situations?.scenarios?.[currentStep.index];
+      const stepIndexRaw = (currentStep as any)?.subIndex;
+      const stepIndex = typeof stepIndexRaw === "number" && Number.isFinite(stepIndexRaw) ? stepIndexRaw : 0;
+      const normalized = scenario ? getSituationStep(scenario, stepIndex) : null;
+      taskForReminder = normalized?.task;
+    }
+
+    const validation = await validateAnswer({ step: stepType, expected, studentAnswer, extra, task: taskForReminder });
 
     return new Response(JSON.stringify({ isCorrect: validation.isCorrect, feedback: validation.feedback || "", provider: validation.provider }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -874,4 +916,4 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
     return new Response(`Internal error: ${err.message}`, { status: 500, headers: corsHeaders });
   }
 });
-  
+

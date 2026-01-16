@@ -10,6 +10,7 @@ import {
   quoteBilling,
 } from "../services/billingService";
 import { fetchIosIapProduct, fetchIosIapProductById, purchaseIosIap, presentOfferCode } from "../services/iapService";
+import { fetchAndroidIapProduct, purchaseAndroidIap } from "../services/androidIapService";
 import { formatFirstLessonsRu } from "../services/ruPlural";
 const STATUS_URL = import.meta.env.VITE_PAYMENT_STATUS_URL || "/check";
 const SITE_URL = import.meta.env.VITE_SITE_URL || "https://go-practice.com";
@@ -40,6 +41,8 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   onEntitlementsRefresh,
 }) => {
   const isNativeIos = useMemo(() => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios", []);
+  const isNativeAndroid = useMemo(() => Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android", []);
+  const isNativePlatform = isNativeIos || isNativeAndroid;
   const [paying, setPaying] = useState(false);
   const [iapPaying, setIapPaying] = useState(false);
   // Promo codes only on web - iOS uses Apple Offer Codes via StoreKit
@@ -57,6 +60,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const [iapPriceLabel, setIapPriceLabel] = useState<string | null>(null);
   const [promoIosProductId, setPromoIosProductId] = useState<string | null>(null);
   const [defaultIosProductId, setDefaultIosProductId] = useState<string | null>(null);
+  const [defaultAndroidProductId, setDefaultAndroidProductId] = useState<string | null>(null);
 
   const listPriceLabel = useMemo(() => {
     const basePrice = Number(basePriceValue);
@@ -68,7 +72,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     // Fallback для случая, когда цена еще не загружена
     return formatPrice("15000.00", "RUB");
   }, [basePriceValue, basePriceCurrency]);
-  const priceBusy = priceLoading || (isNativeIos && iapLoading);
+  const priceBusy = priceLoading || (isNativePlatform && iapLoading);
 
   const promoAppliedRef = useRef(false);
   useEffect(() => {
@@ -175,6 +179,56 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       cancelled = true;
     };
   }, [isNativeIos]);
+
+  // Android: Load product from Google Play
+  useEffect(() => {
+    if (!isNativeAndroid) return;
+    let cancelled = false;
+    const loadAndroidIap = async () => {
+      setIapLoading(true);
+      try {
+        // First, get the product ID from database
+        const dbProduct = await fetchBillingProduct(BILLING_PRODUCT_KEY);
+        if (cancelled) return;
+        if (dbProduct?.androidProductId) {
+          setDefaultAndroidProductId(dbProduct.androidProductId);
+        }
+
+        // Then fetch product details from Google Play
+        const product = await fetchAndroidIapProduct();
+        if (cancelled) return;
+        if (product) {
+          setIapSupported(true);
+          if (product.price) {
+            setBasePriceValue(String(product.price));
+            if (!promoAppliedRef.current) setPriceValue(String(product.price));
+          }
+          if (product.currency) {
+            setBasePriceCurrency(product.currency);
+            if (!promoAppliedRef.current) setPriceCurrency(product.currency);
+          }
+          if (product.localizedPrice) {
+            setIapPriceLabel(product.localizedPrice);
+          } else if (product.price) {
+            setIapPriceLabel(product.currency ? `${product.price} ${product.currency}` : String(product.price));
+          }
+        } else {
+          setIapSupported(false);
+        }
+      } catch (err) {
+        console.error("[PaywallScreen] android iap load error", err);
+        if (!cancelled) {
+          setIapSupported(false);
+        }
+      } finally {
+        if (!cancelled) setIapLoading(false);
+      }
+    };
+    void loadAndroidIap();
+    return () => {
+      cancelled = true;
+    };
+  }, [isNativeAndroid]);
 
   const priceLabel = useMemo(() => formatPrice(String(priceValue), String(priceCurrency)), [priceCurrency, priceValue]);
   const basePriceLabel = useMemo(
@@ -355,21 +409,21 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       console.log("[PaywallScreen] purchaseIosIap result:", res);
       if (!res || res.ok !== true) {
         const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось завершить покупку";
-        
+
         // Отмена пользователем - не показываем как ошибку
         if (res && "cancelled" in res && res.cancelled === true) {
           console.log("[PaywallScreen] Purchase was cancelled by user");
           // Не показываем alert для отмены - пользователь сам отменил
           return;
         }
-        
+
         // Pending транзакция - показываем информационное сообщение
         if (res && "pending" in res && res.pending === true) {
           console.warn("[PaywallScreen] Purchase is pending", msg);
           alert(msg + "\n\nВы можете проверить статус покупки в настройках App Store. Premium будет активирован автоматически после поступления оплаты.");
           return;
         }
-        
+
         // Другие ошибки
         console.error("[PaywallScreen] iOS purchase failed", msg);
         if (msg.includes("ожидает оплаты") || msg.includes("PENDING")) {
@@ -383,14 +437,14 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
       onClose();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      
+
       // Отмена пользователем - не показываем как ошибку
       if (msg.includes("CANCELLED") || msg.includes("cancelled") || msg === "Покупка отменена") {
         console.log("[PaywallScreen] Purchase was cancelled by user");
         // Не показываем alert для отмены
         return;
       }
-      
+
       // Pending транзакция
       if (msg.includes("PENDING") || msg.includes("ожидает оплаты")) {
         console.warn("[PaywallScreen] Purchase is pending", msg);
@@ -404,9 +458,72 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     }
   };
 
+  const handlePayAndroid = async () => {
+    if (iapPaying || paying) return;
+    setIapPaying(true);
+    try {
+      const androidProductId = defaultAndroidProductId;
+      console.log("[PaywallScreen] handlePayAndroid - productId selection:", {
+        defaultAndroidProductId,
+        selectedAndroidProductId: androidProductId,
+        priceValue,
+        priceCurrency,
+      });
+      const res = await purchaseAndroidIap({
+        productId: androidProductId || undefined,
+        priceValue: Number(priceValue),
+        priceCurrency: priceCurrency,
+        promoCode: promoCode.trim() || null,
+      });
+      console.log("[PaywallScreen] purchaseAndroidIap result:", res);
+      if (!res || res.ok !== true) {
+        const msg = (res && "error" in res && typeof res.error === "string") ? res.error : "Не удалось завершить покупку";
+
+        // User cancelled - don't show as error
+        if (res && "cancelled" in res && res.cancelled === true) {
+          console.log("[PaywallScreen] Purchase was cancelled by user");
+          return;
+        }
+
+        // Pending transaction
+        if (res && "pending" in res && res.pending === true) {
+          console.warn("[PaywallScreen] Purchase is pending", msg);
+          alert(msg + "\n\nВы можете проверить статус покупки в Google Play. Premium будет активирован автоматически после поступления оплаты.");
+          return;
+        }
+
+        // Other errors
+        console.error("[PaywallScreen] Android purchase failed", msg);
+        alert(msg);
+        return;
+      }
+      onEntitlementsRefresh();
+      onClose();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+
+      // User cancelled
+      if (msg.includes("CANCELLED") || msg.includes("cancelled") || msg === "Покупка отменена") {
+        console.log("[PaywallScreen] Purchase was cancelled by user");
+        return;
+      }
+
+      // Pending transaction
+      if (msg.includes("PENDING") || msg.includes("ожидает оплаты")) {
+        console.warn("[PaywallScreen] Purchase is pending", msg);
+        alert("Транзакция ожидает оплаты. Покупка будет завершена автоматически после поступления средств.\n\nВы можете проверить статус покупки в Google Play.");
+      } else {
+        console.error("[PaywallScreen] Android purchase catch", msg || "Не удалось завершить покупку");
+        alert(msg || "Не удалось завершить покупку");
+      }
+    } finally {
+      setIapPaying(false);
+    }
+  };
+
   const handlePresentOfferCode = async () => {
     if (!isNativeIos) return;
-    
+
     // Check if OAuth is in progress - don't interfere with OAuth flow
     try {
       const oauthInProgress = localStorage.getItem('englishv2:oauthInProgress');
@@ -417,7 +534,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     } catch {
       // ignore
     }
-    
+
     try {
       console.log("[PaywallScreen] Presenting offer code sheet");
       await presentOfferCode();
@@ -440,7 +557,8 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   };
 
   const payButtonLabel = isPremium ? "Premium активен" : "Оплатить";
-  const useIosIap = isNativeIos;
+  // Select correct payment handler based on platform
+  const handlePay_platform = isNativeIos ? handlePayIos : isNativeAndroid ? handlePayAndroid : handlePay;
   const anyPaying = paying || iapPaying || iapLoading || Boolean(isLoading);
   const openStatusPage = async () => {
     if (!STATUS_URL) return;
@@ -465,71 +583,71 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     }
   };
 
-	  return (
-	    <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900 pt-[var(--app-safe-top)]">
-	      <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
-	      <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
+  return (
+    <div className="fixed inset-0 z-[80] bg-slate-50 text-slate-900 pt-[var(--app-safe-top)]">
+      <div className="absolute top-[-60px] right-[-60px] w-[320px] h-[320px] bg-brand-primary/10 rounded-full blur-[140px] pointer-events-none"></div>
+      <div className="absolute bottom-[-80px] left-[-40px] w-[280px] h-[280px] bg-brand-secondary/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-		      <div className="max-w-xl mx-auto px-5 sm:px-8 pt-6 pb-10 min-h-[100dvh] flex flex-col">
-		        <div className="relative bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
-		          <button
-		            type="button"
-		            onClick={onClose}
-		            className="absolute top-5 right-5 h-9 w-9 rounded-2xl bg-white border border-gray-200 shadow-sm flex items-center justify-center hover:border-brand-primary/40 transition"
-		            aria-label="Закрыть"
-		          >
-		            <X className="w-5 h-5 text-gray-700" />
-		          </button>
+      <div className="max-w-xl mx-auto px-5 sm:px-8 pt-6 pb-10 min-h-[100dvh] flex flex-col">
+        <div className="relative bg-white border border-gray-200 rounded-3xl shadow-sm p-6">
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-5 right-5 h-9 w-9 rounded-2xl bg-white border border-gray-200 shadow-sm flex items-center justify-center hover:border-brand-primary/40 transition"
+            aria-label="Закрыть"
+          >
+            <X className="w-5 h-5 text-gray-700" />
+          </button>
 
-		          <div className="flex items-start justify-between gap-4">
-		            <div className="min-w-0 pr-12">
-		              <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Аккаунт</div>
-		              <div className="mt-1 text-sm font-bold text-slate-900 break-all">{userEmail || "—"}</div>
-		              {isLoading ? (
-		                <div className="mt-2 h-3 w-52 rounded bg-gray-200 animate-pulse" />
-		              ) : (
-		                <div className="mt-1 text-xs font-bold text-gray-600">
-			                  Доступ: {isPremium ? "Premium (100 уроков)" : `Free (${formatFirstLessonsRu(freeLessonCount)})`}
-			                </div>
-			              )}
-			            </div>
-			          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 pr-12">
+              <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Аккаунт</div>
+              <div className="mt-1 text-sm font-bold text-slate-900 break-all">{userEmail || "—"}</div>
+              {isLoading ? (
+                <div className="mt-2 h-3 w-52 rounded bg-gray-200 animate-pulse" />
+              ) : (
+                <div className="mt-1 text-xs font-bold text-gray-600">
+                  Доступ: {isPremium ? "Premium (100 уроков)" : `Free (${formatFirstLessonsRu(freeLessonCount)})`}
+                </div>
+              )}
+            </div>
+          </div>
 
           <div className="mt-6 pt-5 border-t border-gray-100">
             <h1 className="text-xl sm:text-3xl font-black tracking-tight">Откройте полный курс A1</h1>
             <p className="mt-2 text-sm leading-relaxed">
-		              <span className="block font-semibold text-slate-700">Проходите уроки в своём темпе</span>
-		              <span className="block mt-3 font-semibold text-slate-700">
-		                Подключайте преподавателя точечно — как куратора прогресса и закрепления.
-		              </span>
-	            </p>
-	          </div>
+              <span className="block font-semibold text-slate-700">Проходите уроки в своём темпе</span>
+              <span className="block mt-3 font-semibold text-slate-700">
+                Подключайте преподавателя точечно — как куратора прогресса и закрепления.
+              </span>
+            </p>
+          </div>
 
-	          <div className="mt-6 pt-5 border-t border-gray-100">
-                <div className="text-base font-extrabold text-brand-primary">Быстрее прогресс за меньшие деньги</div>
-                <div className="mt-3">
-                  {priceBusy ? (
-                    <div className="flex items-center gap-2 text-slate-900">
-                      <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
+          <div className="mt-6 pt-5 border-t border-gray-100">
+            <div className="text-base font-extrabold text-brand-primary">Быстрее прогресс за меньшие деньги</div>
+            <div className="mt-3">
+              {priceBusy ? (
+                <div className="flex items-center gap-2 text-slate-900">
+                  <Loader2 className="w-5 h-5 animate-spin text-gray-500" />
+                </div>
+              ) : (
+                <>
+                  <div className={`text-3xl font-black tracking-tight ${promoOk ? "text-emerald-600" : "text-slate-900"}`}>
+                    {displayedPriceLabel}{" "}
+                    <span className="text-base font-extrabold text-gray-700">за 100 уроков</span>
+                  </div>
+                  <div className="mt-1 text-sm font-extrabold text-gray-400 line-through">вместо {listPriceLabel}</div>
+                  {promoOk && promoSavingsLabel ? (
+                    <div className="mt-1 text-xs font-extrabold text-emerald-700">
+                      Скидка по промокоду: −{promoSavingsLabel}
                     </div>
-                  ) : (
-                    <>
-                      <div className={`text-3xl font-black tracking-tight ${promoOk ? "text-emerald-600" : "text-slate-900"}`}>
-                        {displayedPriceLabel}{" "}
-                        <span className="text-base font-extrabold text-gray-700">за 100 уроков</span>
-                      </div>
-                      <div className="mt-1 text-sm font-extrabold text-gray-400 line-through">вместо {listPriceLabel}</div>
-	                  {promoOk && promoSavingsLabel ? (
-	                    <div className="mt-1 text-xs font-extrabold text-emerald-700">
-	                      Скидка по промокоду: −{promoSavingsLabel}
-	                    </div>
-	                  ) : null}
-	                </>
-	              )}
-	            </div>
-	          </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </div>
 
-          {/* Promo code field - only on web */}
+          {/* Promo code field - for web and Android */}
           {!isNativeIos && (
             <div className="mt-6">
               <div className="text-xs font-extrabold uppercase tracking-[0.2em] text-gray-500">Промокод</div>
@@ -581,7 +699,7 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
           <div className="mt-6 grid gap-3">
             <button
               type="button"
-              onClick={useIosIap ? handlePayIos : handlePay}
+              onClick={handlePay_platform}
               disabled={anyPaying || isPremium}
               className="h-12 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg shadow-brand-primary/20 hover:opacity-90 transition disabled:opacity-60 active:scale-[0.98] active:brightness-[0.9] flex items-center justify-center gap-2"
             >

@@ -65,3 +65,14 @@ export const WEEKLY_PLAN: DayPlan[] = [
     lesson: 7,
   },
 ];
+
+// Admin emails that have full access without any lesson restrictions
+export const ADMIN_EMAILS: string[] = [
+  'ganaev123@gmail.com',
+];
+
+// Helper function to check if user is admin
+export const isAdminEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  return ADMIN_EMAILS.includes(email.toLowerCase().trim());
+};

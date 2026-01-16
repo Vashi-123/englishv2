@@ -5,6 +5,7 @@ import { ActivityType, ViewState } from '../types';
 import { useLanguage } from '../hooks/useLanguage';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { isPremiumEffective, useEntitlements } from '../hooks/useEntitlements';
+import { isAdminEmail } from '../constants';
 import Step4Dialogue from './Step4Dialogue';
 import { PaywallScreen } from './PaywallScreen';
 import {
@@ -27,13 +28,13 @@ import { parseMarkdown } from './step4Dialogue/markdown';
 import { getCacheKeyWithCurrentUser } from '../services/cacheUtils';
 import { debounce } from '../utils/debounce';
 import { getItemAsync, getItemObjectAsync, setItemObjectAsync, setItemAsync } from '../utils/asyncStorage';
-import { 
-  X, 
+import {
+  X,
   AlertTriangle,
   WifiOff,
-  CheckCircle2, 
-  Lock, 
-  Play, 
+  CheckCircle2,
+  Lock,
+  Play,
   Crown,
   Loader2,
   Sparkles,
@@ -71,7 +72,7 @@ export const AppContent: React.FC<{
   const { language, setLanguage, copy, languages } = useLanguage();
   // TTS for word pronunciation
   const { processAudioQueue, currentAudioItem } = useTtsQueue();
-  
+
   // Zustand stores
   const {
     showInsightPopup, setShowInsightPopup,
@@ -88,7 +89,7 @@ export const AppContent: React.FC<{
     paywallLesson, setPaywallLesson,
     isCheckingStatus, setIsCheckingStatus,
   } = useUIStore();
-  
+
   const {
     level, setLevel,
     selectedDayId, setSelectedDayId,
@@ -98,7 +99,7 @@ export const AppContent: React.FC<{
     activityStep, setActivityStep,
     completedTasks, setCompletedTasks, addCompletedTask,
   } = useLessonsStore();
-  
+
   const { data: dashboardData, loading: dashboardLoading, error: dashboardError, reload: reloadDashboard } = useDashboardData(userId, level, language || 'ru');
   const availableLevels = dashboardData?.availableLevels || [];
   const courseModules = dashboardData?.courseModules || [];
@@ -163,7 +164,9 @@ export const AppContent: React.FC<{
   const freeLessonCount = dashboardData?.freePlan?.lessonAccessLimit || 3;
   const { entitlements: entitlementsRow, loading: entitlementsRowLoading, refresh: refreshEntitlementsRow } = useEntitlements(userId);
   const entitlements = entitlementsRow ?? dashboardData?.entitlements ?? null;
-  const isPremium = isPremiumEffective(entitlements);
+  // Admin users get full premium access
+  const isAdmin = isAdminEmail(userEmail);
+  const isPremium = isPremiumEffective(entitlements) || isAdmin;
   const entitlementsLoading = dashboardLoading || entitlementsRowLoading;
   const refreshEntitlements = reloadDashboard;
   const [isInitializing, setIsInitializing] = useState(true);
@@ -205,7 +208,7 @@ export const AppContent: React.FC<{
       const params = new URLSearchParams(location.search);
       const showPaywallFromUrl = params.get('showPaywall') === '1';
       const showPaywallFromStorage = typeof window !== 'undefined' && sessionStorage.getItem('showPaywall') === '1';
-      
+
       if (showPaywallFromUrl || showPaywallFromStorage) {
         setPaywallLesson(null);
         setView(ViewState.PAYWALL);
@@ -246,7 +249,7 @@ export const AppContent: React.FC<{
     insightPopupTimerRef.current = window.setTimeout(() => {
       setShowInsightPopup(false);
       insightPopupTimerRef.current = null;
-  }, INSIGHT_POPUP_ANIM_MS);
+    }, INSIGHT_POPUP_ANIM_MS);
   }, []);
 
   const openWordsModal = useCallback(async () => {
@@ -436,14 +439,14 @@ export const AppContent: React.FC<{
     if (typeof window === 'undefined') return;
     const url = new URL(window.location.href);
     if (url.searchParams.get('paid') !== '1') return;
-    
+
     url.searchParams.delete('paid');
     try {
       window.history.replaceState({}, '', url.toString());
     } catch {
       // ignore
     }
-    
+
     // Проверяем статус платежа, если webhook еще не пришел
     const checkPaymentStatus = async () => {
       try {
@@ -451,11 +454,11 @@ export const AppContent: React.FC<{
         if (paymentId) {
           // Очищаем paymentId из sessionStorage
           sessionStorage.removeItem('yookassa_payment_id');
-          
+
           // Проверяем статус платежа через edge function
           const { checkYooKassaPaymentStatus } = await import('../services/billingServiceWeb');
           const statusResult = await checkYooKassaPaymentStatus({ paymentId });
-          
+
           if (statusResult?.ok) {
             if (statusResult.canceled) {
               // Платеж отменен - показываем сообщение
@@ -473,11 +476,11 @@ export const AppContent: React.FC<{
         // Игнорируем ошибки проверки статуса - просто обновляем entitlements
         console.log('[AppContent] Payment status check failed, refreshing entitlements anyway:', err);
       }
-      
+
       // Обновляем entitlements в любом случае (на случай, если webhook уже пришел)
       void refreshEntitlements();
     };
-    
+
     void checkPaymentStatus();
   }, [refreshEntitlements]);
 
@@ -570,7 +573,7 @@ export const AppContent: React.FC<{
   useEffect(() => {
     // Запускаем preload только после завершения инициализации
     if (isInitializing) return;
-    
+
     const preloadFirstMessage = async () => {
       if (!currentDayPlan) return;
 
@@ -708,7 +711,7 @@ export const AppContent: React.FC<{
       // Проверяем как dayCompletedStatus, так и БД напрямую
       const wasEverCompletedInState = dayCompletedStatus[checkingDay] === true;
       const wasEverCompletedInDB = progress?.completed === true;
-      
+
       // Если урок был завершен в БД или в состоянии, сохраняем статус завершения
       if ((wasEverCompletedInState || wasEverCompletedInDB) && !resolvedCompleted) {
         // Урок был завершен ранее, сохраняем статус завершения для разблокировки следующих уроков
@@ -762,7 +765,7 @@ export const AppContent: React.FC<{
       // Prefer lesson_progress to avoid scanning chat history for every day.
       const lessonIds = dayPlans.map((p) => p.lessonId).filter(Boolean) as string[];
       const progressByLessonId = await loadLessonProgressByLessonIds(lessonIds, level);
-      
+
       // ОПТИМИЗАЦИЯ: Находим дни, которые нужно проверить, и делаем параллельные запросы
       const daysToVerify: Array<{ dayPlan: typeof dayPlans[0]; lessonId: string | null }> = [];
       for (const dayPlan of dayPlans) {
@@ -780,14 +783,14 @@ export const AppContent: React.FC<{
       if (daysToVerify.length > 0) {
         const firstIncomplete = daysToVerify[0];
         const hasTag = await hasLessonCompleteTag(firstIncomplete.dayPlan.day, firstIncomplete.dayPlan.lesson, level);
-        
+
         if (hasTag) {
           statuses[firstIncomplete.dayPlan.day] = true;
-          await upsertLessonProgress({ 
-            day: firstIncomplete.dayPlan.day, 
-            lesson: firstIncomplete.dayPlan.lesson, 
-            level, 
-            completed: true 
+          await upsertLessonProgress({
+            day: firstIncomplete.dayPlan.day,
+            lesson: firstIncomplete.dayPlan.lesson,
+            level,
+            completed: true
           });
         } else {
           statuses[firstIncomplete.dayPlan.day] = false;
@@ -798,9 +801,9 @@ export const AppContent: React.FC<{
           statuses[daysToVerify[i].dayPlan.day] = false;
         }
       }
-      
+
       setDayCompletedStatus(statuses);
-      
+
       // Находим первый незавершенный день (актуальный)
       let actualDayId = dayPlans[0]?.day || 1;
       for (const dayPlan of dayPlans) {
@@ -809,13 +812,13 @@ export const AppContent: React.FC<{
           break;
         }
       }
-      
+
       // Устанавливаем актуальный день
       setSelectedDayId(actualDayId);
-      
+
       console.log("[App] Initialized with actual day:", actualDayId, "statuses:", statuses);
     };
-    
+
     if (dayPlans.length === 0) return;
     const key = `${level}:${dayPlans.length}`;
     if (statusesInitKeyRef.current === key) return;
@@ -826,10 +829,10 @@ export const AppContent: React.FC<{
   // Check if lesson is completed by checking chat progress and chat history
   useEffect(() => {
     if (!currentDayPlan || isInitializing) return;
-    
+
     // Сохраняем day для проверки актуальности
     const currentDay = currentDayPlan.day;
-    
+
     // Устанавливаем статус из кэша для мгновенного отображения, если он есть
     if (dayCompletedStatus[currentDay] !== undefined) {
       setLessonCompleted(dayCompletedStatus[currentDay]);
@@ -837,7 +840,7 @@ export const AppContent: React.FC<{
       // Если статуса нет в кэше, сбрасываем
       setLessonCompleted(false);
     }
-    
+
     // Проверяем актуальный статус из БД только при смене view (не при инициализации)
     if (view === ViewState.DASHBOARD) {
       checkLessonCompletion(false);
@@ -915,7 +918,7 @@ export const AppContent: React.FC<{
   const TASKS_PER_DAY = 1;
   const totalDays = dayPlans.length || 1;
   const TOTAL_SPRINT_TASKS = totalDays * TASKS_PER_DAY;
-  
+
   const selectedIndex = Math.max(
     0,
     dayPlans.findIndex((d) => d.day === selectedDayId)
@@ -933,7 +936,7 @@ export const AppContent: React.FC<{
   // Считаем завершенные уроки на основе dayCompletedStatus
   const totalCompletedCount = Object.values(dayCompletedStatus).filter(Boolean).length;
   const sprintProgressPercent = Math.round((totalCompletedCount / TOTAL_SPRINT_TASKS) * 100);
-  
+
   // Check if current day is completed на основе dayCompletedStatus
   const isCurrentDayCompleted = currentDayPlan ? (dayCompletedStatus[currentDayPlan.day] === true) : false;
 
@@ -944,7 +947,7 @@ export const AppContent: React.FC<{
       return { ...copy.ai.loading, color: "text-gray-400" };
     }
     const topic = insightDayPlan.theme.split('(')[0];
-    
+
     // Dynamic content based on progress
     // Используем явный тип для избежания проблем с строгими литералами
     let feedback: {
@@ -954,30 +957,30 @@ export const AppContent: React.FC<{
       motivation: string;
       color: string;
     } = {
-        status: copy.ai.states.base.status,
-        assessment: copy.ai.states.base.assessment,
-        learningGoal: copy.ai.states.base.learningGoal(topic),
-        motivation: copy.ai.states.base.motivation,
-        color: "text-brand-primary"
+      status: copy.ai.states.base.status,
+      assessment: copy.ai.states.base.assessment,
+      learningGoal: copy.ai.states.base.learningGoal(topic),
+      motivation: copy.ai.states.base.motivation,
+      color: "text-brand-primary"
     };
 
     // Используем dayCompletedStatus для определения состояния
     const isCurrentDayCompleted = dayCompletedStatus[insightDayPlan.day] === true;
-    
+
     if (isCurrentDayCompleted) {
-        feedback = {
-            status: copy.ai.states.practice.status,
-            assessment: copy.ai.states.practice.assessment,
-            learningGoal: copy.ai.states.practice.learningGoal,
-            motivation: copy.ai.states.practice.motivation,
-            color: "text-emerald-400"
-        };
+      feedback = {
+        status: copy.ai.states.practice.status,
+        assessment: copy.ai.states.practice.assessment,
+        learningGoal: copy.ai.states.practice.learningGoal,
+        motivation: copy.ai.states.practice.motivation,
+        color: "text-emerald-400"
+      };
     }
 
     // Sprint Level Overrides
     if (sprintProgressPercent > 50 && !isCurrentDayCompleted) {
-        feedback.assessment = copy.ai.sprintOverride.assessment;
-        feedback.motivation = copy.ai.sprintOverride.motivation;
+      feedback.assessment = copy.ai.sprintOverride.assessment;
+      feedback.motivation = copy.ai.sprintOverride.motivation;
     }
 
     return feedback;
@@ -987,38 +990,38 @@ export const AppContent: React.FC<{
   );
   // Single lesson card definition
   const TASKS = [
-    { 
-        id: ActivityType.DIALOGUE, 
-        title: copy.tasks.dialogue.title, 
-        subtitle: copy.tasks.dialogue.subtitle, 
-        duration: copy.tasks.dialogue.duration,
+    {
+      id: ActivityType.DIALOGUE,
+      title: copy.tasks.dialogue.title,
+      subtitle: copy.tasks.dialogue.subtitle,
+      duration: copy.tasks.dialogue.duration,
       icon: copy.tasks.dialogue.icon || '💬',
       color: "from-brand-primary to-brand-secondary"
     },
   ];
 
-  			  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
-  			    if (!currentDayPlan) return;
+  const handleTaskClick = async (type: ActivityType, isLocked: boolean) => {
+    if (!currentDayPlan) return;
 
-  	      const lessonNumber = currentDayPlan.lesson ?? currentDayPlan.day;
-  	      const premiumLocked =
-  	        !entitlementsLoading &&
-  	        !isPremium &&
-  	        lessonNumber > (Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT);
-  	      if (premiumLocked) {
-  	        setPaywallLesson(lessonNumber);
-  	        setView(ViewState.PAYWALL);
-  	        return;
-  	      }
+    const lessonNumber = currentDayPlan.lesson ?? currentDayPlan.day;
+    const premiumLocked =
+      !entitlementsLoading &&
+      !isPremium &&
+      lessonNumber > (Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT);
+    if (premiumLocked) {
+      setPaywallLesson(lessonNumber);
+      setView(ViewState.PAYWALL);
+      return;
+    }
 
     if (isLocked) return;
-    
+
     // Проверяем завершенность урока ДО открытия, чтобы сразу показать экран завершения без загрузки
     let lessonProgress: any = null;
     if (type === ActivityType.DIALOGUE) {
       lessonProgress = await loadLessonProgress(currentDayPlan.day, currentDayPlan.lesson, level).catch(() => null);
     }
-    
+
     setExerciseStartMode('normal');
     setActivityStep(type);
     setView(ViewState.EXERCISE);
@@ -1126,13 +1129,13 @@ export const AppContent: React.FC<{
 
     try {
       const result = await restoreIosPurchases();
-      
+
       // result всегда должен быть определен после исправления restoreIosPurchases
       if (!result) {
         alert('Не удалось восстановить покупки');
         return;
       }
-      
+
       if (result.ok && result.granted) {
         // Обновляем данные дашборда для отображения обновленного статуса premium
         await reloadDashboard();
@@ -1179,9 +1182,9 @@ export const AppContent: React.FC<{
   const handleNextStep = async () => {
     // Add current step to completed if not already
     if (!completedTasks.includes(activityStep)) {
-        addCompletedTask(activityStep);
+      addCompletedTask(activityStep);
     }
-    
+
     // When dialogue is completed we treat it as finishing the whole lesson:
     // 1) optimistically mark the current day completed
     // 2) unlock + auto-select the next lesson/day
@@ -1214,31 +1217,31 @@ export const AppContent: React.FC<{
 
   const handleNextLesson = async () => {
     if (!currentDayPlan) return;
-  	    const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
-  	    const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
-  	    if (!nextPlan?.day || !nextPlan?.lesson) {
-  	      setView(ViewState.DASHBOARD);
-  	      return;
-  	    }
+    const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
+    const nextPlan = currentIndex >= 0 ? dayPlans[currentIndex + 1] : undefined;
+    if (!nextPlan?.day || !nextPlan?.lesson) {
+      setView(ViewState.DASHBOARD);
+      return;
+    }
 
     // Mark current completed (same as handleNextStep) but stay in Step4 for the next lesson.
     const completedDay = currentDayPlan.day;
-      updateDayCompleted(completedDay, true);
+    updateDayCompleted(completedDay, true);
     setLessonCompleted(true);
-  	    void upsertLessonProgress({ day: currentDayPlan.day, lesson: currentDayPlan.lesson, level, completed: true });
+    void upsertLessonProgress({ day: currentDayPlan.day, lesson: currentDayPlan.lesson, level, completed: true });
 
-  	    const lessonNumber = nextPlan.lesson ?? nextPlan.day;
-  	    const freeLimit = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
-  	    const wouldBeLocked = !isPremium && lessonNumber > freeLimit;
-  	    if (wouldBeLocked) {
-  	      const latestEntitlements = await refreshEntitlements();
-  	      const premiumNow = isPremiumEffective(latestEntitlements) || isPremium;
-  	      const premiumLocked = !premiumNow && lessonNumber > freeLimit;
-  	      if (premiumLocked) {
-  	        openPremiumGate(lessonNumber);
-  	        return;
-  	      }
-  	    }
+    const lessonNumber = nextPlan.lesson ?? nextPlan.day;
+    const freeLimit = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
+    const wouldBeLocked = !isPremium && lessonNumber > freeLimit;
+    if (wouldBeLocked) {
+      const latestEntitlements = await refreshEntitlements();
+      const premiumNow = isPremiumEffective(latestEntitlements) || isPremium;
+      const premiumLocked = !premiumNow && lessonNumber > freeLimit;
+      if (premiumLocked) {
+        openPremiumGate(lessonNumber);
+        return;
+      }
+    }
 
     setSelectedDayId(nextPlan.day);
 
@@ -1387,6 +1390,7 @@ export const AppContent: React.FC<{
           selectedIndex={selectedIndex}
           dayCompletedStatus={dayCompletedStatus}
           paywallEnabled={paywallEnabled}
+          isAdmin={isAdmin}
           freeBoundaryIdx={freeBoundaryIdx}
           resolvedFreeLessonCount={resolvedFreeLessonCount}
           onPremiumGateOpen={openPremiumGate}
@@ -1470,7 +1474,7 @@ export const AppContent: React.FC<{
                   resolve();
                 }, 6000);
               });
-              
+
               await Promise.race([signOutPromise, timeoutPromise]);
               closeConfirm();
             }
@@ -1514,22 +1518,22 @@ export const AppContent: React.FC<{
       />
 
       {/* Loading Overlay */}
-       {isCheckingStatus && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center animate-in fade-in duration-300">
-                <div className="relative mb-8">
-                    <div className="w-24 h-24 border-4 border-white/10 border-t-brand-primary rounded-full animate-spin"></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <Sparkles className="w-8 h-8 text-brand-primary animate-pulse" />
-                    </div>
-                </div>
-                <h3 className="text-white font-bold text-3xl tracking-tight mb-2">
-                  Проверка статуса...
-                </h3>
-                <p className="text-gray-200 font-medium">
-                  Обновление информации об уроке
-                </p>
+      {isCheckingStatus && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex flex-col items-center justify-center animate-in fade-in duration-300">
+          <div className="relative mb-8">
+            <div className="w-24 h-24 border-4 border-white/10 border-t-brand-primary rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Sparkles className="w-8 h-8 text-brand-primary animate-pulse" />
             </div>
-        )}
+          </div>
+          <h3 className="text-white font-bold text-3xl tracking-tight mb-2">
+            Проверка статуса...
+          </h3>
+          <p className="text-gray-200 font-medium">
+            Обновление информации об уроке
+          </p>
+        </div>
+      )}
     </>
   );
 };

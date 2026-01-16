@@ -208,9 +208,9 @@ async function generateAppStoreJWT(): Promise<string> {
     .replace(/-----BEGIN PRIVATE KEY-----/g, "")
     .replace(/-----END PRIVATE KEY-----/g, "")
     .replace(/\s/g, "");
-  
+
   const keyData = Uint8Array.from(atob(pemKey), (c) => c.charCodeAt(0));
-  
+
   // Import key using Web Crypto API
   const privateKey = await crypto.subtle.importKey(
     "pkcs8",
@@ -254,7 +254,7 @@ async function verifyTransactionWithServerAPI(
 
   try {
     const jwt = await generateAppStoreJWT();
-    
+
     // Try sandbox first, then production
     const endpoints = [
       `${APP_STORE_SERVER_API_SANDBOX}/inApps/v1/transactions/${transactionId}`,
@@ -284,7 +284,7 @@ async function verifyTransactionWithServerAPI(
         // App Store Server API returns a signed transaction
         // The transaction data is in JWS (JSON Web Signature) format
         const signedTransaction = await response.text();
-        
+
         // Parse JWS to get transaction data
         // Format: header.payload.signature
         const parts = signedTransaction.split(".");
@@ -360,13 +360,13 @@ const verifyReceiptLegacy = async (
 
   // Try production first, then sandbox
   const endpoints = [APP_STORE_VERIFY_RECEIPT_PRODUCTION, APP_STORE_VERIFY_RECEIPT_SANDBOX];
-  
+
   for (const endpoint of endpoints) {
     try {
       const requestBody: { "receipt-data": string; password?: string } = {
         "receipt-data": receiptData,
       };
-      
+
       if (APP_STORE_SHARED_SECRET) {
         requestBody.password = APP_STORE_SHARED_SECRET;
       }
@@ -383,14 +383,14 @@ const verifyReceiptLegacy = async (
       }
 
       const result = await response.json();
-      
+
       // Status 0 means success
       if (result.status === 0) {
         // Check if the receipt contains the expected product
         const inAppPurchases = result.receipt?.in_app || [];
         const latestReceiptInfo = result.latest_receipt_info || [];
         const allTransactions = [...inAppPurchases, ...latestReceiptInfo];
-        
+
         // Find transaction matching our transactionId or productId
         const matchingTransaction = allTransactions.find(
           (tx: any) =>
@@ -499,7 +499,7 @@ Deno.serve(async (req: Request) => {
 
     // Extract promo code early to use in pending state too
     const promoCode = typeof body?.promoCode === "string" ? body.promoCode.trim() : null;
-    
+
     // КРИТИЧНО: Проверяем статус транзакции - pending транзакции не должны помечаться как успешные
     const transactionStatus = body?.transactionStatus;
     if (transactionStatus === "pending") {
@@ -515,13 +515,13 @@ Deno.serve(async (req: Request) => {
         .eq("provider_payment_id", transactionId)
         .maybeSingle();
       if (existingPaymentError) throw existingPaymentError;
-      
+
       const priceValueRaw = body?.priceValue;
       const priceValueNum = typeof priceValueRaw === "string" || typeof priceValueRaw === "number" ? Number(priceValueRaw) : null;
       const amountValue = Number.isFinite(priceValueNum) ? Number(priceValueNum) : null;
       const priceCurrencyRaw = body?.priceCurrency;
       const amountCurrency = typeof priceCurrencyRaw === "string" && priceCurrencyRaw.trim() ? priceCurrencyRaw.trim() : "RUB";
-      
+
       const paymentMetadata = {
         product_key: productKeyFromBody,
         raw_product_id: rawProductId,
@@ -529,7 +529,7 @@ Deno.serve(async (req: Request) => {
         promo_code: promoCode,
         note: "Transaction is pending payment. Premium will be activated automatically when payment is received.",
       };
-      
+
       if (existingPayment?.id) {
         const { error: updateError } = await supabase
           .from("payments")
@@ -551,7 +551,7 @@ Deno.serve(async (req: Request) => {
         });
         if (insertError) throw insertError;
       }
-      
+
       return json(200, {
         ok: true,
         granted: false,
@@ -567,14 +567,14 @@ Deno.serve(async (req: Request) => {
       .select("key,ios_product_id,active")
       .eq("key", productKeyFromBody)
       .maybeSingle();
-    
+
     if (productError) throw productError;
     if (!product || !product.active) {
       return json(400, { ok: false, error: "Product not available", requestId });
     }
 
     const productKey = product.key;
-    
+
     // Validate that rawProductId matches ios_product_id from DB
     // If ios_product_id is not set, we allow any productId (for backward compatibility)
     const expectedProductId = product.ios_product_id;
@@ -595,10 +595,10 @@ Deno.serve(async (req: Request) => {
     // Verify transaction/receipt with Apple App Store
     // App Store Server API can work without receiptData, legacy method requires it
     let receiptVerification: VerifyReceiptResult | null = null;
-    
+
     // Try verification (will use App Store Server API if available, or legacy method with receiptData)
     receiptVerification = await verifyReceipt(receiptData, rawProductId, transactionId);
-    
+
     if (!receiptVerification.valid) {
       console.error(`[ios-iap-complete] Receipt verification failed: ${receiptVerification.error}`, {
         requestId,
@@ -607,12 +607,12 @@ Deno.serve(async (req: Request) => {
         hasReceiptData: !!receiptData,
         hasServerApi: !!(APP_STORE_KEY_ID && APP_STORE_ISSUER_ID && APP_STORE_PRIVATE_KEY),
       });
-      
+
       // КРИТИЧНО: Для production транзакций верификация обязательна
       // Проверяем, не является ли это sandbox транзакцией (для тестирования)
-      const isSandbox = receiptVerification.error?.includes("sandbox") || 
-                       receiptVerification.error?.includes("storekit-sandbox") || false;
-      
+      const isSandbox = receiptVerification.error?.includes("sandbox") ||
+        receiptVerification.error?.includes("storekit-sandbox") || false;
+
       if (!isSandbox) {
         // В production без верификации не активируем premium
         // Но создаем запись со статусом для отслеживания
@@ -634,7 +634,7 @@ Deno.serve(async (req: Request) => {
           },
         });
         if (insertError) throw insertError;
-        
+
         return json(400, {
           ok: false,
           error: `Верификация транзакции не удалась: ${receiptVerification.error}. Premium не активирован.`,
@@ -653,7 +653,7 @@ Deno.serve(async (req: Request) => {
         productId: receiptVerification.productId,
         originalTransactionId: receiptVerification.originalTransactionId,
       });
-      
+
       // Use verified transaction ID and product ID if available
       if (receiptVerification.transactionId && receiptVerification.transactionId !== transactionId) {
         console.log(`[ios-iap-complete] Using verified transaction ID: ${receiptVerification.transactionId}`, { requestId });
@@ -678,12 +678,8 @@ Deno.serve(async (req: Request) => {
       );
     if (entitlementsError) throw entitlementsError;
 
-    // Send confirmation email
-    if (userEmail) {
-      sendPaymentSuccessEmail(userEmail).catch((err) =>
-        console.error("[ios-iap-complete] email error", err)
-      );
-    }
+    // Email will be sent only for NEW payments (below), not for existing ones
+    // This prevents duplicate emails when restoreIosPurchases is called on app resume
 
     const receiptPreview = receiptData ? receiptData.slice(0, 64) : null;
 
@@ -732,6 +728,14 @@ Deno.serve(async (req: Request) => {
       promo_code: promoCodeFinal,
     });
     if (insertError) throw insertError;
+
+    // Send confirmation email ONLY for NEW payments (first-time purchase)
+    // This prevents duplicate emails when restoreIosPurchases is called on app resume
+    if (userEmail) {
+      sendPaymentSuccessEmail(userEmail).catch((err) =>
+        console.error("[ios-iap-complete] email error", err)
+      );
+    }
 
     return json(200, { ok: true, granted: true, paymentId: transactionId, requestId });
   } catch (err) {

@@ -12,6 +12,7 @@ export type BillingProduct = {
   priceCurrency: string;
   active: boolean;
   iosProductId?: string | null;
+  androidProductId?: string | null;
 };
 
 type CachedProduct = BillingProduct & { cachedAt: number };
@@ -83,7 +84,7 @@ export type CreatePaymentResponse = {
 export const fetchBillingProduct = async (key: string = BILLING_PRODUCT_KEY): Promise<BillingProduct | null> => {
   const { data, error } = await supabase
     .from("billing_products")
-    .select("key,title,price_value,price_currency,active,ios_product_id")
+    .select("key,title,price_value,price_currency,active,ios_product_id,android_product_id")
     .eq("key", key)
     .maybeSingle();
   if (error) throw error;
@@ -95,6 +96,7 @@ export const fetchBillingProduct = async (key: string = BILLING_PRODUCT_KEY): Pr
     priceCurrency: String(data.price_currency || "RUB"),
     active: Boolean(data.active),
     iosProductId: data.ios_product_id ? String(data.ios_product_id) : null,
+    androidProductId: data.android_product_id ? String(data.android_product_id) : null,
   };
   writeCachedProduct(product); // Update cache on fetch
   return product;
