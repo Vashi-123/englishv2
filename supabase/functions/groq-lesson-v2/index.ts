@@ -238,10 +238,10 @@ Deno.serve(async (req: Request) => {
     const makeLLMRequest = async (
       requestMessages: any[],
       opts?: { max_tokens?: number; temperature?: number }
-    ): Promise<{ text: string; success: boolean }> => {
+    ): Promise<{ text: string; success: boolean; provider?: string }> => {
       
       // -- Helper for Cerebras --
-      const executeCerebras = async (): Promise<string> => {
+      const executeCerebras = async (): Promise<{ text: string; success: boolean; provider: string }> => {
         if (!CEREBRAS_API_KEY) throw new Error("Missing CEREBRAS_API_KEY");
         const resp = await fetch("https://api.cerebras.ai/v1/chat/completions", {
           method: "POST",
@@ -263,11 +263,11 @@ Deno.serve(async (req: Request) => {
         const data = await resp.json();
         const text = data?.choices?.[0]?.message?.content;
         if (!text) throw new Error("Empty Cerebras response");
-        return text;
+        return { text, success: true, provider: "cerebras" };
       };
 
       // -- Helper for Groq (legacy hedging logic) --
-      const executeGroqWithRetries = async (): Promise<{ text: string; success: boolean }> => {
+      const executeGroqWithRetries = async (): Promise<{ text: string; success: boolean; provider: string }> => {
         const maxRetries = 3;
         let attempt = 0;
 
@@ -313,7 +313,7 @@ Deno.serve(async (req: Request) => {
               executeSingleGroqRequest("A"),
               executeSingleGroqRequest("B")
             ]);
-            return { text, success: true };
+            return { text, success: true, provider: "groq" };
           } catch (aggregateError: any) {
             console.error(`[groq-lesson-v2] All Groq parallel requests failed (attempt ${attempt}):`, aggregateError);
             if (attempt < maxRetries) {
@@ -323,17 +323,23 @@ Deno.serve(async (req: Request) => {
             }
           }
         }
-        return { text: '', success: false };
+        return { text: '', success: false, provider: "groq_failed" };
       };
 
       // -- Main Logic --
       if (CEREBRAS_API_KEY) {
         try {
           console.log("[groq-lesson-v2] Trying Cerebras...");
-          const text = await executeCerebras();
-          return { text, success: true };
-        } catch (err) {
-          console.warn("[groq-lesson-v2] Cerebras failed, falling back to Groq:", err);
+          const result = await executeCerebras();
+          return result;
+        } catch (err: any) {
+          const isAuthError = err.message?.includes("status 401") || err.message?.toLowerCase().includes("unauthorized");
+          
+          if (isAuthError) {
+            console.error("[groq-lesson-v2] 🚨 CEREBRAS AUTH ERROR: Invalid API Key. Please check your Supabase secrets.", err);
+          } else {
+            console.warn("[groq-lesson-v2] Cerebras failed (network/other), falling back to Groq:", err);
+          }
           // Fall through to Groq
         }
       }
@@ -593,7 +599,7 @@ Lesson context (for you):\n\n${lessonContext}`;
         await insertTutorMessage("user", userQuestion);
         await insertTutorMessage("model", fallback);
         return new Response(
-          JSON.stringify({ response: fallback, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "" }),
+          JSON.stringify({ response: fallback, isCorrect: true, feedback: "", nextStep: currentStep ?? null, translation: "", provider: result.provider }),
           { headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
@@ -607,6 +613,7 @@ Lesson context (for you):\n\n${lessonContext}`;
           feedback: "",
           nextStep: currentStep ?? null,
           translation: "",
+          provider: result.provider
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
@@ -618,9 +625,9 @@ Lesson context (for you):\n\n${lessonContext}`;
       expected: string; // Может содержать варианты через " OR "
       studentAnswer: string;
       extra?: string;
-    }): Promise<{ isCorrect: boolean; feedback: string }> => {
+    }): Promise<{ isCorrect: boolean; feedback: string; provider?: string }> => {
       if (!params.studentAnswer) {
-        return { isCorrect: true, feedback: "" };
+        return { isCorrect: true, feedback: "", provider: "empty_input" };
       }
 
       const normalizeLenient = (value: string) => {
@@ -640,7 +647,7 @@ Lesson context (for you):\n\n${lessonContext}`;
       for (const variant of expectedVariants) {
         const variantNorm = normalizeLenient(variant);
         if (variantNorm && answerNorm && variantNorm === answerNorm) {
-          return { isCorrect: true, feedback: "" };
+          return { isCorrect: true, feedback: "", provider: "fast_path_exact_match" };
         }
       }
 
@@ -695,7 +702,7 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
 
       const validationResult = await makeLLMRequest(messages);
       if (!validationResult.success || !validationResult.text) {
-        return { isCorrect: false, feedback: "Не удалось проверить ответ. Попробуй еще раз." };
+        return { isCorrect: false, feedback: "Не удалось проверить ответ. Попробуй еще раз.", provider: validationResult.provider };
       }
 
       let parsed;
@@ -723,9 +730,9 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
 
       parsed = parseBestEffort(rawText);
       if (parsed && typeof parsed.isCorrect === "boolean" && typeof parsed.feedback === "string") {
-        return { isCorrect: parsed.isCorrect, feedback: parsed.feedback };
+        return { isCorrect: parsed.isCorrect, feedback: parsed.feedback, provider: validationResult.provider };
       }
-      return { isCorrect: false, feedback: "Не удалось проверить ответ. Попробуй еще раз." };
+      return { isCorrect: false, feedback: "Не удалось проверить ответ. Попробуй еще раз.", provider: validationResult.provider };
     };
 
     if (!currentStep?.type) {
@@ -858,7 +865,7 @@ ${params.extra ? `Контекст: ${params.extra}` : ""}`;
 
     const validation = await validateAnswer({ step: stepType, expected, studentAnswer, extra });
 
-    return new Response(JSON.stringify({ isCorrect: validation.isCorrect, feedback: validation.feedback || "" }), {
+    return new Response(JSON.stringify({ isCorrect: validation.isCorrect, feedback: validation.feedback || "", provider: validation.provider }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
 

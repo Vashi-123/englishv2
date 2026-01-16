@@ -1,6 +1,6 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Crown, GraduationCap, Menu } from 'lucide-react';
+import { Crown, GraduationCap, Menu, HelpCircle, MessageCircle, Mail } from 'lucide-react';
 import { ViewState } from '../../types';
 import { useLanguageMenu } from '../../hooks/useLanguageMenu';
 import { formatFirstLessonsRu } from '../../services/ruPlural';
@@ -46,6 +46,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
 }) => {
   const { showLangMenu, langMenuVisible, langMenuRef, langMenuPos, openLangMenu, closeLangMenu } = useLanguageMenu();
   const isNativeIos = useMemo(() => Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios', []);
+  const [showSupport, setShowSupport] = useState(false);
+
+  // Сбрасываем состояние меню поддержки при закрытии основного меню
+  useEffect(() => {
+    if (!showLangMenu) {
+      setShowSupport(false);
+    }
+  }, [showLangMenu]);
 
   return (
     <div className="flex flex-col gap-1.5 z-10 flex-none">
@@ -74,17 +82,15 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
               <button
                 type="button"
                 aria-label="Close menu"
-                className={`absolute inset-0 bg-black/25 backdrop-blur-sm cursor-default transition-opacity duration-300 ease-in-out ${
-                  langMenuVisible ? 'opacity-100' : 'opacity-0'
-                }`}
+                className={`absolute inset-0 bg-black/25 backdrop-blur-sm cursor-default transition-opacity duration-300 ease-in-out ${langMenuVisible ? 'opacity-100' : 'opacity-0'
+                  }`}
                 onClick={closeLangMenu}
               />
               <div
-                className={`absolute bg-white border border-gray-200 rounded-xl shadow-2xl p-3 w-80 max-w-[calc(100vw-32px)] space-y-3 transform-gpu transition-all duration-300 ease-in-out ${
-                  langMenuVisible
+                className={`absolute bg-white border border-gray-200 rounded-xl shadow-2xl p-3 w-80 max-w-[calc(100vw-32px)] space-y-3 transform-gpu transition-all duration-300 ease-in-out ${langMenuVisible
                     ? 'opacity-100 scale-100 translate-y-0'
                     : 'opacity-0 scale-[0.96] -translate-y-2 pointer-events-none'
-                }`}
+                  }`}
                 style={{ top: langMenuPos.top, left: langMenuPos.left }}
               >
                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-[0.2em]">
@@ -118,8 +124,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                         {isPremium
                           ? 'Все уроки'
                           : formatFirstLessonsRu(
-                              Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT
-                            )}
+                            Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT
+                          )}
                       </div>
                     </div>
                   )}
@@ -151,11 +157,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                         closeLangMenu();
                       }}
                       disabled={levelsLoading}
-                      className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition ${
-                        level === lvl
+                      className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition ${level === lvl
                           ? 'bg-brand-primary text-white border-brand-primary'
                           : 'border-gray-200 text-slate-800 hover:border-brand-primary/40'
-                      }`}
+                        }`}
                     >
                       {lvl}
                     </button>
@@ -163,6 +168,45 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                 </div>
                 <div className="h-px bg-gray-100" />
                 <div className="space-y-2">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowSupport(!showSupport);
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-between transition-colors ${showSupport
+                        ? 'bg-indigo-50 text-indigo-700'
+                        : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                      }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <HelpCircle className="w-4 h-4" />
+                      Поддержка
+                    </span>
+                  </button>
+
+                  {showSupport && (
+                    <div className="pl-2 space-y-1 pb-1">
+                      <a
+                        href="https://t.me/gopractice_support"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-blue-600 hover:bg-blue-50 flex items-center gap-2"
+                        onClick={() => closeLangMenu()}
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        Telegram
+                      </a>
+                      <a
+                        href="mailto:support@go-practice.com"
+                        className="block w-full text-left px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+                        onClick={() => closeLangMenu()}
+                      >
+                        <Mail className="w-4 h-4" />
+                        Email
+                      </a>
+                    </div>
+                  )}
+
                   <button
                     onClick={() => {
                       closeLangMenu();

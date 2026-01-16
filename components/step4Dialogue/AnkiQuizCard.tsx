@@ -51,13 +51,13 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
       const distractors = shuffle<string>(
         dir === 'ru->en'
           ? distractorPool
-              .filter((x: DeckItem) => x.word.toLowerCase() !== q.word.toLowerCase())
-              .map((x: DeckItem) => x.word)
-              .filter(Boolean)
+            .filter((x: DeckItem) => x.word.toLowerCase() !== q.word.toLowerCase())
+            .map((x: DeckItem) => x.word)
+            .filter(Boolean)
           : distractorPool
-              .filter((x: DeckItem) => x.translation.toLowerCase() !== q.translation.toLowerCase())
-              .map((x: DeckItem) => x.translation)
-              .filter(Boolean)
+            .filter((x: DeckItem) => x.translation.toLowerCase() !== q.translation.toLowerCase())
+            .map((x: DeckItem) => x.translation)
+            .filter(Boolean)
       )
         .filter((t, idx, arr) => arr.indexOf(t) === idx)
         .slice(0, 3);
@@ -125,8 +125,15 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
     });
   };
 
-  const scheduleAdvance = (minDelayMs: number) => {
+  const scheduleAdvance = (minDelayMs: number, shouldAutoAdvance: boolean) => {
     if (advanceTimerRef.current != null) window.clearTimeout(advanceTimerRef.current);
+
+    // If we should not auto-advance (incorrect answer), return early.
+    // We will wait for manual "Next" click.
+    if (!shouldAutoAdvance) {
+      return;
+    }
+
     advanceTimerRef.current = window.setTimeout(() => {
       void (async () => {
         try {
@@ -145,11 +152,10 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
           <div className="flex items-start justify-between gap-4">
             <CardHeading>Повтори слова</CardHeading>
             <span
-              className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
-                true
-                  ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
-                  : 'border-gray-300 bg-white text-gray-300'
-              }`}
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${true
+                ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                : 'border-gray-300 bg-white text-gray-300'
+                }`}
             >
               <Check className="w-4 h-4" />
             </span>
@@ -214,21 +220,22 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
                   setWasCorrect(ok);
                   playedAudioRef.current = false;
                   (e.currentTarget as HTMLButtonElement).blur();
-                  
+
                   // Play audio for the correct answer (English word) if answer is correct
                   if (ok && direction === 'ru->en' && playAudio && current.word) {
                     playedAudioRef.current = true;
                     playAudio(current.word, 'en');
                   }
-                  
+
                   void (async () => {
                     try {
                       await Promise.resolve(
                         onAnswer?.({ id: current.id, word: current.word, translation: current.translation, isCorrect: ok })
                       );
                     } finally {
-                      // Don't advance to the next card until audio playback has finished.
-                      scheduleAdvance(ok ? 520 : 1600);
+                      // Only auto-advance if correct.
+                      // If incorrect, show manual button (handled by logic in scheduleAdvance).
+                      scheduleAdvance(ok ? 520 : 0, ok);
                     }
                   })();
                 }}
@@ -249,6 +256,25 @@ export function AnkiQuizCard({ items, total = 5, direction = 'ru->en', onAnswer,
           </div>
         )}
       </div>
+
+      {/* Manual Next Button for incorrect answers */}
+      {wasCorrect === false && (
+        <div className="fixed bottom-0 left-0 right-0 z-[101] bg-white p-4 border-t border-gray-100">
+          <div className="max-w-3xl lg:max-w-4xl mx-auto px-4">
+            <button
+              type="button"
+              onClick={() => scheduleAdvance(0, true)}
+              className="lesson-cta-btn w-full"
+            >
+              <span className="lesson-cta-shadow"></span>
+              <span className="lesson-cta-edge"></span>
+              <span className="lesson-cta-front">
+                Далее
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

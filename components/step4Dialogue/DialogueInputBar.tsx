@@ -74,15 +74,14 @@ export function DialogueInputBar({
               type="button"
               disabled={isLoading || isTranscribing || isDisabled}
               onClick={onToggleRecording}
-              className={`h-14 w-14 flex items-center justify-center rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${
-                isDisabled
-                  ? 'bg-gray-400 text-white cursor-not-allowed'
-                  : isRecording
+              className={`h-14 w-14 flex items-center justify-center rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${isDisabled
+                ? 'bg-gray-400 text-white cursor-not-allowed'
+                : isRecording
                   ? 'bg-red-500 text-white animate-pulse'
                   : isTranscribing
                     ? 'bg-gray-400 text-white cursor-not-allowed'
                     : 'bg-brand-primary text-white hover:opacity-90'
-              }`}
+                }`}
               aria-label={isRecording ? 'Stop recording' : 'Record audio'}
             >
               <Mic className={`w-5 h-5 ${isRecording ? 'animate-pulse' : ''}`} />
@@ -121,24 +120,24 @@ export function DialogueInputBar({
               </div>
             ) : null}
             <div className="relative flex items-center gap-3">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => onInputChange(e.target.value)}
-              placeholder={placeholder}
-              rows={1}
-              lang="en"
-              className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto text-base"
-              disabled={isDisabled}
-            />
-            <button
-              type="button"
-              disabled={isLoading || isDisabled || !input.trim()}
-              onClick={onSend}
-              className="p-4 bg-brand-primary text-white rounded-full hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100"
-            >
-              <Send className="w-5 h-5" />
-            </button>
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) => onInputChange(e.target.value)}
+                placeholder={placeholder}
+                rows={1}
+                lang="en"
+                className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto text-base"
+                disabled={isDisabled}
+              />
+              <button
+                type="button"
+                disabled={isLoading || isDisabled || !input.trim()}
+                onClick={onSend}
+                className="p-4 bg-brand-primary text-white rounded-full hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100"
+              >
+                <Send className="w-5 h-5" />
+              </button>
             </div>
           </div>
         ) : (

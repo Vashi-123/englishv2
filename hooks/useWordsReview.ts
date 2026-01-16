@@ -31,7 +31,7 @@ export const useWordsReview = (userWords: Word[]) => {
   const startReviewMode = useCallback(() => {
     if (userWords.length === 0) return;
     const shuffled = shuffle([...userWords]);
-    
+
     // Создаем варианты ответов для каждого слова
     const wordsWithOptions = shuffled.map((word) => {
       const correctAnswer = word.translation;
@@ -46,7 +46,7 @@ export const useWordsReview = (userWords: Word[]) => {
       const options = shuffle([correctAnswer, ...distractors]);
       return { ...word, options };
     });
-    
+
     setShuffledReviewWords(wordsWithOptions);
     setReviewMode(true);
     setReviewIndex(0);
@@ -67,22 +67,26 @@ export const useWordsReview = (userWords: Word[]) => {
   const handleAnswer = useCallback((word: WordWithOptions, selectedAnswer: string) => {
     const correctAnswer = word.translation;
     const isCorrect = selectedAnswer === correctAnswer;
-    
+
     setReviewSelected(selectedAnswer);
     setReviewWasCorrect(isCorrect);
-    
+
     // Сохраняем результат в SRS систему
     const cardId = word.id;
     if (cardId && typeof cardId === 'number') {
       const quality = isCorrect ? 5 : 2;
-      applySrsReview({ cardId, quality }).catch((err) => 
+      applySrsReview({ cardId, quality }).catch((err) =>
         console.error('[WordsReview] SRS apply review failed:', err)
       );
     }
-    
-    reviewAdvanceTimerRef.current = window.setTimeout(() => {
-      goNextReviewWord();
-    }, isCorrect ? 800 : 1500);
+
+    // Автоматический переход только при правильном ответе
+    // При неправильном ответе ждём нажатия кнопки "Далее"
+    if (isCorrect) {
+      reviewAdvanceTimerRef.current = window.setTimeout(() => {
+        goNextReviewWord();
+      }, 800);
+    }
   }, [goNextReviewWord]);
 
   const exitReviewMode = useCallback(() => {

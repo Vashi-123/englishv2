@@ -31,33 +31,56 @@ export async function getCurrentVersion(): Promise<string> {
 
 /**
  * Получает информацию о последней версии с сервера
+ * Сначала ищет запись для конкретной платформы (ios/android),
+ * если не найдена — использует запись с platform = 'all'
  */
 export async function getLatestVersionInfo(): Promise<VersionInfo | null> {
   try {
-    // Вариант 1: Использовать Supabase таблицу
-    const { data, error } = await supabase
+    const platform = Capacitor.getPlatform(); // 'ios', 'android', или 'web'
+
+    // Сначала пробуем найти запись для конкретной платформы
+    const { data: platformData, error: platformError } = await supabase
       .from('app_versions')
-      .select('version, min_version, force_update, update_url, message')
+      .select('version, min_version, force_update, update_url, message, platform')
+      .eq('platform', platform)
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
-    if (error) {
-      // Если таблицы нет или пуста (PGRST116), пробуем вариант 2: JSON endpoint
-      // Не логируем как warning, если это ожидаемое поведение (таблица пуста)
-      if (error.code !== 'PGRST116') {
-        console.warn('[Version] Supabase table error, trying JSON endpoint:', error.code);
-      }
-      return await getLatestVersionFromJson();
+    if (!platformError && platformData) {
+      console.log('[Version] Found platform-specific version:', platform, platformData.version);
+      return {
+        version: platformData.version,
+        minVersion: platformData.min_version,
+        forceUpdate: platformData.force_update,
+        updateUrl: platformData.update_url,
+        message: platformData.message,
+      };
     }
 
-    return {
-      version: data.version,
-      minVersion: data.min_version,
-      forceUpdate: data.force_update,
-      updateUrl: data.update_url,
-      message: data.message,
-    };
+    // Если нет записи для платформы, ищем 'all' (общую для всех)
+    const { data: allData, error: allError } = await supabase
+      .from('app_versions')
+      .select('version, min_version, force_update, update_url, message, platform')
+      .eq('platform', 'all')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!allError && allData) {
+      console.log('[Version] Using fallback "all" platform version:', allData.version);
+      return {
+        version: allData.version,
+        minVersion: allData.min_version,
+        forceUpdate: allData.force_update,
+        updateUrl: allData.update_url,
+        message: allData.message,
+      };
+    }
+
+    // Если ничего не найдено в Supabase, пробуем JSON fallback
+    console.log('[Version] No Supabase records found, trying JSON fallback');
+    return await getLatestVersionFromJson();
   } catch (error) {
     // Только логируем реальные ошибки, не ожидаемые случаи
     if (error instanceof Error && !error.message.includes('PGRST116')) {
@@ -151,29 +174,35 @@ export async function checkForUpdate(): Promise<{
     }
 
     const comparison = compareVersions(currentVersion, latestInfo.version);
-    const isBelowMinVersion = latestInfo.minVersion 
-      ? compareVersions(currentVersion, latestInfo.minVersion) < 0 
+    const isBelowMinVersion = latestInfo.minVersion
+      ? compareVersions(currentVersion, latestInfo.minVersion) < 0
       : false;
-    
-    // Обновление нужно если: версия меньше последней, или forceUpdate, или версия меньше минимальной
-    const needsUpdate = comparison < 0 || 
-      latestInfo.forceUpdate ||
-      isBelowMinVersion;
 
-    // Принудительное обновление если: нужна новая версия, или forceUpdate, или версия ниже минимальной
-    const isForceUpdate = needsUpdate;
+
+    if (comparison >= 0) {
+      // Версия пользователя новая или новее серверной — обновление не нужно
+      return {
+        needsUpdate: false,
+        isForceUpdate: false,
+        versionInfo: latestInfo,
+      };
+    }
+
+    // Обновление нужно. Проверяем, является ли оно принудительным.
+    // Принудительное если: флаг в базе OR версия ниже минимальной
+    const isForceUpdate = latestInfo.forceUpdate || isBelowMinVersion;
 
     console.log('[Version] Update check result:', {
       currentVersion,
       latestVersion: latestInfo.version,
       comparison,
-      needsUpdate,
+      needsUpdate: true,
       isForceUpdate,
       minVersion: latestInfo.minVersion,
     });
 
     return {
-      needsUpdate,
+      needsUpdate: true,
       isForceUpdate,
       versionInfo: latestInfo,
     };

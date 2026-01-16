@@ -35,6 +35,7 @@ export const WordsModal: React.FC<WordsModalProps> = ({
     reviewWasCorrect,
     shuffledReviewWords,
     startReviewMode,
+    goNextReviewWord,
     handleAnswer,
     exitReviewMode,
   } = useWordsReview(words);
@@ -48,12 +49,12 @@ export const WordsModal: React.FC<WordsModalProps> = ({
     }
     if (reviewIndex === prevReviewIndexRef.current) return;
     if (shuffledReviewWords.length === 0) return;
-    
+
     const currentWord = shuffledReviewWords[reviewIndex];
     if (!currentWord) return;
-    
+
     prevReviewIndexRef.current = reviewIndex;
-    
+
     const normalizedWord = String(currentWord.word || '').replace(/\s+/g, ' ').trim();
     if (normalizedWord) {
       // Небольшая задержка для плавности перехода
@@ -76,9 +77,8 @@ export const WordsModal: React.FC<WordsModalProps> = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ease-out backdrop-blur-[2px] ${
-        isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
-      }`}
+      className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ease-out backdrop-blur-[2px] ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
       aria-modal="true"
       role="dialog"
     >
@@ -87,9 +87,8 @@ export const WordsModal: React.FC<WordsModalProps> = ({
 
       <div className="relative h-full w-full flex flex-col">
         <div
-          className={`w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full transform-gpu transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            isActive ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-3 scale-[0.98]'
-          }`}
+          className={`w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full transform-gpu transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isActive ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-3 scale-[0.98]'
+            }`}
         >
           <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
             <div className="flex items-center gap-4">
@@ -135,7 +134,7 @@ export const WordsModal: React.FC<WordsModalProps> = ({
                   const isWordSpeaking = currentAudioItem?.text === currentWord.word && currentAudioItem?.kind === 'word';
                   const correctAnswer = currentWord.translation;
                   const showResult = reviewWasCorrect !== null;
-                  
+
                   return (
                     <div className="w-full max-w-2xl">
                       <div className="rounded-3xl border-2 border-gray-200 bg-white shadow-lg p-8">
@@ -156,11 +155,10 @@ export const WordsModal: React.FC<WordsModalProps> = ({
                                   processAudioQueue([{ text: normalizedWord, lang: 'en', kind: 'word' }]);
                                 }
                               }}
-                              className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all ${
-                                isWordSpeaking
-                                  ? 'bg-brand-primary text-white shadow-md'
-                                  : 'bg-gray-100 text-gray-600 hover:bg-brand-primary/10 hover:text-brand-primary'
-                              }`}
+                              className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-all ${isWordSpeaking
+                                ? 'bg-brand-primary text-white shadow-md'
+                                : 'bg-gray-100 text-gray-600 hover:bg-brand-primary/10 hover:text-brand-primary'
+                                }`}
                               aria-label={`Произнести ${currentWord.word}`}
                             >
                               <Volume2 className={`w-6 h-6 ${isWordSpeaking ? 'animate-pulse' : ''}`} />
@@ -170,7 +168,7 @@ export const WordsModal: React.FC<WordsModalProps> = ({
                             Выбери правильный перевод
                           </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {currentWord.options.map((opt) => {
                             const v = String(opt || '').trim();
@@ -213,6 +211,25 @@ export const WordsModal: React.FC<WordsModalProps> = ({
                           </div>
                         )}
                       </div>
+
+                      {/* Кнопка "Далее" при неправильном ответе */}
+                      {showResult && reviewWasCorrect === false && (
+                        <div className="fixed bottom-0 left-0 right-0 z-[101] bg-white p-4 border-t border-gray-100">
+                          <div className="max-w-3xl lg:max-w-4xl mx-auto px-4">
+                            <button
+                              type="button"
+                              onClick={goNextReviewWord}
+                              className="lesson-cta-btn w-full"
+                            >
+                              <span className="lesson-cta-shadow"></span>
+                              <span className="lesson-cta-edge"></span>
+                              <span className="lesson-cta-front">
+                                Далее
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -251,11 +268,10 @@ export const WordsModal: React.FC<WordsModalProps> = ({
                                 processAudioQueue([{ text: normalizedWord, lang: 'en', kind: 'word' }]);
                               }
                             }}
-                            className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                              isWordSpeaking
-                                ? 'bg-brand-primary text-white shadow-md'
-                                : 'bg-gray-100 text-gray-600 hover:bg-brand-primary/10 hover:text-brand-primary'
-                            }`}
+                            className={`flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center transition-all ${isWordSpeaking
+                              ? 'bg-brand-primary text-white shadow-md'
+                              : 'bg-gray-100 text-gray-600 hover:bg-brand-primary/10 hover:text-brand-primary'
+                              }`}
                             aria-label={`Произнести ${word.word}`}
                           >
                             <Volume2 className={`w-5 h-5 ${isWordSpeaking ? 'animate-pulse' : ''}`} />

@@ -80,8 +80,8 @@ export function GrammarDrillsCard({
     if (drills.length > 0) {
       console.log('[GrammarDrillsCard] Drills structure check:', drills.map(d => ({
         q: d.question,
-        expectedType: Array.isArray(d.expected) 
-          ? (d.expected.length > 0 && Array.isArray(d.expected[0]) ? 'string[][]' : 'string[]') 
+        expectedType: Array.isArray(d.expected)
+          ? (d.expected.length > 0 && Array.isArray(d.expected[0]) ? 'string[][]' : 'string[]')
           : typeof d.expected,
         expectedValue: d.expected,
         requiredValue: d.requiredWords
@@ -107,14 +107,14 @@ export function GrammarDrillsCard({
       checked: Array.isArray(initialState.checked) ? initialState.checked.slice(0, count) : empty.checked,
       correct: Array.isArray(initialState.correct) ? initialState.correct.slice(0, count) : empty.correct,
       completed: Boolean(initialState.completed),
-      currentDrillIndex: typeof initialState.currentDrillIndex === 'number' 
-        ? initialState.currentDrillIndex 
+      currentDrillIndex: typeof initialState.currentDrillIndex === 'number'
+        ? initialState.currentDrillIndex
         : (initialState.currentDrillIndex === null ? null : null),
-      feedbacks: Array.isArray(initialState.feedbacks) && initialState.feedbacks.length === count 
-        ? initialState.feedbacks.slice(0, count) 
+      feedbacks: Array.isArray(initialState.feedbacks) && initialState.feedbacks.length === count
+        ? initialState.feedbacks.slice(0, count)
         : Array.from({ length: count }, () => ''),
-      notes: Array.isArray(initialState.notes) && initialState.notes.length === count 
-        ? initialState.notes.slice(0, count) 
+      notes: Array.isArray(initialState.notes) && initialState.notes.length === count
+        ? initialState.notes.slice(0, count)
         : Array.from({ length: count }, () => ''),
     };
     console.log('[GrammarDrillsCard] useMemo: пересчет initial', {
@@ -156,14 +156,14 @@ export function GrammarDrillsCard({
         const mergedAnswers = initial.answers.map((initialVal, idx) => {
           const localVal = localAnswersRef.current[idx] || '';
           const currentStateVal = currentAnswers[idx] || '';
-          
+
           // Priority: current state > local ref > initial
           // This ensures we never lose what user is seeing
           if (currentStateVal.trim()) {
             // User is seeing this value, keep it to prevent flickering
             return currentStateVal;
           }
-          
+
           // If local ref has content, keep it (user was typing)
           if (localVal.trim()) {
             // Only use initial if it's different and not empty (synced from parent)
@@ -182,7 +182,7 @@ export function GrammarDrillsCard({
         return mergedAnswers;
       });
     }
-    
+
     // Always update other fields as they don't cause flickering
     setChecked(initial.checked);
     setCorrect(initial.correct);
@@ -191,7 +191,7 @@ export function GrammarDrillsCard({
     if (initial.feedbacks) setFeedbacks(initial.feedbacks);
     if (initial.notes) setNotes(initial.notes);
   }, [initial]);
-  
+
   // Also react to initialState.currentDrillIndex changes directly for immediate UI update
   useEffect(() => {
     const newIndex = initialState?.currentDrillIndex;
@@ -203,14 +203,14 @@ export function GrammarDrillsCard({
       }
     }
   }, [initialState?.currentDrillIndex]);
-  
+
   // React to initialState.checked and initialState.correct changes for immediate UI update
   // Create stable references to detect changes
   const prevCheckedRef = useRef<string>('');
   const prevCorrectRef = useRef<string>('');
   const prevFeedbacksRef = useRef<string>('');
   const prevNotesRef = useRef<string>('');
-  
+
   useEffect(() => {
     console.log('[GrammarDrillsCard] useEffect сработал для initialState:', {
       hasInitialState: !!initialState,
@@ -221,12 +221,12 @@ export function GrammarDrillsCard({
       currentChecked: checked,
       currentCorrect: correct
     });
-    
+
     const checkedStr = JSON.stringify(initialState?.checked);
     const correctStr = JSON.stringify(initialState?.correct);
     const feedbacksStr = JSON.stringify(initialState?.feedbacks);
     const notesStr = JSON.stringify(initialState?.notes);
-    
+
     if (checkedStr !== prevCheckedRef.current && initialState?.checked && Array.isArray(initialState.checked)) {
       console.log('[GrammarDrillsCard] Обновление checked:', {
         prev: prevCheckedRef.current,
@@ -245,7 +245,7 @@ export function GrammarDrillsCard({
         isArray: Array.isArray(initialState?.checked)
       });
     }
-    
+
     if (correctStr !== prevCorrectRef.current && initialState?.correct && Array.isArray(initialState.correct)) {
       console.log('[GrammarDrillsCard] Обновление correct:', {
         prev: prevCorrectRef.current,
@@ -264,7 +264,7 @@ export function GrammarDrillsCard({
         isArray: Array.isArray(initialState?.correct)
       });
     }
-    
+
     if (feedbacksStr !== prevFeedbacksRef.current && initialState?.feedbacks && Array.isArray(initialState.feedbacks)) {
       prevFeedbacksRef.current = feedbacksStr;
       setFeedbacks(initialState.feedbacks);
@@ -278,7 +278,7 @@ export function GrammarDrillsCard({
   // Auto-scroll to next drill when it appears
   useEffect(() => {
     if (currentDrillIndex === null || currentDrillIndex === undefined) return;
-    
+
     // Wait for DOM to update before scrolling
     const timeoutId = setTimeout(() => {
       const drillElement = drillRefs.current.get(currentDrillIndex);
@@ -309,7 +309,7 @@ export function GrammarDrillsCard({
         }
       }
     }, 100);
-    
+
     return () => clearTimeout(timeoutId);
   }, [currentDrillIndex]);
 
@@ -353,7 +353,7 @@ export function GrammarDrillsCard({
   const checkOne = useCallback(
     async (idx: number) => {
       if (validating || isLoading) return;
-      
+
       // Use ref to get the most current answer value to prevent flickering
       const answer = localAnswersRef.current[idx] || answers[idx] || '';
       if (!answer.trim()) return;
@@ -367,7 +367,7 @@ export function GrammarDrillsCard({
 
         // Сначала пробуем локальную проверку
         const localResult = validateGrammarDrill(answer, drills[idx]);
-        
+
         if (!localResult.needsAI) {
           // Локальная проверка дала результат
           console.log('[GrammarDrillsCard] Локальная проверка:', {
@@ -446,7 +446,7 @@ export function GrammarDrillsCard({
           next[idx] = notesForDrill;
           return next;
         });
-        
+
         // Ensure ref has the most current answer value for this drill
         // This prevents flickering when state updates
         const currentAnswers = localAnswersRef.current.slice();
@@ -455,23 +455,23 @@ export function GrammarDrillsCard({
           currentAnswers[idx] = answer;
           localAnswersRef.current = currentAnswers;
         }
-        
+
         // Move to next drill if correct, or stay on current if incorrect
         if (isCorrect && idx < drills.length - 1) {
           const nextIndex = idx + 1;
           setCurrentDrillIndex(nextIndex);
-          emitState({ 
-            answers: currentAnswers, 
-            checked: nextChecked, 
-            correct: nextCorrect, 
+          emitState({
+            answers: currentAnswers,
+            checked: nextChecked,
+            correct: nextCorrect,
             completed,
             currentDrillIndex: nextIndex,
           });
         } else {
-          emitState({ 
-            answers: currentAnswers, 
-            checked: nextChecked, 
-            correct: nextCorrect, 
+          emitState({
+            answers: currentAnswers,
+            checked: nextChecked,
+            correct: nextCorrect,
             completed,
             currentDrillIndex: idx,
           });
@@ -505,11 +505,10 @@ export function GrammarDrillsCard({
             </span>
           </CardHeading>
           <span
-            className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
-              completed
-                ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
-                : 'border-gray-300 bg-white text-gray-300'
-            }`}
+            className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${completed
+              ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+              : 'border-gray-300 bg-white text-gray-300'
+              }`}
           >
             {completed ? <Check className="w-4 h-4" /> : null}
           </span>
@@ -553,151 +552,148 @@ export function GrammarDrillsCard({
               <div className="flex-1 h-px bg-gray-300"></div>
             </div>
             <div className="space-y-3">
-            {/* Show only current drill and completed past drills */}
-            {(() => {
-              // Use initialState.currentDrillIndex as primary source, fallback to local state
-              // Priority: initialState > local state > null
-              const effectiveDrillIndex = (() => {
-                if (initialState?.currentDrillIndex !== undefined) {
-                  return initialState.currentDrillIndex;
+              {/* Show only current drill and completed past drills */}
+              {(() => {
+                // Use initialState.currentDrillIndex as primary source, fallback to local state
+                // Priority: initialState > local state > null
+                const effectiveDrillIndex = (() => {
+                  if (initialState?.currentDrillIndex !== undefined) {
+                    return initialState.currentDrillIndex;
+                  }
+                  return currentDrillIndex;
+                })();
+
+                // Show message if drills haven't started
+                if (effectiveDrillIndex === null || effectiveDrillIndex === undefined) {
+                  return (
+                    <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3 text-sm text-gray-700">
+                      Нажми «Проверить», чтобы начать задания.
+                    </div>
+                  );
                 }
-                return currentDrillIndex;
-              })();
-              
-              // Show message if drills haven't started
-              if (effectiveDrillIndex === null || effectiveDrillIndex === undefined) {
-                return (
-                  <div className="rounded-2xl border border-gray-200 bg-slate-50 px-4 py-3 text-sm text-gray-700">
-                    Нажми «Проверить», чтобы начать задания.
-                  </div>
-                );
-              }
-              
-              // Drills have started, show them
-              return drills.map((d, i) => {
-                const isChecked = Boolean(checked[i]);
-                const isCorrect = Boolean(correct[i]);
-                const expected = getExpectedAsString(d.expected || '');
-                const drillIndex = effectiveDrillIndex as number;
-                const isCurrent = i === drillIndex;
-                // Show past drills only if they were checked (completed)
-                const isPast = i < drillIndex && isChecked;
-                
-                // Show current drill or completed past drills
-                if (!isCurrent && !isPast) return null;
-              
-              return (
-                <div
-                  ref={(el) => {
-                    if (el) {
-                      drillRefs.current.set(i, el);
-                    } else {
-                      drillRefs.current.delete(i);
-                    }
-                  }}
-                  key={`${i}:${d.question}`}
-                  className={`rounded-2xl border bg-white p-4 relative ${
-                    isChecked ? (isCorrect ? 'border-emerald-300' : 'border-rose-200') : 'border-gray-200'
-                  }`}
-                >
-                  {/* Visual indicator - empty box that fills with checkmark when correct */}
-                  <div className="absolute top-4 right-4">
-                    <span
-                      className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
-                        isChecked && isCorrect
-                          ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
-                          : 'border-gray-300 bg-white text-gray-300'
-                      }`}
+
+                // Drills have started, show them
+                return drills.map((d, i) => {
+                  const isChecked = Boolean(checked[i]);
+                  const isCorrect = Boolean(correct[i]);
+                  const expected = getExpectedAsString(d.expected || '');
+                  const drillIndex = effectiveDrillIndex as number;
+                  const isCurrent = i === drillIndex;
+                  // Show past drills only if they were checked (completed)
+                  const isPast = i < drillIndex && isChecked;
+
+                  // Show current drill or completed past drills
+                  if (!isCurrent && !isPast) return null;
+
+                  return (
+                    <div
+                      ref={(el) => {
+                        if (el) {
+                          drillRefs.current.set(i, el);
+                        } else {
+                          drillRefs.current.delete(i);
+                        }
+                      }}
+                      key={`${i}:${d.question}`}
+                      className={`rounded-2xl border bg-white p-4 relative ${isChecked ? (isCorrect ? 'border-emerald-300' : 'border-rose-200') : 'border-gray-200'
+                        }`}
                     >
-                      {isChecked && isCorrect ? <Check className="w-4 h-4" /> : null}
-                    </span>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-start justify-between gap-4 pr-10">
-                      <CardHeading>{`Задание ${i + 1} из ${drills.length}`}</CardHeading>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="text-sm text-gray-900">{String(d.task || '').trim()}</div>
-                      <div className="mt-3">
-                        <div className="text-base font-semibold text-gray-900 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">{String(d.question || '').trim()}</div>
+                      {/* Visual indicator - empty box that fills with checkmark when correct */}
+                      <div className="absolute top-4 right-4">
+                        <span
+                          className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${isChecked && isCorrect
+                            ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                            : 'border-gray-300 bg-white text-gray-300'
+                            }`}
+                        >
+                          {isChecked && isCorrect ? <Check className="w-4 h-4" /> : null}
+                        </span>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Keep the last input visible so the correct state stays obvious before completing */}
-                  {!(completed && i === drills.length - 1 && checked.every(Boolean)) && (
-                    <div className="mt-4">
-                      <input
-                      lang="en"
-                      inputMode="text"
-                      autoCapitalize="none"
-                      autoCorrect="off"
-                      value={answers[i] || ''}
-                      onChange={(e) => {
-                        const newValue = e.target.value;
-                        // If answer was checked and incorrect, reset checked state when user starts editing
-                        if (isChecked && !isCorrect) {
-                          const nextChecked = checked.slice();
-                          nextChecked[i] = false;
-                          const nextCorrect = correct.slice();
-                          nextCorrect[i] = false;
-                          setChecked(nextChecked);
-                          setCorrect(nextCorrect);
-                        }
-                        // Update answer
-                        setAnswers((prev) => {
-                          const next = prev.slice();
-                          next[i] = newValue;
-                          emitState({ 
-                            answers: next, 
-                            checked: isChecked && !isCorrect ? checked.map((c, idx) => idx === i ? false : c) : checked, 
-                            correct: isChecked && !isCorrect ? correct.map((c, idx) => idx === i ? false : c) : correct, 
-                            completed,
-                            currentDrillIndex,
-                          });
-                          return next;
-                        });
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !validating && answers[i]?.trim()) {
-                          checkOne(i);
-                        }
-                      }}
-                      placeholder="Ответ…"
-                      disabled={isLoading || completed || validating || (isChecked && isCorrect)}
-                      style={{ fontSize: '16px' }}
-                      className={`w-full rounded-2xl border px-4 py-3 text-base text-gray-900 outline-none disabled:opacity-50 ${
-                        isChecked && isCorrect
-                          ? 'border-emerald-300 bg-emerald-50 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100'
-                          : isChecked && !isCorrect
-                          ? 'border-rose-300 bg-rose-50 focus:border-rose-400 focus:ring-2 focus:ring-rose-100'
-                          : 'border-gray-200 bg-white focus:border-brand-primary/50 focus:ring-2 focus:ring-brand-primary/10'
-                      }`}
-                      />
-                    </div>
-                  )}
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between gap-4 pr-10">
+                          <CardHeading>{`Задание ${i + 1} из ${drills.length}`}</CardHeading>
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="text-sm text-gray-900">{String(d.task || '').trim()}</div>
+                          <div className="mt-3">
+                            <div className="text-base font-semibold text-gray-900 bg-gray-50 rounded-lg px-3 py-2 border border-gray-200">{String(d.question || '').trim()}</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Keep the last input visible so the correct state stays obvious before completing */}
+                      {!(completed && i === drills.length - 1 && checked.every(Boolean)) && (
+                        <div className="mt-4">
+                          <input
+                            lang="en"
+                            inputMode="text"
+                            autoCapitalize="none"
+                            autoCorrect="off"
+                            value={answers[i] || ''}
+                            onChange={(e) => {
+                              const newValue = e.target.value;
+                              // If answer was checked and incorrect, reset checked state when user starts editing
+                              if (isChecked && !isCorrect) {
+                                const nextChecked = checked.slice();
+                                nextChecked[i] = false;
+                                const nextCorrect = correct.slice();
+                                nextCorrect[i] = false;
+                                setChecked(nextChecked);
+                                setCorrect(nextCorrect);
+                              }
+                              // Update answer
+                              setAnswers((prev) => {
+                                const next = prev.slice();
+                                next[i] = newValue;
+                                emitState({
+                                  answers: next,
+                                  checked: isChecked && !isCorrect ? checked.map((c, idx) => idx === i ? false : c) : checked,
+                                  correct: isChecked && !isCorrect ? correct.map((c, idx) => idx === i ? false : c) : correct,
+                                  completed,
+                                  currentDrillIndex,
+                                });
+                                return next;
+                              });
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !validating && answers[i]?.trim()) {
+                                checkOne(i);
+                              }
+                            }}
+                            placeholder="Ответ…"
+                            disabled={isLoading || completed || validating || (isChecked && isCorrect)}
+                            style={{ fontSize: '16px' }}
+                            className={`w-full rounded-2xl border px-4 py-3 text-base text-gray-900 outline-none disabled:opacity-50 ${isChecked && isCorrect
+                              ? 'border-emerald-300 bg-emerald-50 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100'
+                              : isChecked && !isCorrect
+                                ? 'border-rose-300 bg-rose-50 focus:border-rose-400 focus:ring-2 focus:ring-rose-100'
+                                : 'border-gray-200 bg-white focus:border-brand-primary/50 focus:ring-2 focus:ring-brand-primary/10'
+                              }`}
+                          />
+                        </div>
+                      )}
 
 
-                  {isChecked && (feedbacks[i] || notes[i]) ? (
-                    <div className="mt-3 space-y-2">
-                      {feedbacks[i] ? (
-                        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-                          {feedbacks[i]}
+                      {isChecked && (feedbacks[i] || notes[i]) ? (
+                        <div className="mt-3 space-y-2">
+                          {feedbacks[i] ? (
+                            <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                              {feedbacks[i]}
+                            </div>
+                          ) : null}
+                          {notes[i] ? (
+                            <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
+                              {notes[i]}
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
-                      {notes[i] ? (
-                        <div className="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
-                          {notes[i]}
-                        </div>
-                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-              );
-              });
-            })()}
+                  );
+                });
+              })()}
 
 
             </div>

@@ -29,12 +29,15 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const cardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [openCardKey, setOpenCardKey] = useState<string | null>(null);
+  const [openCardKeys, setOpenCardKeys] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Reset search when modal opens/closes
+  // Reset search and selection when modal opens/closes
   useEffect(() => {
-    if (!isOpen) setSearchQuery('');
+    if (!isOpen) {
+      setSearchQuery('');
+      setOpenCardKeys(new Set());
+    }
   }, [isOpen]);
 
   const getCardKey = (card: GrammarCard) => `grammar-${card.day}-${card.lesson}-${card.theme}`;
@@ -42,8 +45,8 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
   const filteredCards = useMemo(() => {
     if (!searchQuery.trim()) return cards;
     const lowerQuery = searchQuery.toLowerCase();
-    return cards.filter((card) => 
-      (card.theme || '').toLowerCase().includes(lowerQuery) || 
+    return cards.filter((card) =>
+      (card.theme || '').toLowerCase().includes(lowerQuery) ||
       (card.grammar || '').toLowerCase().includes(lowerQuery)
     );
   }, [cards, searchQuery]);
@@ -51,7 +54,7 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
   const defaultOpenKey = useMemo(() => {
     if (!cards.length) return null;
     let targetCard = cards.find((card) => card.day === currentDayId);
-    
+
     if (!targetCard) {
       // Find the last card that is <= currentDayId
       for (let i = cards.length - 1; i >= 0; i -= 1) {
@@ -61,24 +64,25 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
         }
       }
     }
-    
+
     if (!targetCard && cards.length > 0) {
       targetCard = cards[0];
     }
-    
+
     return targetCard ? getCardKey(targetCard) : null;
   }, [cards, currentDayId]);
 
   useEffect(() => {
     if (!isOpen) return;
-    // Only set default open key if we are not searching (which is true on open due to reset)
-    if (!searchQuery) {
-        setOpenCardKey(defaultOpenKey);
+    // Only set default open key if we are not searching
+    if (!searchQuery && defaultOpenKey) {
+      setOpenCardKeys(new Set([defaultOpenKey]));
     }
   }, [isOpen, defaultOpenKey, searchQuery]);
 
   useEffect(() => {
     if (!isOpen || !defaultOpenKey || searchQuery) return;
+    // Scroll handling remains the same using defaultOpenKey
     const target = cardRefs.current.get(defaultOpenKey);
     const container = scrollContainerRef.current;
 
@@ -88,13 +92,12 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
       const targetTop = target.getBoundingClientRect().top;
       const containerTop = container.getBoundingClientRect().top;
       const scrollTop = container.scrollTop;
-      
-      // Скроллим так, чтобы сверху был отступ 5px
+
       const offset = targetTop - containerTop - 5;
-      
-      container.scrollTo({ 
-        top: scrollTop + offset, 
-        behavior: 'smooth' 
+
+      container.scrollTo({
+        top: scrollTop + offset,
+        behavior: 'smooth'
       });
     });
     return () => cancelAnimationFrame(frameId);
@@ -104,9 +107,8 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ease-out backdrop-blur-[2px] ${
-        isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
-      }`}
+      className={`fixed inset-0 z-[100] bg-slate-50 text-slate-900 transition-opacity duration-300 ease-out backdrop-blur-[2px] ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
       aria-modal="true"
       role="dialog"
     >
@@ -115,9 +117,8 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
 
       <div className="relative h-full w-full flex flex-col">
         <div
-          className={`w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full transform-gpu transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
-            isActive ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-3 scale-[0.98]'
-          }`}
+          className={`w-full max-w-3xl lg:max-w-4xl mx-auto flex flex-col h-full transform-gpu transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${isActive ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-3 scale-[0.98]'
+            }`}
         >
           <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
             <div className="flex items-center gap-4 mb-4">
@@ -141,18 +142,18 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
                 <X className="w-4 h-4" />
               </button>
             </div>
-            
+
             <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Search className="h-4 w-4 text-gray-400" />
-                </div>
-                <input
-                    type="text"
-                    placeholder="Поиск по темам..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary/50 transition duration-150 ease-in-out text-sm font-medium"
-                />
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Поиск по темам..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-xl leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-brand-primary/20 focus:border-brand-primary/50 transition duration-150 ease-in-out text-sm font-medium"
+              />
             </div>
           </div>
 
@@ -178,7 +179,7 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
                 {filteredCards.map((card) => {
                   const isActive = card.day <= currentDayId;
                   const cardKey = getCardKey(card);
-                  const isOpen = cardKey === openCardKey;
+                  const isOpen = openCardKeys.has(cardKey);
 
                   return (
                     <div
@@ -187,16 +188,23 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
                         if (el) cardRefs.current.set(cardKey, el);
                         else cardRefs.current.delete(cardKey);
                       }}
-                      className={`rounded-2xl border transition-all ${
-                        isActive
+                      className={`rounded-2xl border transition-all ${isActive
                           ? 'border-gray-200/60 bg-white hover:border-brand-primary/30'
                           : 'border-gray-200/60 bg-gray-50 opacity-60'
-                      }`}
+                        }`}
                     >
                       <button
                         type="button"
                         onClick={() => {
-                          setOpenCardKey((prev) => (prev === cardKey ? null : cardKey));
+                          setOpenCardKeys(prev => {
+                            const next = new Set(prev);
+                            if (next.has(cardKey)) {
+                              next.delete(cardKey);
+                            } else {
+                              next.add(cardKey);
+                            }
+                            return next;
+                          });
                         }}
                         aria-expanded={isOpen}
                         aria-controls={`grammar-card-body-${cardKey}`}
@@ -207,16 +215,14 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
                             <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
                               Lesson {card.lesson} · Day {card.day}
                             </div>
-                            <div className={`mt-1 text-sm font-extrabold ${
-                              isActive ? 'text-gray-900' : 'text-gray-500'
-                            }`}>
+                            <div className={`mt-1 text-sm font-extrabold ${isActive ? 'text-gray-900' : 'text-gray-500'
+                              }`}>
                               {card.theme}
                             </div>
                           </div>
                           <span
-                            className={`mt-0.5 inline-flex items-center justify-center w-7 h-7 rounded-full border transition-all ${
-                              isActive ? 'border-gray-200 bg-white/80 text-gray-500' : 'border-gray-200 bg-white/60 text-gray-400'
-                            } ${isOpen ? 'rotate-180' : 'rotate-0'}`}
+                            className={`mt-0.5 inline-flex items-center justify-center w-7 h-7 rounded-full border transition-all ${isActive ? 'border-gray-200 bg-white/80 text-gray-500' : 'border-gray-200 bg-white/60 text-gray-400'
+                              } ${isOpen ? 'rotate-180' : 'rotate-0'}`}
                             aria-hidden="true"
                           >
                             <ChevronDown className="w-4 h-4" />
@@ -226,9 +232,8 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
                       {isOpen ? (
                         <div id={`grammar-card-body-${cardKey}`} className="px-4 pb-4">
                           <div className="border-t border-gray-100 pt-3">
-                            <div className={`text-sm font-medium leading-relaxed whitespace-pre-wrap ${
-                              isActive ? 'text-gray-700' : 'text-gray-400'
-                            }`}>
+                            <div className={`text-sm font-medium leading-relaxed whitespace-pre-wrap ${isActive ? 'text-gray-700' : 'text-gray-400'
+                              }`}>
                               {parseMarkdown(card.grammar)}
                             </div>
                           </div>
