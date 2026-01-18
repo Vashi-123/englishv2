@@ -431,7 +431,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
             <div className="pt-5 border-t border-gray-100 space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-900 mb-2">
-                  Email для чека и входа
+                  Почта вашего аккаунта
                 </label>
                 <input
                   type="email"
