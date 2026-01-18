@@ -239,12 +239,20 @@ export const ChatDemo: React.FC = () => {
           <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 opacity-90">
             <ArrowLeft className="w-5 h-5" />
           </div>
-          <div className="flex-1 px-4">
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full bg-indigo-500 transition-[width] duration-300 ease-out" style={{ width: '36%' }} />
+          <div className="flex-1 px-4 flex flex-col gap-1">
+            <div className="flex items-center justify-between text-xs font-semibold text-gray-600 min-h-[18px]">
+              <span className="text-sm font-bold text-gray-900">Урок 1</span>
+              <span className="text-[11px] text-gray-500 tabular-nums">2/7</span>
             </div>
-            <div className="mt-1 flex justify-end">
-              <span className="text-[11px] font-semibold text-gray-500 tabular-nums">2/7</span>
+            <div className="h-2 bg-gray-100 rounded-full shadow-inner shadow-black/5 relative overflow-visible">
+              <div
+                className="h-full transition-[width,background-color,box-shadow] duration-300 ease-out rounded-full"
+                style={{
+                  width: '36%',
+                  backgroundColor: 'rgb(194, 95, 240)', // Blend of purple-500 and orange-500 at 36%
+                  boxShadow: 'none',
+                }}
+              />
             </div>
           </div>
           <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center text-gray-700 opacity-90">
@@ -386,8 +394,8 @@ export const ChatDemo: React.FC = () => {
                               )}
                               <div
                                 className={`px-3 py-2 text-sm font-medium leading-relaxed rounded-xl whitespace-pre-wrap ${msg.role === 'user'
-                                    ? 'bg-brand-primary/10 text-brand-primary font-bold rounded-br-sm'
-                                    : 'bg-white border border-gray-100 text-gray-900 rounded-bl-sm'
+                                  ? 'bg-brand-primary/10 text-brand-primary font-bold rounded-br-sm'
+                                  : 'bg-white border border-gray-100 text-gray-900 rounded-bl-sm'
                                   }`}
                               >
                                 {msg.text}
@@ -452,8 +460,8 @@ export const ChatDemo: React.FC = () => {
                   )}
                   <div
                     className={`px-5 py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${isUser
-                        ? 'bg-brand-primary/10 text-brand-primary font-bold rounded-br-sm'
-                        : 'bg-gray-50 text-gray-900 rounded-bl-none'
+                      ? 'bg-brand-primary/10 text-brand-primary font-bold rounded-br-sm'
+                      : 'bg-gray-50 text-gray-900 rounded-bl-none'
                       }`}
                   >
                     {renderMarkdown(bubble.text)}

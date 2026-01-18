@@ -88,8 +88,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
               />
               <div
                 className={`absolute bg-white border border-gray-200 rounded-xl shadow-2xl p-3 w-80 max-w-[calc(100vw-32px)] space-y-3 transform-gpu transition-all duration-300 ease-in-out ${langMenuVisible
-                    ? 'opacity-100 scale-100 translate-y-0'
-                    : 'opacity-0 scale-[0.96] -translate-y-2 pointer-events-none'
+                  ? 'opacity-100 scale-100 translate-y-0'
+                  : 'opacity-0 scale-[0.96] -translate-y-2 pointer-events-none'
                   }`}
                 style={{ top: langMenuPos.top, left: langMenuPos.left }}
               >
@@ -158,8 +158,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                       }}
                       disabled={levelsLoading}
                       className={`px-3 py-1.5 rounded-lg border text-sm font-semibold transition ${level === lvl
-                          ? 'bg-brand-primary text-white border-brand-primary'
-                          : 'border-gray-200 text-slate-800 hover:border-brand-primary/40'
+                        ? 'bg-brand-primary text-white border-brand-primary'
+                        : 'border-gray-200 text-slate-800 hover:border-brand-primary/40'
                         }`}
                     >
                       {lvl}
@@ -174,13 +174,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = memo(({
                       setShowSupport(!showSupport);
                     }}
                     className={`w-full text-left px-3 py-2 rounded-lg text-sm font-semibold flex items-center justify-between transition-colors ${showSupport
-                        ? 'bg-indigo-50 text-indigo-700'
-                        : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                      ? 'bg-indigo-50 text-indigo-700'
+                      : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
                       }`}
                   >
                     <span className="flex items-center gap-2">
                       <HelpCircle className="w-4 h-4" />
-                      Поддержка
+                      Служба поддержки
                     </span>
                   </button>
 

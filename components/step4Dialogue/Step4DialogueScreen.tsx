@@ -690,18 +690,19 @@ export function Step4DialogueScreen({
         return;
       }
 
-      if (tutorQuestionsUsed >= tutorQuestionsLimit) {
-        setTutorThreadMessages((prev) => [
-          ...prev,
-          {
-            role: 'model',
-            text: resolvedLanguage.toLowerCase().startsWith('ru')
-              ? 'Лимит вопросов исчерпан (5). Нажми ↺, чтобы начать заново.'
-              : 'Question limit reached (5). Press ↺ to start over.',
-          },
-        ]);
-        return;
-      }
+      // Limit removed - users can ask unlimited questions
+      // if (tutorQuestionsUsed >= tutorQuestionsLimit) {
+      //   setTutorThreadMessages((prev) => [
+      //     ...prev,
+      //     {
+      //       role: 'model',
+      //       text: resolvedLanguage.toLowerCase().startsWith('ru')
+      //         ? 'Лимит вопросов исчерпан (5). Нажми ↺, чтобы начать заново.'
+      //         : 'Question limit reached (5). Press ↺ to start over.',
+      //     },
+      //   ]);
+      //   return;
+      // }
 
       setTutorInput('');
       setTutorThreadMessages((prev) => [...prev, { role: 'user', text: userMsg }]);
