@@ -288,7 +288,7 @@ export const translations = {
         { title: "Геймификация", text: "Прогресс по дням и достижениям" },
       ],
       cardTitle: "Как проходит урок",
-      cardSubtitle: "AI-репетитор ведет тебя за руку от теории к практике.",
+      cardSubtitle: "От теории к практике.",
       insideTitle: "Что внутри",
       insideItems: [
         "Слова под тему урока с примерами",

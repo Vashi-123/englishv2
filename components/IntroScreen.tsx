@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
-import { Sparkles, ArrowRight, ArrowDown, Crown, Loader2, X } from 'lucide-react';
+import { Sparkles, ArrowRight, ArrowDown, Crown, Loader2, X, Instagram, Send } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
 import { ChatDemo } from './ChatDemo';
 import { FeatureShowcase } from './FeatureShowcase';
@@ -40,30 +40,52 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     }
   }, [location.search, navigate]);
 
-  // Scroll tracking for mobile button state
+  // Scroll tracking for mobile button state & web footer visibility
   const [showStartButton, setShowStartButton] = useState(false);
+  const [isButtonHidden, setIsButtonHidden] = useState(false);
   const demoSectionRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const downloadSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
-      if (!isMobile || !containerRef.current || !demoSectionRef.current) return;
+      // Logic split:
+      // 1. Mobile "Show Start Button" logic (based on demo section)
+      // 2. Web/All "Hide Start Button" logic (based on download section)
 
       const container = containerRef.current;
-      const demoSection = demoSectionRef.current;
-      const demoRect = demoSection.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
+      if (!container) return; // Basic safety
 
-      // If demo section is effectively visible/close to top, show start button
-      // Or if we are near the bottom of the container
-      const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
-      const isDemoVisible = demoRect.top < containerRect.bottom - 100; // Demo is entering view
+      // 1. Mobile Logic: Show button when scrolled past demo
+      if (isMobile && demoSectionRef.current) {
+        const demoSection = demoSectionRef.current;
+        const demoRect = demoSection.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
 
-      if (isNearBottom || isDemoVisible) {
-        setShowStartButton(true);
-      } else {
-        setShowStartButton(false);
+        const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
+        const isDemoVisible = demoRect.top < containerRect.bottom - 100;
+
+        if (isNearBottom || isDemoVisible) {
+          setShowStartButton(true);
+        } else {
+          setShowStartButton(false);
+        }
+      }
+
+      // 2. Footer Overlap Logic (Hide button if covering download section)
+      // Applies on both mobile and desktop now that button is fixed everywhere
+      if (downloadSectionRef.current) {
+        const downloadRect = downloadSectionRef.current.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+
+        // Calculate how much of the download section is visible from the bottom up
+        const viewportBottom = containerRect.bottom;
+        const distanceToTop = viewportBottom - downloadRect.top;
+
+        // "Hide if below than 3/4 of the size of the block"
+        const threshold = downloadRect.height * 0.75;
+        const shouldHide = distanceToTop > threshold;
+        setIsButtonHidden(shouldHide);
       }
     };
 
@@ -568,7 +590,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
           )}
 
           {/* Download Options - Moved to bottom for both Desktop and Mobile */}
-          <div ref={downloadSectionRef} className="space-y-6 pt-12 border-t border-gray-100/50 mt-auto text-center">
+          <div ref={downloadSectionRef} className="space-y-6 pt-12 border-t border-gray-200 mt-auto text-center">
             <div className="space-y-3">
               <h2 className="text-3xl sm:text-4xl font-black leading-tight text-slate-900">
                 Учитесь, где вам удобно
@@ -582,7 +604,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
               <div className="grid grid-cols-2 gap-3 max-w-sm w-full">
                 {/* App Store */}
                 <a
-                  href="#"
+                  href="https://apps.apple.com/app/id6757126851"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl py-2.5 px-2 hover:opacity-90 transition shadow-sm"
@@ -591,43 +613,74 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
                     <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.21-1.98 1.08-3.11-1.06.05-2.31.71-3.06 1.58-.65.75-1.21 1.98-1.06 3.05 1.18.09 2.37-.64 3.04-1.52" />
                   </svg>
                   <div className="text-left leading-none">
-                    <div className="text-[9px] font-medium opacity-80 mb-0.5">Download on the</div>
+                    <div className="text-[9px] font-medium opacity-80 mb-0.5">Загрузите в</div>
                     <div className="text-xs font-bold">App Store</div>
                   </div>
                 </a>
 
                 {/* Google Play */}
-                <a
-                  href="https://play.google.com/store/apps/details?id=com.vashi.englishv2"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl py-2.5 px-2 hover:opacity-90 transition shadow-sm"
+                <div
+                  className="flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl py-2.5 px-2 opacity-60 cursor-not-allowed shadow-sm"
                 >
-                  <svg viewBox="0 0 24 24" className="w-6 h-6 shrink-0">
+                  <svg viewBox="0 0 24 24" className="w-6 h-6 shrink-0 grayscale opacity-50">
                     <path fill="#00C0FF" d="M1 1.7v20.6L11.5 12 1 1.7" />
                     <path fill="#FFC903" d="M14.5 15l-3-3 3-3 5.4 3c1.5.8 1.5 2.2 0 3l-5.4 3" />
                     <path fill="#FE4258" d="M11.5 12 1 22.3c.5.5 1.4.5 2 0l11.5-7.3-3-3" />
                     <path fill="#02D082" d="M11.5 12 1 1.7c.5-.5 1.4-.5 2 0l11.5 7.3-3 3" />
                   </svg>
                   <div className="text-left leading-none">
-                    <div className="text-[9px] font-medium opacity-80 mb-0.5">GET IT ON</div>
-                    <div className="text-xs font-bold">Google Play</div>
+                    <div className="text-xs font-bold">Скоро</div>
                   </div>
-                </a>
+                </div>
               </div>
             </div>
 
-            <button
-              onClick={handlePrimary}
-              className="w-full py-2 text-sm font-bold text-brand-primary hover:text-brand-secondary transition underline decoration-2 decoration-brand-primary/20 underline-offset-4"
-            >
-              Продолжить на сайте
-            </button>
+            <div className="flex justify-center w-full max-w-sm mx-auto mt-3">
+              <button
+                onClick={() => navigate('/app')}
+                className="w-full py-3 text-sm font-bold text-slate-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 shadow-sm active:scale-[0.98]"
+              >
+                Заниматься на сайте
+              </button>
+            </div>
+
+            {/* Spacer to increase distance to the bottom separator */}
+            <div className="h-5 sm:h-5" />
+
+            {/* Social Footer (Logo + Links) */}
+            <div className="w-full border-t border-gray-200">
+              <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 flex items-center justify-between gap-4">
+                {/* Logo - Start (Left on desktop) */}
+                <div className="flex items-center gap-2">
+                  <img src="/full_logo.png" alt="English v2" className="h-8 w-auto object-contain" />
+                </div>
+
+                {/* Social Links - End (Right on desktop) */}
+                <div className="flex items-center gap-4">
+                  <a
+                    href="https://www.instagram.com/gopractice.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 bg-white rounded-xl border border-gray-100 shadow-sm text-slate-400 hover:text-[#E1306C] hover:border-[#E1306C]/20 hover:shadow-[#E1306C]/10 hover:-translate-y-1 transition-all duration-300"
+                  >
+                    <Instagram className="w-5 h-5" />
+                  </a>
+                  <a
+                    href="https://t.me/gopractice_support"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2.5 bg-white rounded-xl border border-gray-100 shadow-sm text-slate-400 hover:text-[#0088cc] hover:border-[#0088cc]/20 hover:shadow-[#0088cc]/10 hover:-translate-y-1 transition-all duration-300"
+                  >
+                    <Send className="w-5 h-5" />
+                  </a>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Floating Action Button for Mobile */}
-          <div className={`fixed bottom-0 left-0 right-0 z-50 p-4 sm:p-0 sm:relative sm:flex sm:items-center sm:w-full sm:max-w-5xl sm:mx-auto sm:px-16 sm:pb-10 pointer-events-none`}>
-            <div className="flex items-center justify-end w-full pointer-events-auto">
+          {/* Floating Action Button for Mobile & Desktop (Web) */}
+          <div className={`fixed bottom-4 left-0 right-0 z-50 p-4 sm:p-0 sm:flex sm:items-center sm:w-full sm:max-w-5xl sm:mx-auto sm:px-16 sm:pb-10 pointer-events-none`}>
+            <div className={`flex items-center justify-end w-full pointer-events-auto transition-all duration-300 transform ${isButtonHidden ? 'translate-y-20 opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}`}>
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -635,13 +688,13 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
                   handlePrimary();
                 }}
                 type="button"
-                className={`inline-flex items-center gap-2.5 sm:gap-3 rounded-full sm:rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-xl shadow-brand-primary/25 hover:opacity-90 active:scale-[0.97] active:opacity-80 active:shadow-sm transition-all duration-300
-                ${isScrollAction ? 'p-3' : 'px-6 py-3 sm:px-5 sm:py-3'} 
+                className={`inline-flex items-center gap-2.5 rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-xl shadow-brand-primary/25 hover:opacity-90 active:scale-[0.97] active:opacity-80 active:shadow-sm transition-all duration-300
+                ${isScrollAction ? 'p-3' : 'px-6 py-3'} 
               `}
                 aria-label={isScrollAction ? "Scroll down" : "Start"}
               >
                 {ctaLabel && <span>{ctaLabel}</span>}
-                <span className={`rounded-full bg-white/15 border border-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner shadow-white/10 transition-transform duration-300 ${isScrollAction ? 'w-8 h-8 rotate-90' : 'w-6 h-6 sm:w-10 sm:h-10'}`}>
+                <span className={`rounded-full bg-white/15 border border-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner shadow-white/10 transition-transform duration-300 ${isScrollAction ? 'w-8 h-8 rotate-90' : 'w-6 h-6'}`}>
                   {!isScrollAction && !Capacitor.isNativePlatform() ? (
                     <ArrowDown className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
                   ) : (
