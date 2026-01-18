@@ -14,6 +14,7 @@ type Props = {
   initialPickedWordIndices?: number[];
   initialCompleted?: boolean;
   onStateChange?: (state: { pickedWordIndices: number[]; completed: boolean }) => void;
+  isReview?: boolean;
 };
 
 export const formatConstructorSentence = (tokens: string[]) => {
@@ -79,6 +80,7 @@ export function ConstructorCard({
   initialPickedWordIndices,
   initialCompleted,
   onStateChange,
+  isReview,
 }: Props) {
   const onStateChangeRef = useRef<Props['onStateChange']>(onStateChange);
   useEffect(() => {
@@ -228,19 +230,17 @@ export function ConstructorCard({
   return (
     <div className="space-y-4">
       <div
-        className={`p-4 rounded-2xl border bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] space-y-3 transition-colors w-full max-w-2xl mx-auto relative ${
-          wrongAttempt ? 'border-red-200 bg-red-50' : 'border-brand-primary/40'
-        }`}
+        className={`p-4 rounded-2xl border bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] space-y-3 transition-colors w-full max-w-2xl mx-auto relative ${wrongAttempt ? 'border-red-200 bg-red-50' : 'border-brand-primary/40'
+          }`}
       >
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-4">
-            <CardHeading>Твоя задача</CardHeading>
+            <CardHeading>{isReview ? 'Твоя задача (Повторение)' : 'Твоя задача'}</CardHeading>
             <span
-              className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
-                completed
-                  ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
-                  : 'border-gray-300 bg-white text-gray-300'
-              }`}
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${completed
+                ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+                : 'border-gray-300 bg-white text-gray-300'
+                }`}
             >
               {completed ? <Check className="w-4 h-4" /> : null}
             </span>
@@ -271,11 +271,10 @@ export function ConstructorCard({
                     type="button"
                     onClick={() => onPickWord(i)}
                     disabled={completed || isLoading || (!used && maxReached)}
-                    className={`px-4 py-2 rounded-full border text-base font-semibold shadow-sm transition disabled:opacity-50 ${
-                      used
-                        ? 'border-brand-primary/40 bg-brand-primary/10 text-brand-primary'
-                        : 'border-gray-200 bg-white text-gray-900 hover:border-brand-primary/30 hover:bg-brand-primary/5'
-                    }`}
+                    className={`px-4 py-2 rounded-full border text-base font-semibold shadow-sm transition disabled:opacity-50 ${used
+                      ? 'border-brand-primary/40 bg-brand-primary/10 text-brand-primary'
+                      : 'border-gray-200 bg-white text-gray-900 hover:border-brand-primary/30 hover:bg-brand-primary/5'
+                      }`}
                   >
                     {word}
                   </button>
@@ -284,9 +283,8 @@ export function ConstructorCard({
             </div>
 
             <div
-              className={`rounded-2xl border px-4 py-3 space-y-4 ${
-                completed ? 'border-green-200 bg-green-50' : wrongAttempt ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'
-              }`}
+              className={`rounded-2xl border px-4 py-3 space-y-4 ${completed ? 'border-green-200 bg-green-50' : wrongAttempt ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-gray-50'
+                }`}
             >
               <CardHeading className="text-[10px]">Предложение</CardHeading>
               <div className="text-base font-semibold text-gray-900 min-h-[24px]">{sentence || '—'}</div>

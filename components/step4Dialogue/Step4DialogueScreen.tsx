@@ -64,8 +64,8 @@ const safeArray = (v: unknown) => (Array.isArray(v) ? v : []);
 const normalizeCtorKey = (task: any) => {
   const words = safeArray(task?.words).map((w) => safeTrim(w)).filter(Boolean).sort().join('||');
   const correctRaw = task?.correct;
-  const correct = Array.isArray(correctRaw) 
-    ? correctRaw.map((w) => safeTrim(w)).filter(Boolean).join('||') 
+  const correct = Array.isArray(correctRaw)
+    ? correctRaw.map((w) => safeTrim(w)).filter(Boolean).join('||')
     : safeTrim(correctRaw);
   return `w:${words}::c:${correct}`;
 };
@@ -277,7 +277,7 @@ export function Step4DialogueScreen({
   const incompleteLessonCheckedRef = useRef<string | null>(null);
   const lessonRestartedRef = useRef<string | null>(null);
   const chatInitializedRef = useRef<string | null>(null);
-  
+
   // Сбрасываем refs при смене урока
   useEffect(() => {
     const checkKey = `${day || 1}_${lesson || 1}_${resolvedLevel}`;
@@ -344,10 +344,10 @@ export function Step4DialogueScreen({
     };
   }, [day, isInitializing, lesson, messages, resolvedLevel]);
 
-	  const lessonIdRef = useRef<string | null>(null);
-	  const userIdRef = useRef<string | null>(null);
-	  const [ankiUserId, setAnkiUserId] = useState<string | null>(null);
-    const reviewDeckTokenRef = useRef<string | null>(null);
+  const lessonIdRef = useRef<string | null>(null);
+  const userIdRef = useRef<string | null>(null);
+  const [ankiUserId, setAnkiUserId] = useState<string | null>(null);
+  const reviewDeckTokenRef = useRef<string | null>(null);
 
   const ensureLessonContext = useCallback(async () => {
     if (!day || !lesson) return;
@@ -360,17 +360,17 @@ export function Step4DialogueScreen({
     }
   }, [day, lesson, level]);
 
-	  useEffect(() => {
-	    let cancelled = false;
-	    void (async () => {
-	      await ensureLessonContext();
-	      if (cancelled) return;
-	      setAnkiUserId(userIdRef.current);
-	    })();
-	    return () => {
-	      cancelled = true;
-	    };
-	  }, [ensureLessonContext]);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await ensureLessonContext();
+      if (cancelled) return;
+      setAnkiUserId(userIdRef.current);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ensureLessonContext]);
 
   const ensureLessonScript = useCallback(async (): Promise<any> => {
     if (!day || !lesson) throw new Error('lessonScript is required');
@@ -459,7 +459,7 @@ export function Step4DialogueScreen({
         const sig = buildConstructorTaskKey(serverTask);
         if (uniqCtor.has(sig)) continue;
         uniqCtor.add(sig);
-        
+
         ctorBase.push({
           key: row.task_key,
           task: {
@@ -469,6 +469,7 @@ export function Step4DialogueScreen({
               typeof serverTask?.instruction === 'string' && String(serverTask.instruction).trim()
                 ? String(serverTask.instruction).trim()
                 : defaultCtorInstruction,
+            isReview: true,
           },
         });
       }
@@ -495,7 +496,7 @@ export function Step4DialogueScreen({
         const sig = buildFindMistakeTaskKey(serverTask);
         if (uniqFind.has(sig)) continue;
         uniqFind.add(sig);
-        
+
         findBase.push({
           key: row.task_key,
           task: {
@@ -505,6 +506,7 @@ export function Step4DialogueScreen({
               typeof serverTask?.instruction === 'string' && String(serverTask.instruction).trim()
                 ? String(serverTask.instruction).trim()
                 : defaultFindInstruction,
+            isReview: true,
           },
         });
       }
@@ -870,9 +872,9 @@ export function Step4DialogueScreen({
       return false;
     }
   });
-	  const vocabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
-	  const restoredVocabIndexRef = useRef<number | null>(null);
-	  const appliedVocabRestoreKeyRef = useRef<string | null>(null);
+  const vocabRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const restoredVocabIndexRef = useRef<number | null>(null);
+  const appliedVocabRestoreKeyRef = useRef<string | null>(null);
   const [vocabProgressHydrated, setVocabProgressHydrated] = useState<boolean>(false);
 
   const vocabAutoAdvanceTimerRef = useRef<number | null>(null);
@@ -945,9 +947,9 @@ export function Step4DialogueScreen({
   }, [clearVocabAudioFallback, showVocab, vocabIndex]);
 
 
-	  const [showMatching, setShowMatching] = useState(false);
-	  const [matchingPersisted, setMatchingPersisted] = useState(false);
-	  const [matchingEverStarted, setMatchingEverStarted] = useState(false);
+  const [showMatching, setShowMatching] = useState(false);
+  const [matchingPersisted, setMatchingPersisted] = useState(false);
+  const [matchingEverStarted, setMatchingEverStarted] = useState(false);
   const [matchingInsertIndex, setMatchingInsertIndex] = useState<number | null>(null);
   const [wordOptions, setWordOptions] = useState<MatchingOption[]>([]);
   const [translationOptions, setTranslationOptions] = useState<MatchingOption[]>([]);
@@ -1128,356 +1130,356 @@ export function Step4DialogueScreen({
     setConstructorUI,
   });
 
-	  const { grammarGate, visibleMessages, separatorTitlesBefore, consumedSeparatorIndices, situationGrouping } =
-	    useDialogueDerivedMessages({
-	      messages,
-	      gatedGrammarSectionIdsRef,
-	      grammarGateHydrated,
-	      grammarGateRevision,
-	      getMessageStableId,
-	      tryParseJsonMessage,
-	      stripModuleTag,
-	    });
+  const { grammarGate, visibleMessages, separatorTitlesBefore, consumedSeparatorIndices, situationGrouping } =
+    useDialogueDerivedMessages({
+      messages,
+      gatedGrammarSectionIdsRef,
+      grammarGateHydrated,
+      grammarGateRevision,
+      getMessageStableId,
+      tryParseJsonMessage,
+      stripModuleTag,
+    });
 
-	  // Обновляем grammarGateRevision после загрузки сообщений, чтобы grammarGate пересчитался
-	  // Это гарантирует, что кнопка "Проверить" появится после перезапуска урока
-	  useEffect(() => {
-	    if (isInitializing) return;
-	    if (messages.length === 0) return;
-	    // Проверяем, есть ли сообщения с грамматикой
-	    const hasGrammarMessage = messages.some((msg) => {
-	      if (msg.role !== 'model') return false;
-	      const parsed = tryParseJsonMessage(msg.text);
-	      if (!parsed) return false;
-	      if (parsed?.type === 'section' && typeof parsed.title === 'string' && /граммат|grammar/i.test(parsed.title)) return true;
-	      return false;
-	    });
-	    if (hasGrammarMessage && gatedGrammarSectionIdsRef.current.size === 0) {
-	      // Если есть сообщения с грамматикой и состояние пустое, обновляем revision для пересчета grammarGate
-	      setGrammarGateRevision((prev) => prev + 1);
-	    }
-	  }, [messages.length, isInitializing, tryParseJsonMessage]);
+  // Обновляем grammarGateRevision после загрузки сообщений, чтобы grammarGate пересчитался
+  // Это гарантирует, что кнопка "Проверить" появится после перезапуска урока
+  useEffect(() => {
+    if (isInitializing) return;
+    if (messages.length === 0) return;
+    // Проверяем, есть ли сообщения с грамматикой
+    const hasGrammarMessage = messages.some((msg) => {
+      if (msg.role !== 'model') return false;
+      const parsed = tryParseJsonMessage(msg.text);
+      if (!parsed) return false;
+      if (parsed?.type === 'section' && typeof parsed.title === 'string' && /граммат|grammar/i.test(parsed.title)) return true;
+      return false;
+    });
+    if (hasGrammarMessage && gatedGrammarSectionIdsRef.current.size === 0) {
+      // Если есть сообщения с грамматикой и состояние пустое, обновляем revision для пересчета grammarGate
+      setGrammarGateRevision((prev) => prev + 1);
+    }
+  }, [messages.length, isInitializing, tryParseJsonMessage]);
 
-	  const ankiDoneStorageKey = useMemo(() => {
-	    const baseKey = `step4dialogue:ankiDone:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
-	    return getCacheKeyWithCurrentUser(baseKey);
-	  }, [day, lesson, resolvedLanguage, resolvedLevel]);
-	  const [ankiDone, setAnkiDone] = useState<boolean>(() => {
-	    try {
-	      if (typeof window === 'undefined') return false;
-	      return window.localStorage.getItem(ankiDoneStorageKey) === '1';
-	    } catch {
-	      return false;
-	    }
-	  });
-	  useEffect(() => {
-	    try {
-	      if (typeof window === 'undefined') return;
-	      setAnkiDone(window.localStorage.getItem(ankiDoneStorageKey) === '1');
-	    } catch {
-	      // ignore
-	    }
-	  }, [ankiDoneStorageKey]);
+  const ankiDoneStorageKey = useMemo(() => {
+    const baseKey = `step4dialogue:ankiDone:${day || 1}:${lesson || 1}:${resolvedLevel}:${resolvedLanguage}`;
+    return getCacheKeyWithCurrentUser(baseKey);
+  }, [day, lesson, resolvedLanguage, resolvedLevel]);
+  const [ankiDone, setAnkiDone] = useState<boolean>(() => {
+    try {
+      if (typeof window === 'undefined') return false;
+      return window.localStorage.getItem(ankiDoneStorageKey) === '1';
+    } catch {
+      return false;
+    }
+  });
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      setAnkiDone(window.localStorage.getItem(ankiDoneStorageKey) === '1');
+    } catch {
+      // ignore
+    }
+  }, [ankiDoneStorageKey]);
 
-		  const ankiDeckStorageKey = useMemo(() => {
-		    if (!ankiUserId) return null;
-		    return `englishv2:ankiDeck:${ankiUserId}:${resolvedLevel}:${resolvedLanguage}`;
-		  }, [ankiUserId, resolvedLanguage, resolvedLevel]);
+  const ankiDeckStorageKey = useMemo(() => {
+    if (!ankiUserId) return null;
+    return `englishv2:ankiDeck:${ankiUserId}:${resolvedLevel}:${resolvedLanguage}`;
+  }, [ankiUserId, resolvedLanguage, resolvedLevel]);
 
-      const lastSrsUpsertSignatureRef = useRef<string | null>(null);
-      useEffect(() => {
-        if (!ankiUserId) return;
-        if (!vocabWords || vocabWords.length === 0) return;
-        const items = (vocabWords as any[])
-          .map((w) => ({
-            word: String(w?.word || '').trim(),
-            translation: String(w?.translation || '').trim(),
-            context: String(w?.context || '').trim(),
-            context_translation: String(w?.context_translation || '').trim(),
-          }))
-          .filter((x) => x.word && x.translation);
-        if (!items.length) return;
+  const lastSrsUpsertSignatureRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ankiUserId) return;
+    if (!vocabWords || vocabWords.length === 0) return;
+    const items = (vocabWords as any[])
+      .map((w) => ({
+        word: String(w?.word || '').trim(),
+        translation: String(w?.translation || '').trim(),
+        context: String(w?.context || '').trim(),
+        context_translation: String(w?.context_translation || '').trim(),
+      }))
+      .filter((x) => x.word && x.translation);
+    if (!items.length) return;
 
-        const signature = JSON.stringify({
-          level: resolvedLevel,
-          lang: resolvedLanguage,
-          items: items.map((x) => `${x.word.toLowerCase()}=${x.translation.toLowerCase()}`).sort(),
-        });
-        if (signature === lastSrsUpsertSignatureRef.current) return;
-        lastSrsUpsertSignatureRef.current = signature;
+    const signature = JSON.stringify({
+      level: resolvedLevel,
+      lang: resolvedLanguage,
+      items: items.map((x) => `${x.word.toLowerCase()}=${x.translation.toLowerCase()}`).sort(),
+    });
+    if (signature === lastSrsUpsertSignatureRef.current) return;
+    lastSrsUpsertSignatureRef.current = signature;
 
-        void upsertSrsCardsFromVocab({ level: resolvedLevel, targetLang: resolvedLanguage, items }).catch((err) =>
-          console.error('[SRS] upsert vocab failed:', err)
-        );
-      }, [ankiUserId, resolvedLanguage, resolvedLevel, vocabWords]);
+    void upsertSrsCardsFromVocab({ level: resolvedLevel, targetLang: resolvedLanguage, items }).catch((err) =>
+      console.error('[SRS] upsert vocab failed:', err)
+    );
+  }, [ankiUserId, resolvedLanguage, resolvedLevel, vocabWords]);
 
-	  useEffect(() => {
-	    const deckKey = ankiDeckStorageKey;
-	    if (!deckKey) return;
-	    if (!vocabWords || vocabWords.length === 0) return;
-	    const now = Date.now();
-	    try {
-	      const raw = window.localStorage.getItem(deckKey);
-	      const parsed = raw ? JSON.parse(raw) : [];
-	      const base: Array<{ word: string; translation: string; lastSeenAt: number }> = Array.isArray(parsed) ? parsed : [];
-	      const byWord = new Map<string, { word: string; translation: string; lastSeenAt: number }>();
-	      for (const it of base) {
-	        if (!it) continue;
-	        const w = String((it as any).word || '').trim();
-	        const t = String((it as any).translation || '').trim();
-	        if (!w || !t) continue;
-	        byWord.set(w.toLowerCase(), { word: w, translation: t, lastSeenAt: Number((it as any).lastSeenAt) || 0 });
-	      }
-	      for (const w of vocabWords as any[]) {
-	        const word = String(w?.word || '').trim();
-	        const translation = String(w?.translation || '').trim();
-	        if (!word || !translation) continue;
-	        const key = word.toLowerCase();
-	        const prev = byWord.get(key);
-	        byWord.set(key, { word, translation: prev?.translation || translation, lastSeenAt: now });
-	      }
-	      const next = Array.from(byWord.values())
-	        .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0))
-	        .slice(0, 800);
-	      window.localStorage.setItem(deckKey, JSON.stringify(next));
-	    } catch {
-	      // ignore
-	    }
-	  }, [ankiDeckStorageKey, vocabWords]);
+  useEffect(() => {
+    const deckKey = ankiDeckStorageKey;
+    if (!deckKey) return;
+    if (!vocabWords || vocabWords.length === 0) return;
+    const now = Date.now();
+    try {
+      const raw = window.localStorage.getItem(deckKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const base: Array<{ word: string; translation: string; lastSeenAt: number }> = Array.isArray(parsed) ? parsed : [];
+      const byWord = new Map<string, { word: string; translation: string; lastSeenAt: number }>();
+      for (const it of base) {
+        if (!it) continue;
+        const w = String((it as any).word || '').trim();
+        const t = String((it as any).translation || '').trim();
+        if (!w || !t) continue;
+        byWord.set(w.toLowerCase(), { word: w, translation: t, lastSeenAt: Number((it as any).lastSeenAt) || 0 });
+      }
+      for (const w of vocabWords as any[]) {
+        const word = String(w?.word || '').trim();
+        const translation = String(w?.translation || '').trim();
+        if (!word || !translation) continue;
+        const key = word.toLowerCase();
+        const prev = byWord.get(key);
+        byWord.set(key, { word, translation: prev?.translation || translation, lastSeenAt: now });
+      }
+      const next = Array.from(byWord.values())
+        .sort((a, b) => (b.lastSeenAt || 0) - (a.lastSeenAt || 0))
+        .slice(0, 800);
+      window.localStorage.setItem(deckKey, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  }, [ankiDeckStorageKey, vocabWords]);
 
-	  const ankiGateIndex = useMemo(() => {
-	    if (ankiDone) {
-	      // eslint-disable-next-line no-console
-	      console.log('[AnkiGate] Blocked: ankiDone is true');
-	      return null;
-	    }
-	    if (grammarGate.gated) {
-	      // eslint-disable-next-line no-console
-	      console.log('[AnkiGate] Blocked: grammarGate.gated is true');
-	      return null;
-	    }
-	    
-	    // Check if situations exist in lessonScript
-	    const hasSituationsInScript = lessonScript?.situations?.scenarios && 
-	                                   Array.isArray(lessonScript.situations.scenarios) && 
-	                                   lessonScript.situations.scenarios.length > 0;
-	    
-	    if (!hasSituationsInScript) {
-	      // eslint-disable-next-line no-console
-	      console.log('[AnkiGate] Blocked: no situations in script');
-	      return null;
-	    }
-	    
-	    // Check if we've seen situations messages already
-	    let firstSituationsIndex: number | null = null;
-	    for (let i = 0; i < visibleMessages.length; i++) {
-	      const m = visibleMessages[i];
-	      const parsed = tryParseJsonMessage(m?.text);
-	      const isSituationsSeparator =
-	        parsed?.type === 'section' && typeof parsed.title === 'string' && /ситуац|situat/i.test(parsed.title);
-	      const isSituationsStep = m?.currentStepSnapshot?.type === 'situations';
-	      if (isSituationsSeparator || isSituationsStep) {
-	        firstSituationsIndex = i;
-	        break;
-	      }
-	    }
-	    
-	    // If situations already appeared, show anki before them
-	    if (typeof firstSituationsIndex === 'number') {
-	      // eslint-disable-next-line no-console
-	      console.log('[AnkiGate] Showing before situations at index', firstSituationsIndex);
-	      return firstSituationsIndex;
-	    }
-	    
-	    // Situations haven't appeared yet - check if we're past constructor/find_the_mistake
-	    const currentStepType = currentStep?.type;
-	    
-	    // If we're already in situations step (but messages not yet visible), show anki
-	    if (currentStepType === 'situations') {
-	      // eslint-disable-next-line no-console
-	      console.log('[AnkiGate] Showing: currentStep is situations, messages not yet visible');
-	      return visibleMessages.length;
-	    }
-	    
-	    // Don't show anki while we're still in constructor or find_the_mistake
-	    // We need to wait until they are completed
-	    if (currentStepType === 'constructor' || currentStepType === 'find_the_mistake') {
-	      // eslint-disable-next-line no-console
-	      console.log('[AnkiGate] Blocked: still in', currentStepType);
-	      return null;
-	    }
-	    
-	    // Check if constructor/find_the_mistake is completed by checking visibleMessages and constructorUI
-	    // Look for the last constructor/find_the_mistake message and check if it's completed
-	    let lastConstructorIndex: number | null = null;
-	    let lastConstructorMsgId: string | null = null;
-	    for (let i = visibleMessages.length - 1; i >= 0; i--) {
-	      const m = visibleMessages[i];
-	      const stepType = m?.currentStepSnapshot?.type;
-	      if (stepType === 'constructor' || stepType === 'find_the_mistake') {
-	        lastConstructorIndex = i;
-	        lastConstructorMsgId = getMessageStableId(m, i);
-	        break;
-	      }
-	    }
-	    
-	    if (lastConstructorIndex !== null && lastConstructorMsgId) {
-	      // Check if constructor is completed
-	      const ctorState = constructorUI[lastConstructorMsgId];
-	      if (ctorState?.completed === true) {
-	        // eslint-disable-next-line no-console
-	        console.log('[AnkiGate] Showing: constructor completed at index', lastConstructorIndex, 'msgId', lastConstructorMsgId);
-	        return visibleMessages.length;
-	      }
-	      
-	      // Also check if the message after constructor is from model (indicates completion)
-	      if (lastConstructorIndex < visibleMessages.length - 1) {
-	        const nextMsg = visibleMessages[lastConstructorIndex + 1];
-	        if (nextMsg?.role === 'model') {
-	          // eslint-disable-next-line no-console
-	          console.log('[AnkiGate] Showing: model message after constructor at index', lastConstructorIndex + 1);
-	          return visibleMessages.length;
-	        }
-	      }
-	    }
-	    
-	    // If we're past words/grammar/goal but not yet in constructor/situations, don't show anki yet
-	    if (currentStepType === 'completion') {
-	      return null;
-	    }
-	    
-	    if (!currentStepType || currentStepType === 'goal' || currentStepType === 'words' || currentStepType === 'grammar') {
-	      return null;
-	    }
-	    
-	    // eslint-disable-next-line no-console
-	    console.log('[AnkiGate] No match: currentStepType=', currentStepType, 'visibleMessages.length=', visibleMessages.length);
-	    return null;
-	  }, [ankiDone, grammarGate.gated, tryParseJsonMessage, visibleMessages, currentStep, lessonScript, constructorUI, getMessageStableId]);
+  const ankiGateIndex = useMemo(() => {
+    if (ankiDone) {
+      // eslint-disable-next-line no-console
+      console.log('[AnkiGate] Blocked: ankiDone is true');
+      return null;
+    }
+    if (grammarGate.gated) {
+      // eslint-disable-next-line no-console
+      console.log('[AnkiGate] Blocked: grammarGate.gated is true');
+      return null;
+    }
 
-	  const ankiGateActive = typeof ankiGateIndex === 'number' && ankiGateIndex >= 0;
+    // Check if situations exist in lessonScript
+    const hasSituationsInScript = lessonScript?.situations?.scenarios &&
+      Array.isArray(lessonScript.situations.scenarios) &&
+      lessonScript.situations.scenarios.length > 0;
 
-		  const gatedVisibleMessages = useMemo(() => {
-		    if (!ankiGateActive) return visibleMessages;
-		    return visibleMessages.slice(0, ankiGateIndex);
-		  }, [ankiGateActive, ankiGateIndex, visibleMessages]);
+    if (!hasSituationsInScript) {
+      // eslint-disable-next-line no-console
+      console.log('[AnkiGate] Blocked: no situations in script');
+      return null;
+    }
 
-      const [ankiReviewItems, setAnkiReviewItems] = useState<Array<{ id: number; word: string; translation: string }>>([]);
-      const ankiReviewLoadedOnceRef = useRef<string | null>(null);
-      useEffect(() => {
-        if (!ankiGateActive) return;
-        if (!ankiUserId) return;
-        const token = `${resolvedLevel}:${resolvedLanguage}:${day || 1}:${lesson || 1}`;
-        if (ankiReviewLoadedOnceRef.current === token) return;
-        ankiReviewLoadedOnceRef.current = token;
+    // Check if we've seen situations messages already
+    let firstSituationsIndex: number | null = null;
+    for (let i = 0; i < visibleMessages.length; i++) {
+      const m = visibleMessages[i];
+      const parsed = tryParseJsonMessage(m?.text);
+      const isSituationsSeparator =
+        parsed?.type === 'section' && typeof parsed.title === 'string' && /ситуац|situat/i.test(parsed.title);
+      const isSituationsStep = m?.currentStepSnapshot?.type === 'situations';
+      if (isSituationsSeparator || isSituationsStep) {
+        firstSituationsIndex = i;
+        break;
+      }
+    }
 
-        void (async () => {
-          try {
-            const batch = await getSrsReviewBatch({ level: resolvedLevel, targetLang: resolvedLanguage, limit: 8 });
-            setAnkiReviewItems(batch);
-          } catch (err) {
-            console.error('[SRS] get review batch failed:', err);
-            setAnkiReviewItems([]);
+    // If situations already appeared, show anki before them
+    if (typeof firstSituationsIndex === 'number') {
+      // eslint-disable-next-line no-console
+      console.log('[AnkiGate] Showing before situations at index', firstSituationsIndex);
+      return firstSituationsIndex;
+    }
+
+    // Situations haven't appeared yet - check if we're past constructor/find_the_mistake
+    const currentStepType = currentStep?.type;
+
+    // If we're already in situations step (but messages not yet visible), show anki
+    if (currentStepType === 'situations') {
+      // eslint-disable-next-line no-console
+      console.log('[AnkiGate] Showing: currentStep is situations, messages not yet visible');
+      return visibleMessages.length;
+    }
+
+    // Don't show anki while we're still in constructor or find_the_mistake
+    // We need to wait until they are completed
+    if (currentStepType === 'constructor' || currentStepType === 'find_the_mistake') {
+      // eslint-disable-next-line no-console
+      console.log('[AnkiGate] Blocked: still in', currentStepType);
+      return null;
+    }
+
+    // Check if constructor/find_the_mistake is completed by checking visibleMessages and constructorUI
+    // Look for the last constructor/find_the_mistake message and check if it's completed
+    let lastConstructorIndex: number | null = null;
+    let lastConstructorMsgId: string | null = null;
+    for (let i = visibleMessages.length - 1; i >= 0; i--) {
+      const m = visibleMessages[i];
+      const stepType = m?.currentStepSnapshot?.type;
+      if (stepType === 'constructor' || stepType === 'find_the_mistake') {
+        lastConstructorIndex = i;
+        lastConstructorMsgId = getMessageStableId(m, i);
+        break;
+      }
+    }
+
+    if (lastConstructorIndex !== null && lastConstructorMsgId) {
+      // Check if constructor is completed
+      const ctorState = constructorUI[lastConstructorMsgId];
+      if (ctorState?.completed === true) {
+        // eslint-disable-next-line no-console
+        console.log('[AnkiGate] Showing: constructor completed at index', lastConstructorIndex, 'msgId', lastConstructorMsgId);
+        return visibleMessages.length;
+      }
+
+      // Also check if the message after constructor is from model (indicates completion)
+      if (lastConstructorIndex < visibleMessages.length - 1) {
+        const nextMsg = visibleMessages[lastConstructorIndex + 1];
+        if (nextMsg?.role === 'model') {
+          // eslint-disable-next-line no-console
+          console.log('[AnkiGate] Showing: model message after constructor at index', lastConstructorIndex + 1);
+          return visibleMessages.length;
+        }
+      }
+    }
+
+    // If we're past words/grammar/goal but not yet in constructor/situations, don't show anki yet
+    if (currentStepType === 'completion') {
+      return null;
+    }
+
+    if (!currentStepType || currentStepType === 'goal' || currentStepType === 'words' || currentStepType === 'grammar') {
+      return null;
+    }
+
+    // eslint-disable-next-line no-console
+    console.log('[AnkiGate] No match: currentStepType=', currentStepType, 'visibleMessages.length=', visibleMessages.length);
+    return null;
+  }, [ankiDone, grammarGate.gated, tryParseJsonMessage, visibleMessages, currentStep, lessonScript, constructorUI, getMessageStableId]);
+
+  const ankiGateActive = typeof ankiGateIndex === 'number' && ankiGateIndex >= 0;
+
+  const gatedVisibleMessages = useMemo(() => {
+    if (!ankiGateActive) return visibleMessages;
+    return visibleMessages.slice(0, ankiGateIndex);
+  }, [ankiGateActive, ankiGateIndex, visibleMessages]);
+
+  const [ankiReviewItems, setAnkiReviewItems] = useState<Array<{ id: number; word: string; translation: string }>>([]);
+  const ankiReviewLoadedOnceRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ankiGateActive) return;
+    if (!ankiUserId) return;
+    const token = `${resolvedLevel}:${resolvedLanguage}:${day || 1}:${lesson || 1}`;
+    if (ankiReviewLoadedOnceRef.current === token) return;
+    ankiReviewLoadedOnceRef.current = token;
+
+    void (async () => {
+      try {
+        const batch = await getSrsReviewBatch({ level: resolvedLevel, targetLang: resolvedLanguage, limit: 8 });
+        setAnkiReviewItems(batch);
+      } catch (err) {
+        console.error('[SRS] get review batch failed:', err);
+        setAnkiReviewItems([]);
+      }
+    })();
+  }, [ankiGateActive, ankiUserId, day, lesson, resolvedLanguage, resolvedLevel]);
+
+  const ankiQuizItems = useMemo(() => {
+    if (ankiReviewItems.length > 0) return ankiReviewItems;
+    const deckKey = ankiDeckStorageKey;
+    const deck: Array<{ id?: number; word: string; translation: string }> = [];
+    try {
+      if (deckKey && typeof window !== 'undefined') {
+        const raw = window.localStorage.getItem(deckKey);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) {
+          for (const it of parsed) {
+            const word = String((it as any)?.word || '').trim();
+            const translation = String((it as any)?.translation || '').trim();
+            if (word && translation) deck.push({ word, translation });
           }
-        })();
-      }, [ankiGateActive, ankiUserId, day, lesson, resolvedLanguage, resolvedLevel]);
-
-		  const ankiQuizItems = useMemo(() => {
-		    if (ankiReviewItems.length > 0) return ankiReviewItems;
-		    const deckKey = ankiDeckStorageKey;
-		    const deck: Array<{ id?: number; word: string; translation: string }> = [];
-		    try {
-		      if (deckKey && typeof window !== 'undefined') {
-		        const raw = window.localStorage.getItem(deckKey);
-		        const parsed = raw ? JSON.parse(raw) : [];
-		        if (Array.isArray(parsed)) {
-		          for (const it of parsed) {
-		            const word = String((it as any)?.word || '').trim();
-		            const translation = String((it as any)?.translation || '').trim();
-		            if (word && translation) deck.push({ word, translation });
-		          }
-		        }
-		      }
-		    } catch {
-	      // ignore
-	    }
-		    if (deck.length === 0 && Array.isArray(vocabWords)) {
-		      for (const w of vocabWords as any[]) {
-		        const word = String(w?.word || '').trim();
-		        const translation = String(w?.translation || '').trim();
-		        if (word && translation) deck.push({ word, translation });
-		      }
-		    }
-		    return deck;
-		  }, [ankiDeckStorageKey, ankiReviewItems, vocabWords]);
+        }
+      }
+    } catch {
+      // ignore
+    }
+    if (deck.length === 0 && Array.isArray(vocabWords)) {
+      for (const w of vocabWords as any[]) {
+        const word = String(w?.word || '').trim();
+        const translation = String(w?.translation || '').trim();
+        if (word && translation) deck.push({ word, translation });
+      }
+    }
+    return deck;
+  }, [ankiDeckStorageKey, ankiReviewItems, vocabWords]);
 
   const ankiIntroText =
     resolvedLanguage.toLowerCase().startsWith('ru')
       ? 'Сейчас повторим слова. Выбери правильное английское слово.'
       : 'Quick review: pick the correct English word.';
 
-    const waitForAudioIdle = useCallback(async (timeoutMs = 6000) => {
-      const started = Date.now();
-      return new Promise<void>((resolve) => {
-        const tick = () => {
-          const idle = !isPlayingQueueRef.current && !currentAudioItemRef.current;
-          const timedOut = Date.now() - started >= timeoutMs;
-          if (idle || timedOut) {
-            resolve();
-            return;
-          }
-          window.requestAnimationFrame(tick);
-        };
-        tick();
-      });
-    }, []);
+  const waitForAudioIdle = useCallback(async (timeoutMs = 6000) => {
+    const started = Date.now();
+    return new Promise<void>((resolve) => {
+      const tick = () => {
+        const idle = !isPlayingQueueRef.current && !currentAudioItemRef.current;
+        const timedOut = Date.now() - started >= timeoutMs;
+        if (idle || timedOut) {
+          resolve();
+          return;
+        }
+        window.requestAnimationFrame(tick);
+      };
+      tick();
+    });
+  }, []);
 
-    const handleAnkiComplete = useCallback(() => {
-      void (async () => {
-        await waitForAudioIdle();
+  const handleAnkiComplete = useCallback(() => {
+    void (async () => {
+      await waitForAudioIdle();
 
       try {
         window.localStorage.setItem(ankiDoneStorageKey, '1');
       } catch {
         // ignore
       }
-	      setAnkiDone(true);
-        setAnkiReviewItems([]);
-	      window.setTimeout(() => {
-	        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-	      }, 0);
-        // If inputMode was forced hidden while gated, restore it based on the latest model message
-        // (often the first "situations" message is already in history but was hidden by the gate).
-        window.setTimeout(() => {
-          try {
-            if (grammarGate.gated) return;
-            setInputMode((prev) => {
-              if (prev !== 'hidden') return prev;
-              for (let i = messages.length - 1; i >= 0; i--) {
-                const msg = messages[i];
-                if (!msg || msg.role !== 'model' || !msg.text) continue;
-                const parsed = tryParseJsonMessage(msg.text);
-                const next = determineInputMode(parsed, msg as any);
-                if (next !== 'hidden') return next;
-              }
-              return 'text';
-            });
-          } catch {
-            setInputMode('text');
-          }
-        }, 0);
-      })();
-    }, [ankiDoneStorageKey, determineInputMode, grammarGate.gated, messages, setInputMode, waitForAudioIdle]);
+      setAnkiDone(true);
+      setAnkiReviewItems([]);
+      window.setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 0);
+      // If inputMode was forced hidden while gated, restore it based on the latest model message
+      // (often the first "situations" message is already in history but was hidden by the gate).
+      window.setTimeout(() => {
+        try {
+          if (grammarGate.gated) return;
+          setInputMode((prev) => {
+            if (prev !== 'hidden') return prev;
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const msg = messages[i];
+              if (!msg || msg.role !== 'model' || !msg.text) continue;
+              const parsed = tryParseJsonMessage(msg.text);
+              const next = determineInputMode(parsed, msg as any);
+              if (next !== 'hidden') return next;
+            }
+            return 'text';
+          });
+        } catch {
+          setInputMode('text');
+        }
+      }, 0);
+    })();
+  }, [ankiDoneStorageKey, determineInputMode, grammarGate.gated, messages, setInputMode, waitForAudioIdle]);
 
-      const reviewedSrsCardIdsRef = useRef<Set<number>>(new Set());
-      const handleAnkiAnswer = useCallback(async (p: { id?: number; isCorrect: boolean }) => {
-        const id = typeof p.id === 'number' ? p.id : null;
-        if (!id) return;
-        if (reviewedSrsCardIdsRef.current.has(id)) return;
-        reviewedSrsCardIdsRef.current.add(id);
-        const quality = p.isCorrect ? 5 : 2;
-        applySrsReview({ cardId: id, quality }).catch((err) => console.error('[SRS] apply review failed:', err));
-      }, []);
+  const reviewedSrsCardIdsRef = useRef<Set<number>>(new Set());
+  const handleAnkiAnswer = useCallback(async (p: { id?: number; isCorrect: boolean }) => {
+    const id = typeof p.id === 'number' ? p.id : null;
+    if (!id) return;
+    if (reviewedSrsCardIdsRef.current.has(id)) return;
+    reviewedSrsCardIdsRef.current.add(id);
+    const quality = p.isCorrect ? 5 : 2;
+    applySrsReview({ cardId: id, quality }).catch((err) => console.error('[SRS] apply review failed:', err));
+  }, []);
 
   const situationsIntegritySignatureRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1553,7 +1555,7 @@ export function Step4DialogueScreen({
       (a?.nextType ?? null) === (b?.nextType ?? null) &&
       (typeof a?.nextIndex === 'number' ? a.nextIndex : null) === (typeof b?.nextIndex === 'number' ? b.nextIndex : null) &&
       (typeof a?.nextSubIndex === 'number' ? a.nextSubIndex : null) ===
-        (typeof b?.nextSubIndex === 'number' ? b.nextSubIndex : null);
+      (typeof b?.nextSubIndex === 'number' ? b.nextSubIndex : null);
 
     if (isSame(target, currentStep)) return;
 
@@ -1693,10 +1695,10 @@ export function Step4DialogueScreen({
     }
   }, [vocabIndex, showVocab, vocabWords, enqueueVocabAudio, isInitializing, pendingVocabPlay]);
 
-	  const autoPlayedVocabExampleRef = useRef<Set<string>>(new Set());
-	  useEffect(() => {
-	    autoPlayedVocabExampleRef.current = new Set();
-	  }, [vocabProgressStorageKey]);
+  const autoPlayedVocabExampleRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    autoPlayedVocabExampleRef.current = new Set();
+  }, [vocabProgressStorageKey]);
 
 
   const lastGrammarScrollTokenRef = useRef<string | null>(null);
@@ -1821,72 +1823,72 @@ export function Step4DialogueScreen({
 
   useVocabScroll({ showVocab, vocabIndex, vocabRefs, isInitializing, vocabProgressStorageKey });
 
-	  const { restartLesson } = useLessonRestart({
-	    day,
-	    lesson,
-	    level,
-	    setIsLoading,
-	    setIsInitializing,
-	    onBeforeRestart: () => {
-	      // Reset per-lesson caches/refs so restart behaves like a fresh session.
-	      reviewDeckTokenRef.current = null;
-	      lastSrsUpsertSignatureRef.current = null;
-	      ankiReviewLoadedOnceRef.current = null;
-	      reviewedSrsCardIdsRef.current = new Set();
-	      setAnkiReviewItems([]);
-	      setLessonScript(null);
-	    },
-		    // Lesson restart should not clear repetition decks; that's handled by "Start level over".
-		    extraLocalStorageKeys: [],
-	    goalSeenRef,
-	    hasRecordedLessonCompleteRef,
-	    setLessonCompletedPersisted,
-	    setMessages,
-	    setCurrentStep,
-	    setInput,
-	    setInputMode,
-	    resetTtsState,
-	    matching: {
-	      setShowMatching,
-	      setMatchingPersisted,
-	      setMatchingEverStarted,
-	      setMatchingInsertIndex,
-	      setWordOptions,
-	      setTranslationOptions,
-	      setSelectedWord,
-	      setSelectedTranslation,
-	    },
+  const { restartLesson } = useLessonRestart({
+    day,
+    lesson,
+    level,
+    setIsLoading,
+    setIsInitializing,
+    onBeforeRestart: () => {
+      // Reset per-lesson caches/refs so restart behaves like a fresh session.
+      reviewDeckTokenRef.current = null;
+      lastSrsUpsertSignatureRef.current = null;
+      ankiReviewLoadedOnceRef.current = null;
+      reviewedSrsCardIdsRef.current = new Set();
+      setAnkiReviewItems([]);
+      setLessonScript(null);
+    },
+    // Lesson restart should not clear repetition decks; that's handled by "Start level over".
+    extraLocalStorageKeys: [],
+    goalSeenRef,
+    hasRecordedLessonCompleteRef,
+    setLessonCompletedPersisted,
+    setMessages,
+    setCurrentStep,
+    setInput,
+    setInputMode,
+    resetTtsState,
+    matching: {
+      setShowMatching,
+      setMatchingPersisted,
+      setMatchingEverStarted,
+      setMatchingInsertIndex,
+      setWordOptions,
+      setTranslationOptions,
+      setSelectedWord,
+      setSelectedTranslation,
+    },
     vocab: { setVocabWords, setVocabIndex, setShowVocab, setPendingVocabPlay, setVocabProgressHydrated },
-		    findMistake: { setFindMistakeUI },
-		    constructor: { setConstructorUI },
-	    vocabRestoreRefs: { restoredVocabIndexRef, appliedVocabRestoreKeyRef },
-	    setGrammarGateSectionId: () => {},
-	    setGrammarGateOpen: () => {},
-	    setGrammarGateRevision,
-	    gatedGrammarSectionIdsRef,
-	    goalGate: { setGoalGatePending, setGoalGateAcknowledged },
-	    storageKeys: {
-	      goalAckStorageKey,
-	      grammarGateStorageKey,
-	      vocabProgressStorageKey,
-	      matchingProgressStorageKey,
-	      findMistakeStorageKey,
-	      constructorStorageKey,
-	      ankiDoneStorageKey,
-	    },
-	    setAnkiDone,
-	    initializeChat,
-	  });
+    findMistake: { setFindMistakeUI },
+    constructor: { setConstructorUI },
+    vocabRestoreRefs: { restoredVocabIndexRef, appliedVocabRestoreKeyRef },
+    setGrammarGateSectionId: () => { },
+    setGrammarGateOpen: () => { },
+    setGrammarGateRevision,
+    gatedGrammarSectionIdsRef,
+    goalGate: { setGoalGatePending, setGoalGateAcknowledged },
+    storageKeys: {
+      goalAckStorageKey,
+      grammarGateStorageKey,
+      vocabProgressStorageKey,
+      matchingProgressStorageKey,
+      findMistakeStorageKey,
+      constructorStorageKey,
+      ankiDoneStorageKey,
+    },
+    setAnkiDone,
+    initializeChat,
+  });
 
   // Обработка подтверждения перезапуска незавершенного урока
   const handleIncompleteLessonConfirm = useCallback(async (dontShowAgain: boolean) => {
     if (!day || !lesson) return;
-    
+
     const checkKey = `${day}_${lesson}_${resolvedLevel}`;
     // Помечаем, что урок был перезапущен
     lessonRestartedRef.current = checkKey;
     incompleteLessonCheckedRef.current = checkKey;
-    
+
     // Сохраняем настройку "больше не показывать"
     if (dontShowAgain && incompleteLessonWarningDismissedKey) {
       try {
@@ -1895,13 +1897,13 @@ export function Step4DialogueScreen({
         // ignore
       }
     }
-    
+
     setShowIncompleteLessonModal(false);
-    
+
     // Очищаем сообщения перед перезапуском
     setMessages([]);
     setCurrentStep(null);
-    
+
     // Сбрасываем goalGateAcknowledged в localStorage, чтобы кнопка "Начинаем" появилась
     try {
       window.localStorage.removeItem(goalAckStorageKey);
@@ -1910,13 +1912,13 @@ export function Step4DialogueScreen({
     } catch {
       // ignore
     }
-    
+
     // Перезапускаем урок
     await restartLesson();
-    
+
     // Сбрасываем флаг инициализации, чтобы чат инициализировался заново
     chatInitializedRef.current = null;
-    
+
     // После перезапуска инициализируем чат
     initializeChat(false, {
       allowSeedFromCachedScript: startMode === 'next',
@@ -1938,17 +1940,17 @@ export function Step4DialogueScreen({
       try {
         const progress = await loadLessonProgress(day, lesson, resolvedLevel);
         if (cancelled) return;
-        
+
         // Если урок не завершен, но есть запись в БД (значит был начат ранее)
         // значит урок был начат, но не завершен - автоматически перезапускаем
         const isCompleted = progress?.completed === true;
         const hasProgress = progress !== null; // Есть запись в БД
-        
+
         // Проверяем только если есть прогресс и урок не завершен
         // Если progress === null, значит урок новый и не нужно показывать модал
         if (hasProgress && !isCompleted) {
           incompleteLessonCheckedRef.current = checkKey;
-          
+
           // Проверяем, не отключено ли предупреждение пользователем
           let warningDismissed = false;
           if (incompleteLessonWarningDismissedKey) {
@@ -1958,13 +1960,13 @@ export function Step4DialogueScreen({
               // ignore
             }
           }
-          
+
           if (!warningDismissed) {
             console.log('[Step4Dialogue] Incomplete lesson detected, showing warning...', {
               hasProgress,
               isCompleted,
             });
-            
+
             // Сбрасываем goalGateAcknowledged, чтобы кнопка "Начинаем" появилась после перезапуска
             try {
               window.localStorage.removeItem(goalAckStorageKey);
@@ -1973,7 +1975,7 @@ export function Step4DialogueScreen({
             } catch {
               // ignore
             }
-            
+
             // Показываем предупреждающее окно ДО инициализации чата
             setShowIncompleteLessonModal(true);
             // НЕ инициализируем чат, пока модальное окно открыто
@@ -2016,23 +2018,24 @@ export function Step4DialogueScreen({
   useEffect(() => {
     if (!day || !lesson) return;
     if (showIncompleteLessonModal) return; // Не инициализируем, если показывается модальное окно
-    if (isInitializing) return; // Уже инициализируется
-    
+    // if (isInitializing) return; // REMOVED: Deadlock fix. We must allow this effect to run even if isInitializing is true (initial state).
+    // Duplicate initialization is handled by chatInitializedRef below.
+
     const checkKey = `${day}_${lesson}_${resolvedLevel}`;
     if (chatInitializedRef.current === checkKey) return; // Уже инициализировали для этого урока
-    
+
     // Проверяем, что урок уже был проверен
     if (incompleteLessonCheckedRef.current !== checkKey) {
       // Еще не проверили урок, ждем
       return;
     }
-    
+
     // Если урок завершен (передан через initialLessonProgress), не инициализируем чат
     if (initialLessonProgress?.completed === true) {
       chatInitializedRef.current = checkKey;
       return; // Уже установлено в useState выше
     }
-    
+
     // Инициализируем чат только если урок не завершен
     chatInitializedRef.current = checkKey;
     initializeChat(false, {
@@ -2195,9 +2198,9 @@ export function Step4DialogueScreen({
   const activeSituationKeys = activeSituation.keys;
   const situationAwaitingStart = Boolean(
     activeSituationKeys.length > 0 &&
-      !activeSituation.hasUserReply &&
-      !activeSituation.completedCorrect &&
-      activeSituationKeys.some((key) => key && !startedSituations[key])
+    !activeSituation.hasUserReply &&
+    !activeSituation.completedCorrect &&
+    activeSituationKeys.some((key) => key && !startedSituations[key])
   );
   const firstPendingSituationKey =
     situationAwaitingStart ? activeSituationKeys.find((key) => key && !startedSituations[key]) || null : null;
@@ -2206,104 +2209,104 @@ export function Step4DialogueScreen({
     grammarGate.gated || ankiGateActive || situationAwaitingStart ? 'hidden' : inputMode;
   const showGoalGateCta = goalGatePending && !goalGateAcknowledged && !lessonCompletedPersisted;
   const goalGateLabel = resolvedLanguage.toLowerCase().startsWith('ru') ? 'Начинаем' : "I'm ready";
-	  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
-	  const acknowledgeGoalGate = useCallback(async () => {
-	    try {
-	      window.localStorage.setItem(goalAckStorageKey, '1');
-	    } catch {
-	      // ignore
-	    }
-	    setPendingWordsSeparator(true);
-	    // Сначала обновляем состояние goalGate, чтобы useMessageDrivenUi правильно обработал words_list
-	    // Важно: сначала устанавливаем goalGateAcknowledged в true, потом goalGatePending в false
-	    // Это гарантирует, что при обработке words_list goalGateAcknowledged уже будет true
-	    setGoalGateAcknowledged(true);
-	    // Небольшая задержка, чтобы состояние обновилось
-	    await new Promise(resolve => setTimeout(resolve, 10));
-	    setGoalGatePending(false);
-	    
-	    setIsLoading(true);
-	    let advancedIntoWordsList = false;
-	    try {
-	      // Проверяем, есть ли скрипт в state
-	      if (!lessonScript) {
-	        console.log('[Step4Dialogue] lessonScript is null, loading via ensureLessonScript...');
-	      } else {
-	        console.log('[Step4Dialogue] lessonScript exists in state:', !!lessonScript?.words);
-	      }
-	      
-	      const script = (await ensureLessonScript()) as LessonScriptV2;
-	      console.log('[Step4Dialogue] ensureLessonScript returned:', !!script, !!script?.words);
-	      
-	      if (!script || !script.words) {
-	        console.error('[Step4Dialogue] Lesson script not loaded or invalid:', script);
-	        setIsLoading(false);
-	        return;
-	      }
-	      
-	      // Убеждаемся, что скрипт установлен в state
-	      if (!lessonScript || lessonScript !== script) {
-	        setLessonScript(script);
-	        console.log('[Step4Dialogue] Set lessonScript in state');
-	      }
-	      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
-	      console.log('[Step4Dialogue] advanceLesson returned:', {
-	        messagesCount: out.messages?.length,
+  const renderMarkdown = useCallback((text: string) => parseMarkdown(text), []);
+  const acknowledgeGoalGate = useCallback(async () => {
+    try {
+      window.localStorage.setItem(goalAckStorageKey, '1');
+    } catch {
+      // ignore
+    }
+    setPendingWordsSeparator(true);
+    // Сначала обновляем состояние goalGate, чтобы useMessageDrivenUi правильно обработал words_list
+    // Важно: сначала устанавливаем goalGateAcknowledged в true, потом goalGatePending в false
+    // Это гарантирует, что при обработке words_list goalGateAcknowledged уже будет true
+    setGoalGateAcknowledged(true);
+    // Небольшая задержка, чтобы состояние обновилось
+    await new Promise(resolve => setTimeout(resolve, 10));
+    setGoalGatePending(false);
+
+    setIsLoading(true);
+    let advancedIntoWordsList = false;
+    try {
+      // Проверяем, есть ли скрипт в state
+      if (!lessonScript) {
+        console.log('[Step4Dialogue] lessonScript is null, loading via ensureLessonScript...');
+      } else {
+        console.log('[Step4Dialogue] lessonScript exists in state:', !!lessonScript?.words);
+      }
+
+      const script = (await ensureLessonScript()) as LessonScriptV2;
+      console.log('[Step4Dialogue] ensureLessonScript returned:', !!script, !!script?.words);
+
+      if (!script || !script.words) {
+        console.error('[Step4Dialogue] Lesson script not loaded or invalid:', script);
+        setIsLoading(false);
+        return;
+      }
+
+      // Убеждаемся, что скрипт установлен в state
+      if (!lessonScript || lessonScript !== script) {
+        setLessonScript(script);
+        console.log('[Step4Dialogue] Set lessonScript in state');
+      }
+      const out = advanceLesson({ script, currentStep: { type: 'goal', index: 0 } });
+      console.log('[Step4Dialogue] advanceLesson returned:', {
+        messagesCount: out.messages?.length,
         hasWordsList: out.messages?.some(m => {
           const parsed = tryParseJsonMessage(m.text);
           return parsed?.type === 'words_list';
         }),
         nextStep: out.nextStep,
       });
-	      
-	      if (out.messages?.length) {
-	        await appendEngineMessagesWithDelay(out.messages, 0);
-	      }
-	      setCurrentStep(out.nextStep || null);
-	      // Не сохраняем currentStepSnapshot - сохраняем только статус завершения
-	      // Make the transition feel immediate even if effects run later.
-	      // setShowVocab будет установлен в useMessageDrivenUi при обработке words_list сообщения
-	      // setShowVocab(true);
-	      advancedIntoWordsList = Boolean(
-	        out.messages?.some((msg) => {
-	          if (!msg || msg.role !== 'model') return false;
-	          const parsed = tryParseJsonMessage(msg.text);
-	          return parsed?.type === 'words_list';
-	        })
-	      );
-	      // If we advanced into a words_list message, useMessageDrivenUi should set pendingVocabPlay for us.
-	      // But we also set it here as a fallback to ensure it works even if useMessageDrivenUi hasn't processed the message yet.
-	      if (!advancedIntoWordsList && vocabWords.length > 0) {
-	      // Otherwise, if the vocab is already present (e.g. restored history), start the first word once.
-	        setPendingVocabPlay(true);
-	      }
-	    } catch (err) {
-	      console.error('[Step4Dialogue] Failed to advance from goal:', err);
-	    } finally {
-	      setIsLoading(false);
-	      // After isLoading becomes false, set pendingVocabPlay if we advanced into words_list
-	      // This ensures all state updates from useMessageDrivenUi are processed first
-	      if (advancedIntoWordsList) {
-	        // Use setTimeout to ensure React has processed all state updates and useMessageDrivenUi has run
-	        setTimeout(() => {
-	          setPendingVocabPlay((prev) => {
-	            // Only set if not already set by useMessageDrivenUi
-	            if (!prev) return true;
-	            return prev;
-	          });
-	        }, 150);
-	      }
-	    }
-	  }, [
-	    appendEngineMessagesWithDelay,
-	    day,
-	    ensureLessonScript,
-	    goalAckStorageKey,
-	    lesson,
-	    resolvedLevel,
-	    tryParseJsonMessage,
-	    vocabWords.length,
-	  ]);
+
+      if (out.messages?.length) {
+        await appendEngineMessagesWithDelay(out.messages, 0);
+      }
+      setCurrentStep(out.nextStep || null);
+      // Не сохраняем currentStepSnapshot - сохраняем только статус завершения
+      // Make the transition feel immediate even if effects run later.
+      // setShowVocab будет установлен в useMessageDrivenUi при обработке words_list сообщения
+      // setShowVocab(true);
+      advancedIntoWordsList = Boolean(
+        out.messages?.some((msg) => {
+          if (!msg || msg.role !== 'model') return false;
+          const parsed = tryParseJsonMessage(msg.text);
+          return parsed?.type === 'words_list';
+        })
+      );
+      // If we advanced into a words_list message, useMessageDrivenUi should set pendingVocabPlay for us.
+      // But we also set it here as a fallback to ensure it works even if useMessageDrivenUi hasn't processed the message yet.
+      if (!advancedIntoWordsList && vocabWords.length > 0) {
+        // Otherwise, if the vocab is already present (e.g. restored history), start the first word once.
+        setPendingVocabPlay(true);
+      }
+    } catch (err) {
+      console.error('[Step4Dialogue] Failed to advance from goal:', err);
+    } finally {
+      setIsLoading(false);
+      // After isLoading becomes false, set pendingVocabPlay if we advanced into words_list
+      // This ensures all state updates from useMessageDrivenUi are processed first
+      if (advancedIntoWordsList) {
+        // Use setTimeout to ensure React has processed all state updates and useMessageDrivenUi has run
+        setTimeout(() => {
+          setPendingVocabPlay((prev) => {
+            // Only set if not already set by useMessageDrivenUi
+            if (!prev) return true;
+            return prev;
+          });
+        }, 150);
+      }
+    }
+  }, [
+    appendEngineMessagesWithDelay,
+    day,
+    ensureLessonScript,
+    goalAckStorageKey,
+    lesson,
+    resolvedLevel,
+    tryParseJsonMessage,
+    vocabWords.length,
+  ]);
 
   useEffect(() => {
     if (!pendingWordsSeparator) return;
@@ -2350,12 +2353,12 @@ export function Step4DialogueScreen({
           const step = activeSituation.step;
           if (step && currentStep?.type !== 'situations') {
             setCurrentStep(step);
-              // Не сохраняем currentStepSnapshot - сохраняем только статус завершения
-              // upsertLessonProgress({
-              //   day: day || 1,
-              //   lesson: lesson || 1,
-              //   level: resolvedLevel,
-              // }).catch(() => {});
+            // Не сохраняем currentStepSnapshot - сохраняем только статус завершения
+            // upsertLessonProgress({
+            //   day: day || 1,
+            //   lesson: lesson || 1,
+            //   level: resolvedLevel,
+            // }).catch(() => {});
           }
           startSituation(activeSituationKeys.length ? activeSituationKeys : firstPendingSituationKey);
         },
@@ -2391,14 +2394,14 @@ export function Step4DialogueScreen({
       for (let i = messages.length - 1; i >= 0; i--) {
         const msg = messages[i];
         if (msg.role !== 'model') continue;
-        
+
         const parsed = tryParseJsonMessage(msg.text);
         if (parsed?.type !== 'grammar') continue;
-        
+
         const stableId = getMessageStableId(msg, i);
         const ui = grammarDrillsUI?.[stableId];
         const drills = Array.isArray((parsed as any).drills) ? ((parsed as any).drills as any[]) : [];
-        
+
         // If UI doesn't exist yet or drills haven't started (currentDrillIndex is null), show "Проверить" to start drills
         if (!ui || ui.currentDrillIndex === null || ui.currentDrillIndex === undefined) {
           return {
@@ -2422,16 +2425,16 @@ export function Step4DialogueScreen({
             disabled: isLoading,
           };
         }
-        
+
         // Check if all drills are completed and correct
-        const allCorrect = drills.length > 0 && 
-          ui.correct?.length === drills.length && 
+        const allCorrect = drills.length > 0 &&
+          ui.correct?.length === drills.length &&
           ui.correct.every(Boolean) &&
           ui.checked?.length === drills.length &&
           ui.checked.every(Boolean) &&
           typeof ui.currentDrillIndex === 'number' &&
           ui.currentDrillIndex >= drills.length - 1;
-        
+
         if (allCorrect && !ui.completed) {
           return {
             label: 'Продолжить',
@@ -2458,7 +2461,7 @@ export function Step4DialogueScreen({
             disabled: isLoading,
           };
         }
-        
+
         // Check if drills haven't started yet (currentDrillIndex is null)
         if (ui.currentDrillIndex === null || ui.currentDrillIndex === undefined) {
           return {
@@ -2482,160 +2485,160 @@ export function Step4DialogueScreen({
             disabled: isLoading,
           };
         }
-        
+
         // Check if there's a current drill that needs to be checked
         const currentDrillIndex = typeof ui.currentDrillIndex === 'number' ? ui.currentDrillIndex : 0;
         const currentAnswer = ui.answers?.[currentDrillIndex] || '';
         const isCurrentChecked = ui.checked?.[currentDrillIndex] === true;
         const isCurrentCorrect = ui.correct?.[currentDrillIndex] === true;
-        
+
         // Show "Проверить" button if there's an answer and it's not checked yet, or if it's checked but incorrect
         if (currentDrillIndex < drills.length && currentAnswer.trim() && (!isCurrentChecked || (isCurrentChecked && !isCurrentCorrect))) {
-            return {
-              label: 'Проверить',
-              onClick: async () => {
-                if (isLoading) return;
-                
-                setIsLoading(true);
-                try {
-                  const currentDrill = drills[currentDrillIndex];
-                  
-                  // Сначала пробуем локальную проверку
-                  const grammarDrill: GrammarDrill = {
-                    question: currentDrill?.question || '',
-                    task: currentDrill?.task || '',
-                    expected: currentDrill?.expected || '',
-                    requiredWords: currentDrill?.requiredWords,
-                  };
-                  
-                  const localResult = validateGrammarDrill(currentAnswer, grammarDrill);
-                  
-                  let isCorrect = false;
-                  let feedback = '';
-                  let notesForDrill = '';
-                  let needsAI = false;
-                  
-                  if (!localResult.needsAI) {
-                    // Локальная проверка дала результат
-                    console.log('[Step4DialogueScreen] Локальная проверка грамматики:', {
-                      drillIndex: currentDrillIndex,
-                      question: currentDrill?.question,
-                      expected: currentDrill?.expected,
-                      answer: currentAnswer,
-                      isCorrect: localResult.isCorrect,
-                      missingWords: localResult.missingWords,
-                      incorrectWords: localResult.incorrectWords,
-                      extraWords: localResult.extraWords,
-                      orderError: localResult.orderError
-                    });
-                    
-                    isCorrect = localResult.isCorrect;
-                    // Используем feedback из localResult (уже содержит правильный ответ)
-                    feedback = localResult.feedback || '';
-                    notesForDrill = '';
-                    
-                    needsAI = false;
-                  } else {
-                    // Нужна проверка через ИИ
-                    needsAI = true;
-                    console.log('[Step4DialogueScreen] Проверка грамматики через ИИ:', {
-                      drillIndex: currentDrillIndex,
-                      question: currentDrill?.question,
-                      expected: currentDrill?.expected,
-                      answer: currentAnswer
-                    });
-                  }
-                  
-                  // Если нужна проверка через ИИ
-                  if (needsAI) {
-                    const stepForValidation = {
-                      ...currentStep,
-                      type: 'grammar' as const,
-                      subIndex: currentDrillIndex,
-                    };
-                    
-                    const { validateDialogueAnswerV2 } = await import('../../services/generationService');
-                    const result = await validateDialogueAnswerV2({
-                      lessonId: lessonIdRef.current || '',
-                      userId: userIdRef.current || '',
-                      currentStep: stepForValidation,
-                      studentAnswer: currentAnswer,
-                      uiLang: resolvedLanguage || 'ru',
-                    });
-                    
-                    console.log('[Step4DialogueScreen] Результат проверки грамматики через ИИ:', {
-                      drillIndex: currentDrillIndex,
-                      isCorrect: result.isCorrect,
-                      feedback: result.feedback
-                    });
-                    
-                    isCorrect = result.isCorrect;
-                    feedback = result.feedback || '';
-                    notesForDrill = '';
-                  }
-                  
-                  // Update UI state
-                  const currentChecked = ui?.checked || Array(drills.length).fill(false);
-                  const currentCorrect = ui?.correct || Array(drills.length).fill(false);
-                  const currentFeedbacks = ui?.feedbacks || Array(drills.length).fill('');
-                  const currentNotes = ui?.notes || Array(drills.length).fill('');
-                  
-                  const nextChecked = [...currentChecked];
-                  const nextCorrect = [...currentCorrect];
-                  const nextFeedbacks = [...currentFeedbacks];
-                  const nextNotes = [...currentNotes];
-                  
-                  nextChecked[currentDrillIndex] = true;
-                  nextCorrect[currentDrillIndex] = isCorrect;
-                  nextFeedbacks[currentDrillIndex] = feedback;
-                  nextNotes[currentDrillIndex] = notesForDrill;
-                  
-                  let nextDrillIndex = currentDrillIndex;
-                  // Move to next drill if correct, or stay on current if incorrect
-                  if (isCorrect && currentDrillIndex < drills.length - 1) {
-                    nextDrillIndex = currentDrillIndex + 1;
-                  }
-                  
-                  // Preserve existing answers to prevent flickering
-                  // Only create new array if answers don't exist or have wrong length
-                  const preservedAnswers = (() => {
-                    if (Array.isArray(ui?.answers) && ui.answers.length === drills.length) {
-                      return ui.answers; // Keep existing answers
-                    }
-                    // Create new array only if needed
-                    return ui?.answers?.slice(0, drills.length) || Array.from({ length: drills.length }, () => '');
-                  })();
-                  
-                  const newState = {
-                    answers: preservedAnswers,
-                    checked: nextChecked,
-                    correct: nextCorrect,
-                    completed: ui?.completed || false,
-                    currentDrillIndex: nextDrillIndex,
-                    feedbacks: nextFeedbacks,
-                    notes: nextNotes,
-                  };
-                  
-                  console.log('[Step4DialogueScreen] Обновление UI state:', {
+          return {
+            label: 'Проверить',
+            onClick: async () => {
+              if (isLoading) return;
+
+              setIsLoading(true);
+              try {
+                const currentDrill = drills[currentDrillIndex];
+
+                // Сначала пробуем локальную проверку
+                const grammarDrill: GrammarDrill = {
+                  question: currentDrill?.question || '',
+                  task: currentDrill?.task || '',
+                  expected: currentDrill?.expected || '',
+                  requiredWords: currentDrill?.requiredWords,
+                };
+
+                const localResult = validateGrammarDrill(currentAnswer, grammarDrill);
+
+                let isCorrect = false;
+                let feedback = '';
+                let notesForDrill = '';
+                let needsAI = false;
+
+                if (!localResult.needsAI) {
+                  // Локальная проверка дала результат
+                  console.log('[Step4DialogueScreen] Локальная проверка грамматики:', {
                     drillIndex: currentDrillIndex,
-                    isCorrect,
-                    checked: nextChecked[currentDrillIndex],
-                    correct: nextCorrect[currentDrillIndex],
-                    feedback,
-                    notesForDrill,
-                    newState
+                    question: currentDrill?.question,
+                    expected: currentDrill?.expected,
+                    answer: currentAnswer,
+                    isCorrect: localResult.isCorrect,
+                    missingWords: localResult.missingWords,
+                    incorrectWords: localResult.incorrectWords,
+                    extraWords: localResult.extraWords,
+                    orderError: localResult.orderError
                   });
-                  
-                  setGrammarDrillsUI((prev) => ({
-                    ...prev,
-                    [stableId]: newState,
-                  }));
-                } finally {
-                  setIsLoading(false);
+
+                  isCorrect = localResult.isCorrect;
+                  // Используем feedback из localResult (уже содержит правильный ответ)
+                  feedback = localResult.feedback || '';
+                  notesForDrill = '';
+
+                  needsAI = false;
+                } else {
+                  // Нужна проверка через ИИ
+                  needsAI = true;
+                  console.log('[Step4DialogueScreen] Проверка грамматики через ИИ:', {
+                    drillIndex: currentDrillIndex,
+                    question: currentDrill?.question,
+                    expected: currentDrill?.expected,
+                    answer: currentAnswer
+                  });
                 }
-              },
-              disabled: isLoading || !currentAnswer.trim(),
-            };
+
+                // Если нужна проверка через ИИ
+                if (needsAI) {
+                  const stepForValidation = {
+                    ...currentStep,
+                    type: 'grammar' as const,
+                    subIndex: currentDrillIndex,
+                  };
+
+                  const { validateDialogueAnswerV2 } = await import('../../services/generationService');
+                  const result = await validateDialogueAnswerV2({
+                    lessonId: lessonIdRef.current || '',
+                    userId: userIdRef.current || '',
+                    currentStep: stepForValidation,
+                    studentAnswer: currentAnswer,
+                    uiLang: resolvedLanguage || 'ru',
+                  });
+
+                  console.log('[Step4DialogueScreen] Результат проверки грамматики через ИИ:', {
+                    drillIndex: currentDrillIndex,
+                    isCorrect: result.isCorrect,
+                    feedback: result.feedback
+                  });
+
+                  isCorrect = result.isCorrect;
+                  feedback = result.feedback || '';
+                  notesForDrill = '';
+                }
+
+                // Update UI state
+                const currentChecked = ui?.checked || Array(drills.length).fill(false);
+                const currentCorrect = ui?.correct || Array(drills.length).fill(false);
+                const currentFeedbacks = ui?.feedbacks || Array(drills.length).fill('');
+                const currentNotes = ui?.notes || Array(drills.length).fill('');
+
+                const nextChecked = [...currentChecked];
+                const nextCorrect = [...currentCorrect];
+                const nextFeedbacks = [...currentFeedbacks];
+                const nextNotes = [...currentNotes];
+
+                nextChecked[currentDrillIndex] = true;
+                nextCorrect[currentDrillIndex] = isCorrect;
+                nextFeedbacks[currentDrillIndex] = feedback;
+                nextNotes[currentDrillIndex] = notesForDrill;
+
+                let nextDrillIndex = currentDrillIndex;
+                // Move to next drill if correct, or stay on current if incorrect
+                if (isCorrect && currentDrillIndex < drills.length - 1) {
+                  nextDrillIndex = currentDrillIndex + 1;
+                }
+
+                // Preserve existing answers to prevent flickering
+                // Only create new array if answers don't exist or have wrong length
+                const preservedAnswers = (() => {
+                  if (Array.isArray(ui?.answers) && ui.answers.length === drills.length) {
+                    return ui.answers; // Keep existing answers
+                  }
+                  // Create new array only if needed
+                  return ui?.answers?.slice(0, drills.length) || Array.from({ length: drills.length }, () => '');
+                })();
+
+                const newState = {
+                  answers: preservedAnswers,
+                  checked: nextChecked,
+                  correct: nextCorrect,
+                  completed: ui?.completed || false,
+                  currentDrillIndex: nextDrillIndex,
+                  feedbacks: nextFeedbacks,
+                  notes: nextNotes,
+                };
+
+                console.log('[Step4DialogueScreen] Обновление UI state:', {
+                  drillIndex: currentDrillIndex,
+                  isCorrect,
+                  checked: nextChecked[currentDrillIndex],
+                  correct: nextCorrect[currentDrillIndex],
+                  feedback,
+                  notesForDrill,
+                  newState
+                });
+
+                setGrammarDrillsUI((prev) => ({
+                  ...prev,
+                  [stableId]: newState,
+                }));
+              } finally {
+                setIsLoading(false);
+              }
+            },
+            disabled: isLoading || !currentAnswer.trim(),
+          };
         }
       }
     }
@@ -2651,34 +2654,34 @@ export function Step4DialogueScreen({
     for (let i = 0; i < messages.length; i++) {
       const msg = messages[i];
       if (msg.role !== 'model') continue;
-      
+
       const parsed = tryParseJsonMessage(msg.text);
       const text = stripModuleTag(msg.text || '');
-      
+
       // Determine if this message is a Find Mistake card
       const isFindMistakeMessage = (() => {
-          if (parsed?.type === 'find_the_mistake') return true;
-          const a = text.match(/A\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
-          const b = text.match(/B\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
-          const parsedFromText = a && b ? [a.trim(), b.trim()] : null;
-          return Boolean(
-            (parsedFromText &&
-              (/Напиши\s*A\s*или\s*B/i.test(text) || /Выбери.*A.*B/i.test(text) || /Найди\s+ошибк/i.test(text))) ||
-            (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(text) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(text)) &&
-              (/Найди\s+ошибк/i.test(text) || /Выбери/i.test(text))))
-          );
+        if (parsed?.type === 'find_the_mistake') return true;
+        const a = text.match(/A\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+        const b = text.match(/B\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+        const parsedFromText = a && b ? [a.trim(), b.trim()] : null;
+        return Boolean(
+          (parsedFromText &&
+            (/Напиши\s*A\s*или\s*B/i.test(text) || /Выбери.*A.*B/i.test(text) || /Найди\s+ошибк/i.test(text))) ||
+          (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(text) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(text)) &&
+            (/Найди\s+ошибк/i.test(text) || /Выбери/i.test(text))))
+        );
       })();
 
       if (!isFindMistakeMessage) continue;
 
       const currentOrdinal = findMistakeOrdinal++;
       const stableId = getMessageStableId(msg, i);
-      
+
       const parsedFromText = (() => {
-          const a = text.match(/A\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
-          const b = text.match(/B\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
-          if (a && b) return [a.trim(), b.trim()];
-          return null;
+        const a = text.match(/A\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+        const b = text.match(/B\)\s*["“]?(.+?)["”]?\s*(?:\n|$)/i)?.[1];
+        if (a && b) return [a.trim(), b.trim()];
+        return null;
       })();
 
       const key = deriveFindMistakeKey({
@@ -2694,17 +2697,17 @@ export function Step4DialogueScreen({
       // We only want to show the button if this is the *last* model message or close to it,
       // and if the user has selected something but not advanced.
       if (ui && ui.selected && !ui.advanced) {
-        
+
         // Determine the correct answer to know what to send
         let answer: 'A' | 'B' | undefined = undefined;
         if ((parsed as any)?.answer === 'A' || (parsed as any)?.answer === 'B') {
-           answer = (parsed as any).answer;
+          answer = (parsed as any).answer;
         } else if (key.startsWith('task-')) {
-           const idx = parseInt(key.replace('task-', ''), 10);
-           const task = (lessonScript as any)?.find_the_mistake?.tasks?.[idx];
-           if (task?.answer === 'A' || task?.answer === 'B') {
-             answer = task.answer;
-           }
+          const idx = parseInt(key.replace('task-', ''), 10);
+          const task = (lessonScript as any)?.find_the_mistake?.tasks?.[idx];
+          if (task?.answer === 'A' || task?.answer === 'B') {
+            answer = task.answer;
+          }
         }
 
         const choiceToSend: 'A' | 'B' =
@@ -2722,20 +2725,20 @@ export function Step4DialogueScreen({
               ...prev,
               [key]: { ...ui, advanced: true }
             }));
-            
+
             // 2. Send answer
             const stepOverride = msg.currentStepSnapshot ?? currentStep;
-            await handleStudentAnswer('', { 
-              choice: choiceToSend, 
+            await handleStudentAnswer('', {
+              choice: choiceToSend,
               stepOverride,
-              silent: true 
+              silent: true
             });
           },
           disabled: Boolean(isLoading && ui.advanced),
         };
       }
     }
-    
+
     if (targetAction) return targetAction;
 
     return null;
@@ -2796,8 +2799,8 @@ export function Step4DialogueScreen({
       const matchingUnitCount = vocabWordsCount > 0 ? vocabWordsCount : 0;
       const grammarUnitCount =
         (Array.isArray((lessonScript as any)?.grammar?.drills) && (lessonScript as any).grammar.drills.length > 0) ||
-        (lessonScript as any)?.grammar?.audio_exercise?.expected ||
-        (lessonScript as any)?.grammar?.text_exercise?.expected
+          (lessonScript as any)?.grammar?.audio_exercise?.expected ||
+          (lessonScript as any)?.grammar?.text_exercise?.expected
           ? 1
           : 0;
       const constructorCount = lessonScript?.constructor?.tasks?.length || 0;
@@ -2844,8 +2847,8 @@ export function Step4DialogueScreen({
     const matchingUnitCount = vocabWordsCount > 0 ? vocabWordsCount : 0;
     const grammarUnitCount =
       (Array.isArray((lessonScript as any)?.grammar?.drills) && (lessonScript as any).grammar.drills.length > 0) ||
-      (lessonScript as any)?.grammar?.audio_exercise?.expected ||
-      (lessonScript as any)?.grammar?.text_exercise?.expected
+        (lessonScript as any)?.grammar?.audio_exercise?.expected ||
+        (lessonScript as any)?.grammar?.text_exercise?.expected
         ? 1
         : 0;
     const constructorCount = lessonScript?.constructor?.tasks?.length || 0;
@@ -2991,75 +2994,75 @@ export function Step4DialogueScreen({
             />
 
             <DialogueMessages
-            scrollContainerRef={scrollContainerRef}
-            messagesEndRef={messagesEndRef}
-            messageRefs={messageRefs}
-            messages={messages}
-            visibleMessages={gatedVisibleMessages}
-            separatorTitlesBefore={separatorTitlesBefore}
-            consumedSeparatorIndices={consumedSeparatorIndices}
-            situationGrouping={situationGrouping}
-            showTranslations={showTranslations}
-            toggleTranslation={toggleTranslation}
-            stripModuleTag={stripModuleTag}
-            getMessageStableId={getMessageStableId}
-            grammarGate={{ gated: grammarGate.gated, sectionId: grammarGate.sectionId, ordinalKey: grammarGate.ordinalKey }}
-            persistGrammarGateOpened={persistGrammarGateOpened}
-            showVocab={showVocab}
-            vocabWords={vocabWords}
-            vocabIndex={vocabIndex}
-            setVocabIndex={setVocabIndex}
-            vocabRefs={vocabRefs}
-            currentAudioItem={currentAudioItem}
-            processAudioQueue={processAudioQueue as any}
-            waitForAudioIdle={waitForAudioIdle}
-            playVocabAudio={enqueueVocabAudio}
-            lessonScript={lessonScript}
-            currentStep={currentStep}
-            findMistakeUI={findMistakeUI}
-            setFindMistakeUI={setFindMistakeUI}
-            findMistakeStorageKey={findMistakeStorageKey}
-            constructorUI={constructorUI}
-            setConstructorUI={setConstructorUI}
-            grammarDrillsUI={grammarDrillsUI}
-            setGrammarDrillsUI={setGrammarDrillsUI}
-            isLoading={isLoading}
-            setIsLoading={setIsLoading}
-            handleStudentAnswer={handleStudentAnswer}
-            lessonId={lessonIdRef.current}
-            userId={userIdRef.current}
-            language={resolvedLanguage}
-            extractStructuredSections={extractStructuredSections}
-            renderMarkdown={renderMarkdown}
-            pendingWordsSeparator={pendingWordsSeparator}
-            shouldRenderMatchingBlock={shouldRenderMatchingBlock}
-            matchingInsertIndexSafe={matchingInsertIndexSafe}
-            matchingRef={matchingRef}
-            showMatching={showMatching}
-            matchesComplete={matchesComplete}
-            wordOptions={wordOptions}
-            translationOptions={translationOptions}
-            selectedWord={selectedWord}
-            selectedTranslation={selectedTranslation}
-            setSelectedWord={setSelectedWord}
-            setSelectedTranslation={setSelectedTranslation}
-            tryMatch={tryMatch}
-            matchingMismatchAttempt={matchingMismatchAttempt}
-            shouldShowVocabCheckButton={shouldShowVocabCheckButton}
-            handleCheckVocabulary={handleCheckVocabulary}
-            isAwaitingModelReply={isAwaitingModelReply}
-            lessonCompletedPersisted={lessonCompletedPersisted}
-            isRevisit={initialLessonProgress?.completed === true}
-            onNextLesson={onNextLesson}
-            nextLessonNumber={nextLessonNumber}
-            nextLessonIsPremium={nextLessonIsPremium}
-            ankiGateActive={ankiGateActive}
-            ankiIntroText={ankiIntroText}
-            ankiQuizItems={ankiQuizItems}
-            onAnkiAnswer={(p) => handleAnkiAnswer({ id: p.id, isCorrect: p.isCorrect })}
-            onAnkiComplete={handleAnkiComplete}
-            startedSituations={startedSituations}
-          />
+              scrollContainerRef={scrollContainerRef}
+              messagesEndRef={messagesEndRef}
+              messageRefs={messageRefs}
+              messages={messages}
+              visibleMessages={gatedVisibleMessages}
+              separatorTitlesBefore={separatorTitlesBefore}
+              consumedSeparatorIndices={consumedSeparatorIndices}
+              situationGrouping={situationGrouping}
+              showTranslations={showTranslations}
+              toggleTranslation={toggleTranslation}
+              stripModuleTag={stripModuleTag}
+              getMessageStableId={getMessageStableId}
+              grammarGate={{ gated: grammarGate.gated, sectionId: grammarGate.sectionId, ordinalKey: grammarGate.ordinalKey }}
+              persistGrammarGateOpened={persistGrammarGateOpened}
+              showVocab={showVocab}
+              vocabWords={vocabWords}
+              vocabIndex={vocabIndex}
+              setVocabIndex={setVocabIndex}
+              vocabRefs={vocabRefs}
+              currentAudioItem={currentAudioItem}
+              processAudioQueue={processAudioQueue as any}
+              waitForAudioIdle={waitForAudioIdle}
+              playVocabAudio={enqueueVocabAudio}
+              lessonScript={lessonScript}
+              currentStep={currentStep}
+              findMistakeUI={findMistakeUI}
+              setFindMistakeUI={setFindMistakeUI}
+              findMistakeStorageKey={findMistakeStorageKey}
+              constructorUI={constructorUI}
+              setConstructorUI={setConstructorUI}
+              grammarDrillsUI={grammarDrillsUI}
+              setGrammarDrillsUI={setGrammarDrillsUI}
+              isLoading={isLoading}
+              setIsLoading={setIsLoading}
+              handleStudentAnswer={handleStudentAnswer}
+              lessonId={lessonIdRef.current}
+              userId={userIdRef.current}
+              language={resolvedLanguage}
+              extractStructuredSections={extractStructuredSections}
+              renderMarkdown={renderMarkdown}
+              pendingWordsSeparator={pendingWordsSeparator}
+              shouldRenderMatchingBlock={shouldRenderMatchingBlock}
+              matchingInsertIndexSafe={matchingInsertIndexSafe}
+              matchingRef={matchingRef}
+              showMatching={showMatching}
+              matchesComplete={matchesComplete}
+              wordOptions={wordOptions}
+              translationOptions={translationOptions}
+              selectedWord={selectedWord}
+              selectedTranslation={selectedTranslation}
+              setSelectedWord={setSelectedWord}
+              setSelectedTranslation={setSelectedTranslation}
+              tryMatch={tryMatch}
+              matchingMismatchAttempt={matchingMismatchAttempt}
+              shouldShowVocabCheckButton={shouldShowVocabCheckButton}
+              handleCheckVocabulary={handleCheckVocabulary}
+              isAwaitingModelReply={isAwaitingModelReply}
+              lessonCompletedPersisted={lessonCompletedPersisted}
+              isRevisit={initialLessonProgress?.completed === true}
+              onNextLesson={onNextLesson}
+              nextLessonNumber={nextLessonNumber}
+              nextLessonIsPremium={nextLessonIsPremium}
+              ankiGateActive={ankiGateActive}
+              ankiIntroText={ankiIntroText}
+              ankiQuizItems={ankiQuizItems}
+              onAnkiAnswer={(p) => handleAnkiAnswer({ id: p.id, isCorrect: p.isCorrect })}
+              onAnkiComplete={handleAnkiComplete}
+              startedSituations={startedSituations}
+            />
 
             {overlayVisible || tutorMiniOpen || lessonCompletedPersisted ? null : (
               <DialogueInputBar

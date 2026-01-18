@@ -241,111 +241,100 @@ Deno.serve(async (req: Request) => {
     ): Promise<{ text: string; success: boolean; provider?: string }> => {
 
       // -- Helper for Cerebras --
-      const executeCerebras = async (): Promise<{ text: string; success: boolean; provider: string }> => {
+      const executeSingleCerebrasRequest = async (reqId: string): Promise<{ text: string; success: boolean; provider: string }> => {
         if (!CEREBRAS_API_KEY) throw new Error("Missing CEREBRAS_API_KEY");
-        const resp = await fetch("https://api.cerebras.ai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${CEREBRAS_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: CEREBRAS_MODEL,
-            messages: requestMessages,
-            max_tokens: typeof opts?.max_tokens === "number" ? opts.max_tokens : 200,
-            temperature: typeof opts?.temperature === "number" ? opts.temperature : 0.0,
-          }),
-        });
-        if (!resp.ok) {
-          const errText = await resp.text();
-          throw new Error(`Cerebras API error (status ${resp.status}): ${errText}`);
-        }
-        const data = await resp.json();
-        const text = data?.choices?.[0]?.message?.content;
-        if (!text) throw new Error("Empty Cerebras response");
-        return { text, success: true, provider: "cerebras" };
-      };
-
-      // -- Helper for Groq (legacy hedging logic) --
-      const executeGroqWithRetries = async (): Promise<{ text: string; success: boolean; provider: string }> => {
-        const maxRetries = 3;
-        let attempt = 0;
-
-        const executeSingleGroqRequest = async (reqId: string): Promise<string> => {
-          try {
-            const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${GROQ_API_KEY}`,
-              },
-              body: JSON.stringify({
-                model: MODEL,
-                service_tier: "on_demand",
-                messages: requestMessages,
-                max_tokens: typeof opts?.max_tokens === "number" ? opts.max_tokens : 200,
-                temperature: typeof opts?.temperature === "number" ? opts.temperature : 0.0,
-              }),
-            });
-
-            if (!groqRes.ok) {
-              const errText = await groqRes.text();
-              throw new Error(`Groq API error (status ${groqRes.status}): ${errText}`);
-            }
-
-            const data = await groqRes.json();
-            const text = data?.choices?.[0]?.message?.content;
-
-            if (!text) {
-              throw new Error("Empty Groq response");
-            }
-            return text;
-          } catch (err: any) {
-            throw new Error(`[${reqId}] ${err.message}`);
-          }
-        };
-
-        while (attempt < maxRetries) {
-          attempt++;
-          try {
-            console.log(`[groq-lesson-v2] Groq Attempt ${attempt}: Racing 2 parallel requests...`);
-            const text = await Promise.any([
-              executeSingleGroqRequest("A"),
-              executeSingleGroqRequest("B")
-            ]);
-            return { text, success: true, provider: "groq" };
-          } catch (aggregateError: any) {
-            console.error(`[groq-lesson-v2] All Groq parallel requests failed (attempt ${attempt}):`, aggregateError);
-            if (attempt < maxRetries) {
-              const delay = Math.min(1000 * Math.pow(2, attempt), 5000);
-              await new Promise(resolve => setTimeout(resolve, delay));
-              continue;
-            }
-          }
-        }
-        return { text: '', success: false, provider: "groq_failed" };
-      };
-
-      // -- Main Logic --
-      if (CEREBRAS_API_KEY) {
         try {
-          console.log("[groq-lesson-v2] Trying Cerebras...");
-          const result = await executeCerebras();
-          return result;
-        } catch (err: any) {
-          const isAuthError = err.message?.includes("status 401") || err.message?.toLowerCase().includes("unauthorized");
-
-          if (isAuthError) {
-            console.error("[groq-lesson-v2] 🚨 CEREBRAS AUTH ERROR: Invalid API Key. Please check your Supabase secrets.", err);
-          } else {
-            console.warn("[groq-lesson-v2] Cerebras failed (network/other), falling back to Groq:", err);
+          const resp = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${CEREBRAS_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: CEREBRAS_MODEL,
+              messages: requestMessages,
+              max_tokens: typeof opts?.max_tokens === "number" ? opts.max_tokens : 200,
+              temperature: typeof opts?.temperature === "number" ? opts.temperature : 0.0,
+            }),
+          });
+          if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Cerebras API error (status ${resp.status}): ${errText}`);
           }
-          // Fall through to Groq
+          const data = await resp.json();
+          const text = data?.choices?.[0]?.message?.content;
+          if (!text) throw new Error("Empty Cerebras response");
+          return { text, success: true, provider: "cerebras" };
+        } catch (err: any) {
+          throw new Error(`[${reqId}] ${err.message}`);
         }
+      };
+
+      // -- Helper for Groq --
+      const executeSingleGroqRequest = async (reqId: string): Promise<{ text: string; success: boolean; provider: string }> => {
+        if (!GROQ_API_KEY) throw new Error("Missing GROQ_API_KEY");
+        try {
+          const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${GROQ_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: MODEL,
+              service_tier: "on_demand",
+              messages: requestMessages,
+              max_tokens: typeof opts?.max_tokens === "number" ? opts.max_tokens : 200,
+              temperature: typeof opts?.temperature === "number" ? opts.temperature : 0.0,
+            }),
+          });
+
+          if (!groqRes.ok) {
+            const errText = await groqRes.text();
+            throw new Error(`Groq API error (status ${groqRes.status}): ${errText}`);
+          }
+
+          const data = await groqRes.json();
+          const text = data?.choices?.[0]?.message?.content;
+
+          if (!text) {
+            throw new Error("Empty Groq response");
+          }
+          return { text, success: true, provider: "groq" };
+        } catch (err: any) {
+          throw new Error(`[${reqId}] ${err.message}`);
+        }
+      };
+
+      // -- Main Logic: Race 2 requests to EACH provider simultaneously --
+      const promises: Promise<{ text: string; success: boolean; provider: string }>[] = [];
+
+      if (GROQ_API_KEY) {
+        promises.push(executeSingleGroqRequest("Groq-1"));
+        promises.push(executeSingleGroqRequest("Groq-2"));
+      }
+      if (CEREBRAS_API_KEY) {
+        promises.push(executeSingleCerebrasRequest("Cerebras-1"));
+        promises.push(executeSingleCerebrasRequest("Cerebras-2"));
       }
 
-      // If Cerebras skipped or failed, use Groq
-      return await executeGroqWithRetries();
+      if (promises.length === 0) {
+        console.error("[groq-lesson-v2] No API keys available for Groq or Cerebras");
+        return { text: "", success: false, provider: "no_keys" };
+      }
+
+      try {
+        console.log(`[groq-lesson-v2] Racing ${promises.length} requests (Groq + Cerebras)...`);
+        const winner = await Promise.any(promises);
+        return winner;
+      } catch (aggregateError: any) {
+        console.error("[groq-lesson-v2] All parallel requests failed:", aggregateError);
+        // Log individual errors if possible
+        if (aggregateError.errors) {
+          aggregateError.errors.forEach((e: Error) => console.error(e.message));
+        }
+        return { text: '', success: false, provider: "all_failed" };
+      }
     };
 
     if (tutorMode) {

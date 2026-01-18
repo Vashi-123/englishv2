@@ -14,6 +14,7 @@ type Props = {
   renderMarkdown: (text: string) => React.ReactNode;
   onPick: (picked: 'A' | 'B') => void;
   onAdvance: () => void;
+  isReview?: boolean;
 };
 
 export function FindTheMistakeCard({
@@ -26,6 +27,7 @@ export function FindTheMistakeCard({
   renderMarkdown,
   onPick,
   onAdvance,
+  isReview,
 }: Props) {
   const explanationRef = useRef<HTMLDivElement>(null);
 
@@ -55,13 +57,12 @@ export function FindTheMistakeCard({
     <div className="space-y-4">
       <div className="p-5 rounded-3xl border border-brand-primary/40 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] space-y-4 w-full max-w-2xl mx-auto relative">
         <div className="flex items-start justify-between gap-4">
-          <CardHeading>Найди ошибку</CardHeading>
+          <CardHeading>{isReview ? 'Найди ошибку (Повторение)' : 'Найди ошибку'}</CardHeading>
           <span
-            className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${
-              ui.selected && ui.correct === true
-                ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
-                : 'border-gray-300 bg-white text-gray-300'
-            }`}
+            className={`inline-flex items-center justify-center w-7 h-7 rounded-xl border text-[13px] font-bold ${ui.selected && ui.correct === true
+              ? 'border-emerald-400 bg-emerald-50 text-emerald-600 shadow-sm'
+              : 'border-gray-300 bg-white text-gray-300'
+              }`}
           >
             {ui.selected && ui.correct === true ? <Check className="w-4 h-4" /> : null}
           </span>
@@ -83,9 +84,9 @@ export function FindTheMistakeCard({
                 ? 'bg-red-50 border-red-200 text-red-900'
                 : revealAsCorrect
                   ? 'bg-green-50/60 border-green-200 text-green-900'
-                : pendingSelected
-                  ? 'bg-brand-primary/5 border-brand-primary/30 text-gray-900'
-                  : 'bg-white border-gray-200 text-gray-900 hover:border-brand-primary/30 hover:bg-brand-primary/5';
+                  : pendingSelected
+                    ? 'bg-brand-primary/5 border-brand-primary/30 text-gray-900'
+                    : 'bg-white border-gray-200 text-gray-900 hover:border-brand-primary/30 hover:bg-brand-primary/5';
 
             return (
               <button

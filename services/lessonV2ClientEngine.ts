@@ -33,6 +33,7 @@ export type LessonScriptV2 = {
       correct: string | string[] | string[][];
       note?: string;
       translation?: string;
+      isReview?: boolean;
     }>;
   };
   find_the_mistake?: {
@@ -44,6 +45,7 @@ export type LessonScriptV2 = {
       options: string[];
       answer: "A" | "B";
       explanation: string;
+      isReview?: boolean;
     }>;
   };
   situations?: {
@@ -258,8 +260,8 @@ const buildSituationPayload = (params: {
     params.awaitingContinue || params.isCompletionStep
       ? undefined
       : typeof params.expected === "string" && params.expected.trim()
-      ? { expected: params.expected, instruction: params.task }
-      : undefined,
+        ? { expected: params.expected, instruction: params.task }
+        : undefined,
   input_marker: params.awaitingContinue || params.isCompletionStep ? undefined : "<text_input>",
 });
 
@@ -521,13 +523,13 @@ export const advanceLesson = (params: {
       return { messages: [], nextStep: null };
     }
 
-      if (idx + 1 < constructor.tasks.length) {
-        const step: DialogueStep = { type: "constructor", index: idx + 1 };
-        return {
-          messages: [{ role: "model", text: safeFormatConstructorPrompt(constructor, idx + 1), currentStepSnapshot: step }],
-          nextStep: step,
-        };
-      }
+    if (idx + 1 < constructor.tasks.length) {
+      const step: DialogueStep = { type: "constructor", index: idx + 1 };
+      return {
+        messages: [{ role: "model", text: safeFormatConstructorPrompt(constructor, idx + 1), currentStepSnapshot: step }],
+        nextStep: step,
+      };
+    }
 
     if (script.find_the_mistake?.tasks?.length) {
       const step: DialogueStep = { type: "find_the_mistake", index: 0 };
@@ -607,17 +609,17 @@ export const advanceLesson = (params: {
     };
   }
 
-    if (stepType === "find_the_mistake") {
+  if (stepType === "find_the_mistake") {
     const find = script.find_the_mistake;
     if (!find?.tasks?.length) return { messages: [], nextStep: null };
     const task = find.tasks[idx];
     const submitted = params.choice;
-    
+
     // If no choice was made yet, we stay on this step
     if (!submitted) {
       return { messages: [], nextStep: { type: "find_the_mistake", index: idx } };
     }
-    
+
     // If the choice is incorrect, we stay on this step
     if (submitted !== task.answer) {
       return { messages: [], nextStep: { type: "find_the_mistake", index: idx } };
@@ -907,22 +909,22 @@ export const advanceLesson = (params: {
 
       const reactionMessage: EngineMessage | null = reaction
         ? {
-            role: "model",
-            text: JSON.stringify(
-              buildSituationPayload({
-                title: normalized.title,
-                situation: normalized.situation,
-                ai: reaction,
-                ai_translation: undefined,
-                task: "",
-                result: "correct",
-                awaitingContinue: true,
-                continueLabel: "Далее",
-                prevUserCorrect: true,
-              })
-            ),
-            currentStepSnapshot: step,
-          }
+          role: "model",
+          text: JSON.stringify(
+            buildSituationPayload({
+              title: normalized.title,
+              situation: normalized.situation,
+              ai: reaction,
+              ai_translation: undefined,
+              task: "",
+              result: "correct",
+              awaitingContinue: true,
+              continueLabel: "Далее",
+              prevUserCorrect: true,
+            })
+          ),
+          currentStepSnapshot: step,
+        }
         : null;
 
       return {

@@ -207,10 +207,10 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
               className={`
                 w-full rounded-3xl p-5
                 transition-all duration-300 text-left relative overflow-hidden
-                ${chatLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}
+                ${chatLocked ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer active:scale-[0.98]'}
                 ${lessonCompleted
-                  ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_24px_80px_rgba(251,191,36,0.4)] hover:shadow-[0_30px_100px_rgba(251,191,36,0.5)] hover:-translate-y-1'
-                  : 'bg-white border-2 border-brand-primary/35 shadow-[0_24px_80px_rgba(99,102,241,0.28)] hover:border-brand-primary/55 hover:shadow-[0_30px_100px_rgba(99,102,241,0.38)] hover:-translate-y-1'
+                  ? 'bg-gradient-to-br from-amber-50 via-orange-50 to-rose-50 border-2 border-amber-300/60 shadow-[0_24px_80px_rgba(251,191,36,0.4)] hover:shadow-[0_30px_100px_rgba(251,191,36,0.5)] hover:-translate-y-1 active:translate-y-0 active:shadow-[0_12px_40px_rgba(251,191,36,0.3)]'
+                  : 'bg-white border-2 border-brand-primary/35 shadow-[0_24px_80px_rgba(99,102,241,0.28)] hover:border-brand-primary/55 hover:shadow-[0_30px_100px_rgba(99,102,241,0.38)] hover:-translate-y-1 active:translate-y-0 active:shadow-[0_12px_40px_rgba(99,102,241,0.2)]'
                 }
               `}
             >
@@ -239,8 +239,8 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
                   </div>
                   <div
                     className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl flex-shrink-0 whitespace-nowrap transition-all overflow-hidden ${lessonCompleted
-                        ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
-                        : 'bg-white/80 border border-gray-200 text-slate-900 shadow-xs'
+                      ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 text-white shadow-lg ring-2 ring-amber-200/80'
+                      : 'bg-white/80 border border-gray-200 text-slate-900 shadow-xs'
                       }`}
                   >
                     {lessonCompleted && (
@@ -265,8 +265,8 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
                   <div className="flex-1">
                     <h3
                       className={`text-2xl font-extrabold leading-tight mb-2 ${lessonCompleted
-                          ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent'
-                          : 'text-slate-900'
+                        ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 bg-clip-text text-transparent'
+                        : 'text-slate-900'
                         }`}
                     >
                       {lessonCompleted ? 'Урок завершен' : 'Начать урок'}
@@ -293,8 +293,8 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
                     </div>
                     <div
                       className={`w-12 h-12 rounded-full flex items-center justify-center text-white animate-pulse relative z-10 ${lessonCompleted
-                          ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-[0_0_30px_rgba(251,191,36,0.8),0_0_60px_rgba(251,146,60,0.6)] ring-4 ring-amber-300/60'
-                          : 'bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary shadow-[0_0_20px_rgba(99,102,241,0.6),0_0_40px_rgba(99,102,241,0.4)] ring-4 ring-brand-primary/50'
+                        ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500 shadow-[0_0_30px_rgba(251,191,36,0.8),0_0_60px_rgba(251,146,60,0.6)] ring-4 ring-amber-300/60'
+                        : 'bg-gradient-to-br from-brand-primary via-brand-primary to-brand-secondary shadow-[0_0_20px_rgba(99,102,241,0.6),0_0_40px_rgba(99,102,241,0.4)] ring-4 ring-brand-primary/50'
                         }`}
                     >
                       <Play className="w-5 h-5 fill-white" />

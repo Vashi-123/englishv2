@@ -289,9 +289,13 @@ export const WordsModal: React.FC<WordsModalProps> = ({
               <button
                 type="button"
                 onClick={startReviewMode}
-                className="w-full px-6 py-3 rounded-2xl bg-gradient-to-r from-brand-primary to-brand-secondary text-white font-bold shadow-lg hover:shadow-xl transition-all hover:-translate-y-0.5"
+                className="lesson-cta-btn w-full"
               >
-                Повторить
+                <span className="lesson-cta-shadow"></span>
+                <span className="lesson-cta-edge"></span>
+                <span className="lesson-cta-front">
+                  Повторить
+                </span>
               </button>
             </div>
           )}

@@ -230,9 +230,9 @@ function MessageContentComponent({
     })();
 
     // Check if this is the first situation (index 0, subIndex 0) - should auto-play even if currentStep hasn't updated yet
-    const isFirstSituation = scenarioIndexForCard === 0 && 
+    const isFirstSituation = scenarioIndexForCard === 0 &&
       Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0) === 0;
-    
+
     const isCompletionPayload = Boolean((parsedSituation as any)?.is_completion_step);
     const isCompletionStep = currentStep?.type === 'completion';
     const isLastSituationMessage =
@@ -240,10 +240,10 @@ function MessageContentComponent({
       group.slice(lastSituationModel?.idx + 1).every((m) => m.role !== 'model');
     const isActiveScenario =
       (currentStep?.type === 'situations' &&
-      typeof currentStep?.index === 'number' &&
-      scenarioIndexForCard != null &&
-      currentStep.index === scenarioIndexForCard &&
-      Number(((currentStep as any)?.subIndex) ?? 0) ===
+        typeof currentStep?.index === 'number' &&
+        scenarioIndexForCard != null &&
+        currentStep.index === scenarioIndexForCard &&
+        Number(((currentStep as any)?.subIndex) ?? 0) ===
         Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0)) ||
       // Also auto-play first situation if it's the first one and we're in or past situations step
       (isFirstSituation && (currentStep?.type === 'situations' || currentStep?.type === 'completion')) ||
@@ -282,11 +282,11 @@ function MessageContentComponent({
     const allowAutoplayAfterReply = isCompletionPayload || isLastSituationMessage;
     shouldAutoPlaySituationAi = Boolean(
       scenarioStarted &&
-        isActiveScenario &&
-        aiText &&
-        (!hasUserReplyInSituation || allowAutoplayAfterReply) &&
-        (!situationCompletedCorrect || String((parsedSituation as any)?.result || '').toLowerCase() === 'correct') &&
-        (!isAwaitingModelReply || allowAutoplayWhileAwaiting)
+      isActiveScenario &&
+      aiText &&
+      (!hasUserReplyInSituation || allowAutoplayAfterReply) &&
+      (!situationCompletedCorrect || String((parsedSituation as any)?.result || '').toLowerCase() === 'correct') &&
+      (!isAwaitingModelReply || allowAutoplayWhileAwaiting)
     );
   }
 
@@ -321,85 +321,85 @@ function MessageContentComponent({
       );
     }
 
-		    // Показываем блок слов если:
-		    // 1. Текущее сообщение содержит words_list, ИЛИ
-		    // 2. Это последнее сообщение модели, showVocab === true и vocabWords не пустой
-		    //    (чтобы блок слов не исчезал при переходе на грамматику)
-		    if (parsed.type === 'words_list' || (isLastModelMessage && showVocab && vocabWords.length > 0)) {
-		      // Всегда показываем блок слов, если текущее сообщение содержит words_list
-		      // Это гарантирует, что блок не исчезнет после прохождения заданий
-		      // Для последнего сообщения используем vocabWords (сохраняет состояние индекса),
-		      // для остальных - слова из текущего сообщения
-		      // Если vocabWords пустой (например, при возврате в урок), используем parsed.words
-		      // Приоритет: parsed.words (если есть) > vocabWords (если не пустой и последнее сообщение) > []
-		      const words = (parsed.type === 'words_list' && parsed.words && parsed.words.length > 0)
-		        ? parsed.words
-		        : (vocabWords.length > 0) 
-		          ? vocabWords 
-		          : [];
-		      const currentIdx = Math.min(vocabIndex, Math.max(words.length - 1, 0));
+    // Показываем блок слов если:
+    // 1. Текущее сообщение содержит words_list, ИЛИ
+    // 2. Это последнее сообщение модели, showVocab === true и vocabWords не пустой
+    //    (чтобы блок слов не исчезал при переходе на грамматику)
+    if (parsed.type === 'words_list' || (isLastModelMessage && showVocab && vocabWords.length > 0)) {
+      // Всегда показываем блок слов, если текущее сообщение содержит words_list
+      // Это гарантирует, что блок не исчезнет после прохождения заданий
+      // Для последнего сообщения используем vocabWords (сохраняет состояние индекса),
+      // для остальных - слова из текущего сообщения
+      // Если vocabWords пустой (например, при возврате в урок), используем parsed.words
+      // Приоритет: parsed.words (если есть) > vocabWords (если не пустой и последнее сообщение) > []
+      const words = (parsed.type === 'words_list' && parsed.words && parsed.words.length > 0)
+        ? parsed.words
+        : (vocabWords.length > 0)
+          ? vocabWords
+          : [];
+      const currentIdx = Math.min(vocabIndex, Math.max(words.length - 1, 0));
 
-		      return (
-		        <DelayedVocabularyCard
-		          show={showVocab}
-		          words={words}
-		          vocabIndex={vocabIndex}
-		          currentAudioItem={currentAudioItem}
-		          onRegisterWordEl={(index, el) => {
-		            if (el) vocabRefs.current.set(index, el);
-		            else vocabRefs.current.delete(index);
-		          }}
-		          onPlayWord={(wordItem, wordIndex) => {
-		            // Передаем текст как есть, без нормализации (как в старой системе)
-		            const queue: AudioQueueItem[] = [{ text: wordItem.word, lang: 'en', kind: 'word', meta: { vocabIndex: wordIndex, vocabKind: 'word' as const } }].filter(
-		              (x) => String(x.text || '').trim().length > 0
-		            );
-		            // eslint-disable-next-line no-console
-		            console.log('[TTS] onPlayWord -> processAudioQueue', { text: wordItem.word, items: queue.length });
-		            playVocabAudio(queue);
-		          }}
-		          onPlayExample={(wordItem, wordIndex) => {
-		            // Передаем текст как есть, без нормализации (как в старой системе)
-		            const exampleText = String((wordItem as any).context || '').trim();
-		            if (!exampleText) return;
-		            const wordText = String(wordItem.word || '').trim();
-		            if (exampleText === wordText) return;
-		            // eslint-disable-next-line no-console
-		            console.log('[TTS] onPlayExample -> processAudioQueue', { text: exampleText.slice(0, 80), wordIndex });
-		            playVocabAudio([
-		              { text: exampleText, lang: 'en', kind: 'example', meta: { vocabIndex: wordIndex, vocabKind: 'example' as const } },
-		            ]);
-		          }}
-		          onNextWord={() => {
-		            if (currentIdx + 1 >= words.length) return;
-		            const nextIdx = currentIdx + 1;
-		            setVocabIndex(nextIdx);
-		            const nextWord = words[nextIdx];
-		            if (nextWord) {
-		              // Передаем текст как есть, без нормализации (как в старой системе)
-		              const wordText = String(nextWord.word || '').trim();
-		              const exampleText = String(nextWord.context || '').trim();
-		              const queue: AudioQueueItem[] = [];
-		              if (wordText) {
-		                queue.push({ text: wordText, lang: 'en', kind: 'word', meta: { vocabIndex: nextIdx, vocabKind: 'word' as const } });
-		              }
-		              // Add example after word if it exists and is different from word
-		              if (exampleText && exampleText !== wordText) {
-		                queue.push({
-		                  text: exampleText,
-		                  lang: 'en',
-		                  kind: 'example',
-		                  meta: { vocabIndex: nextIdx, vocabKind: 'example' as const },
-		                });
-		              }
-		              if (queue.length) {
-		                playVocabAudio(queue);
-		              }
-		            }
-		          }}
-		        />
-		      );
-		    }
+      return (
+        <DelayedVocabularyCard
+          show={showVocab}
+          words={words}
+          vocabIndex={vocabIndex}
+          currentAudioItem={currentAudioItem}
+          onRegisterWordEl={(index, el) => {
+            if (el) vocabRefs.current.set(index, el);
+            else vocabRefs.current.delete(index);
+          }}
+          onPlayWord={(wordItem, wordIndex) => {
+            // Передаем текст как есть, без нормализации (как в старой системе)
+            const queue: AudioQueueItem[] = [{ text: wordItem.word, lang: 'en', kind: 'word', meta: { vocabIndex: wordIndex, vocabKind: 'word' as const } }].filter(
+              (x) => String(x.text || '').trim().length > 0
+            );
+            // eslint-disable-next-line no-console
+            console.log('[TTS] onPlayWord -> processAudioQueue', { text: wordItem.word, items: queue.length });
+            playVocabAudio(queue);
+          }}
+          onPlayExample={(wordItem, wordIndex) => {
+            // Передаем текст как есть, без нормализации (как в старой системе)
+            const exampleText = String((wordItem as any).context || '').trim();
+            if (!exampleText) return;
+            const wordText = String(wordItem.word || '').trim();
+            if (exampleText === wordText) return;
+            // eslint-disable-next-line no-console
+            console.log('[TTS] onPlayExample -> processAudioQueue', { text: exampleText.slice(0, 80), wordIndex });
+            playVocabAudio([
+              { text: exampleText, lang: 'en', kind: 'example', meta: { vocabIndex: wordIndex, vocabKind: 'example' as const } },
+            ]);
+          }}
+          onNextWord={() => {
+            if (currentIdx + 1 >= words.length) return;
+            const nextIdx = currentIdx + 1;
+            setVocabIndex(nextIdx);
+            const nextWord = words[nextIdx];
+            if (nextWord) {
+              // Передаем текст как есть, без нормализации (как в старой системе)
+              const wordText = String(nextWord.word || '').trim();
+              const exampleText = String(nextWord.context || '').trim();
+              const queue: AudioQueueItem[] = [];
+              if (wordText) {
+                queue.push({ text: wordText, lang: 'en', kind: 'word', meta: { vocabIndex: nextIdx, vocabKind: 'word' as const } });
+              }
+              // Add example after word if it exists and is different from word
+              if (exampleText && exampleText !== wordText) {
+                queue.push({
+                  text: exampleText,
+                  lang: 'en',
+                  kind: 'example',
+                  meta: { vocabIndex: nextIdx, vocabKind: 'example' as const },
+                });
+              }
+              if (queue.length) {
+                playVocabAudio(queue);
+              }
+            }
+          }}
+        />
+      );
+    }
   }
 
   const stepType = msg.currentStepSnapshot?.type;
@@ -437,9 +437,9 @@ function MessageContentComponent({
       currentStep?.type === msg.currentStepSnapshot?.type && currentStep?.index === msg.currentStepSnapshot?.index;
     const isActiveFallback = Boolean(
       msg.role === 'model' &&
-        (isLastModelWithStepSnapshot || isLastModelMessage) &&
-        msg.currentStepSnapshot?.type === 'constructor' &&
-        (!currentStep || currentStep?.type === 'constructor')
+      (isLastModelWithStepSnapshot || isLastModelMessage) &&
+      msg.currentStepSnapshot?.type === 'constructor' &&
+      (!currentStep || currentStep?.type === 'constructor')
     );
 
     const onConstructorStateChange = React.useCallback(
@@ -487,20 +487,21 @@ function MessageContentComponent({
         onComplete={
           (isActive || isActiveFallback) && typeof msg.currentStepSnapshot?.type === 'string'
             ? async () => {
-                setIsLoading(true);
-                try {
-                  const stepForAnswer = msg.currentStepSnapshot ?? currentStep;
-                  await handleStudentAnswer(correctSentence, {
-                    stepOverride: stepForAnswer,
-                    silent: true,
-                    bypassValidation: true,
-                  });
-                } finally {
-                  setIsLoading(false);
-                }
+              setIsLoading(true);
+              try {
+                const stepForAnswer = msg.currentStepSnapshot ?? currentStep;
+                await handleStudentAnswer(correctSentence, {
+                  stepOverride: stepForAnswer,
+                  silent: true,
+                  bypassValidation: true,
+                });
+              } finally {
+                setIsLoading(false);
               }
+            }
             : undefined
         }
+        isReview={(task as any)?.isReview}
       />
     );
   }
@@ -517,7 +518,7 @@ function MessageContentComponent({
         } else {
           expected = String(d?.expected || '').trim();
         }
-        
+
         return {
           question: String(d?.question || '').trim(),
           task: String(d?.task || '').trim(),
@@ -533,7 +534,7 @@ function MessageContentComponent({
 
     const ui = (grammarDrillsUI && grammarDrillsUI[msgStableId]) || undefined;
     const unlocked = !grammarGateLocked;
-    
+
     // Log when ui changes
     useEffect(() => {
       if (ui) {
@@ -609,7 +610,7 @@ function MessageContentComponent({
     // Trigger useAutoScrollToEnd when card appears by finding scroll container and scrolling
     useEffect(() => {
       if (!showGrammarCard) return;
-      
+
       // Find scroll container (parent with overflow-y-auto)
       const findScrollContainer = (el: HTMLElement | null): HTMLElement | null => {
         if (!el) return null;
@@ -650,25 +651,25 @@ function MessageContentComponent({
               onStateChange={
                 setGrammarDrillsUI
                   ? (next) => {
-                      setGrammarDrillsUI((prev) => ({ ...(prev || {}), [msgStableId]: next }));
-                    }
+                    setGrammarDrillsUI((prev) => ({ ...(prev || {}), [msgStableId]: next }));
+                  }
                   : undefined
               }
               onComplete={
                 unlocked
                   ? async () => {
-                      setIsLoading(true);
-                      try {
-                        const stepForAnswer = msg.currentStepSnapshot ?? currentStep;
-                        await handleStudentAnswer('__grammar_drills_complete__', {
-                          stepOverride: stepForAnswer,
-                          silent: true,
-                          bypassValidation: true,
-                        });
-                      } finally {
-                        setIsLoading(false);
-                      }
+                    setIsLoading(true);
+                    try {
+                      const stepForAnswer = msg.currentStepSnapshot ?? currentStep;
+                      await handleStudentAnswer('__grammar_drills_complete__', {
+                        stepOverride: stepForAnswer,
+                        silent: true,
+                        bypassValidation: true,
+                      });
+                    } finally {
+                      setIsLoading(false);
                     }
+                  }
                   : undefined
               }
               onStartDrills={unlocked ? handleStartDrills : undefined}
@@ -826,6 +827,7 @@ function MessageContentComponent({
             setIsLoading(false);
           }
         }}
+        isReview={(task as any)?.isReview}
       />
     );
   }
@@ -840,10 +842,10 @@ function MessageContentComponent({
     const isFindTheMistake =
       Boolean(
         parsedFromText &&
-          (stepType === 'find_the_mistake' ||
-            /Напиши\s*A\s*или\s*B/i.test(baseMessageContent) ||
-            /Выбери.*A.*B/i.test(baseMessageContent) ||
-            /Найди\s+ошибк/i.test(baseMessageContent))
+        (stepType === 'find_the_mistake' ||
+          /Напиши\s*A\s*или\s*B/i.test(baseMessageContent) ||
+          /Выбери.*A.*B/i.test(baseMessageContent) ||
+          /Найди\s+ошибк/i.test(baseMessageContent))
       );
 
     if (isFindTheMistake) {
@@ -965,7 +967,7 @@ function MessageContentComponent({
       scenarioIndexForCard != null &&
       currentStep.index === scenarioIndexForCard &&
       Number(((currentStep as any)?.subIndex) ?? 0) ===
-        Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0);
+      Number(((lastSituationModel?.msg as any)?.currentStepSnapshot?.subIndex) ?? 0);
 
     const hasNextScenario = (() => {
       const scenarios = (lessonScript as any)?.situations?.scenarios;
@@ -1149,28 +1151,28 @@ function MessageContentComponent({
         onContinue={
           situationView.showContinue
             ? async () => {
-                const baseStep = situationView.lastSituationModel?.msg?.currentStepSnapshot ?? currentStep;
-                if (!baseStep) return;
-                const stepForAdvance = (() => {
-                  if ((baseStep as any)?.type !== 'situations') return baseStep;
-                  if (!(baseStep as any)?.awaitingContinue) return baseStep;
-                  if (typeof (baseStep as any)?.nextIndex === 'number' && Number.isFinite((baseStep as any).nextIndex)) return baseStep;
-                  if (situationView.scenarioIndexForCard == null) return baseStep;
-                  return { ...(baseStep as any), nextIndex: situationView.scenarioIndexForCard + 1, nextSubIndex: 0 };
-                })();
-                if (!stepForAdvance) return;
-                setIsLoading(true);
-                try {
-                  await handleStudentAnswer('', {
-                    stepOverride: stepForAdvance,
-                    silent: true,
-                    bypassValidation: true,
-                    forceAdvance: true,
-                  });
-                } finally {
-                  setIsLoading(false);
-                }
+              const baseStep = situationView.lastSituationModel?.msg?.currentStepSnapshot ?? currentStep;
+              if (!baseStep) return;
+              const stepForAdvance = (() => {
+                if ((baseStep as any)?.type !== 'situations') return baseStep;
+                if (!(baseStep as any)?.awaitingContinue) return baseStep;
+                if (typeof (baseStep as any)?.nextIndex === 'number' && Number.isFinite((baseStep as any).nextIndex)) return baseStep;
+                if (situationView.scenarioIndexForCard == null) return baseStep;
+                return { ...(baseStep as any), nextIndex: situationView.scenarioIndexForCard + 1, nextSubIndex: 0 };
+              })();
+              if (!stepForAdvance) return;
+              setIsLoading(true);
+              try {
+                await handleStudentAnswer('', {
+                  stepOverride: stepForAdvance,
+                  silent: true,
+                  bypassValidation: true,
+                  forceAdvance: true,
+                });
+              } finally {
+                setIsLoading(false);
               }
+            }
             : undefined
         }
         steps={situationView.visibleSteps}
@@ -1231,7 +1233,7 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
   if (prev.msg.translation !== next.msg.translation) return false;
   if (prev.idx !== next.idx) return false;
   if (prev.msgStableId !== next.msgStableId) return false;
-  
+
   // Состояние UI
   if (prev.translationVisible !== next.translationVisible) return false;
   if (prev.isLoading !== next.isLoading) return false;
@@ -1243,7 +1245,7 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
   if (prev.currentAudioItem?.kind !== next.currentAudioItem?.kind) return false;
   if ((prev.currentAudioItem?.meta?.vocabIndex ?? null) !== (next.currentAudioItem?.meta?.vocabIndex ?? null)) return false;
   if ((prev.currentAudioItem?.meta?.vocabKind ?? null) !== (next.currentAudioItem?.meta?.vocabKind ?? null)) return false;
-  
+
   // Сравнение объектов через JSON для критичных
   if (prev.msg.currentStepSnapshot !== next.msg.currentStepSnapshot) {
     const prevSnap = prev.msg.currentStepSnapshot;
@@ -1258,10 +1260,10 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
       return false;
     }
   }
-  
+
   // Сравнение parsed только если изменился тип
   if (prev.parsed?.type !== next.parsed?.type) return false;
-  
+
   // Сравнение UI состояний для интерактивных элементов
   const prevFindMistakeKeys = Object.keys(prev.findMistakeUI);
   const nextFindMistakeKeys = Object.keys(next.findMistakeUI);
@@ -1270,7 +1272,7 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
     if (prev.findMistakeUI[key]?.selected !== next.findMistakeUI[key]?.selected) return false;
     if (prev.findMistakeUI[key]?.correct !== next.findMistakeUI[key]?.correct) return false;
   }
-  
+
   const prevConstructorKeys = Object.keys(prev.constructorUI);
   const nextConstructorKeys = Object.keys(next.constructorUI);
   if (prevConstructorKeys.length !== nextConstructorKeys.length) return false;
@@ -1280,7 +1282,7 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
     if (prevCtor?.completed !== nextCtor?.completed) return false;
     if (prevCtor?.pickedWordIndices?.length !== nextCtor?.pickedWordIndices?.length) return false;
   }
-  
+
   // Grammar Drills: re-render when grammarDrillsUI changes
   const prevGrammarKeys = Object.keys(prev.grammarDrillsUI || {});
   const nextGrammarKeys = Object.keys(next.grammarDrillsUI || {});
@@ -1335,9 +1337,9 @@ export const MessageContent = React.memo(MessageContentComponent, (prev, next) =
     if (prevLast?.messageOrder !== nextLast?.messageOrder) return false;
     if (prevLast?.text !== nextLast?.text) return false;
   }
-  
+
   // Функции и refs не сравниваем (они стабильны через useCallback/useRef)
   // Остальные пропсы считаем стабильными если основные совпадают
-  
+
   return true; // Компоненты равны, ре-рендер не нужен
 });

@@ -114,33 +114,15 @@ const LandingPage: React.FC = () => {
     return <LoadingScreen />;
   }
 
-  // Если есть сессия и интро уже не нужно показывать (или прошли его), 
-  // перекидываем в /app.
-  if (session?.user?.id) {
-    return <Navigate to="/app" replace />;
-  }
+  // Убрали автоматический редирект на /app для залогиненных юзеров,
+  // чтобы на главной всегда был лендинг (интро).
 
-  // Показываем интро-экраны
-  const shouldShowIntro = !isNativePlatform || (isNativePlatform && showIntro && !hasLoggedIn);
-
-  // После интро показываем форму входа
+  // Показываем интро (Landing Page)
   return (
-    <AuthScreen
-      onAuthSuccess={async () => {
-        await refreshSession();
-        // Ждем обновления сессии и распространения контекста
-        await new Promise(r => setTimeout(r, 200));
-        
-        const paidParam = new URLSearchParams(location.search).get('paid');
-        const savedShowPaywall = sessionStorage.getItem('showPaywall');
-        sessionStorage.removeItem('showPaywall');
-        let redirectUrl = '/app';
-        if (paidParam === '1') {
-          redirectUrl = savedShowPaywall === '1' ? '/app?paid=1&showPaywall=1' : '/app?paid=1';
-        } else if (savedShowPaywall === '1') {
-          redirectUrl = '/app?showPaywall=1';
-        }
-        navigate(redirectUrl, { replace: true });
+    <IntroScreen
+      onNext={() => {
+        // При клике "Начать" переходим в приложение
+        navigate('/app');
       }}
     />
   );
@@ -154,7 +136,7 @@ const AppPage: React.FC = () => {
 
   const paidParam = new URLSearchParams(location.search).get('paid');
   const showPaywallParam = new URLSearchParams(location.search).get('showPaywall');
-  
+
   // Сохраняем showPaywall в sessionStorage, если пользователь не авторизован
   // ВАЖНО: useEffect должен быть ПЕРЕД условным return, чтобы соблюдать правила хуков
   useEffect(() => {
@@ -180,9 +162,9 @@ const AppPage: React.FC = () => {
             resolve();
           }, 5000);
         });
-        
+
         await Promise.race([signOutPromise, timeoutPromise]);
-        
+
         // Очищаем localStorage и Preferences на iOS
         if (typeof window !== 'undefined') {
           try {
@@ -201,7 +183,7 @@ const AppPage: React.FC = () => {
                 // ignore
               }
             });
-            
+
             // На iOS также очищаем из Preferences
             const isNativeIOS = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
             if (isNativeIOS) {
@@ -224,7 +206,7 @@ const AppPage: React.FC = () => {
         console.error('[SignOut] Error during sign out:', err);
         // Продолжаем выход даже при ошибке
       }
-      
+
       const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
       if (!isLargeScreen) {
         // Сброс showIntro будет обработан в AuthProvider
@@ -243,7 +225,7 @@ const AppPage: React.FC = () => {
       </>
     );
   }
-  
+
   return (
     <AuthScreen
       onAuthSuccess={async () => {
@@ -271,7 +253,7 @@ const AppPage: React.FC = () => {
 // Компонент для обработки сброса пароля
 const ResetPasswordPage: React.FC = () => {
   const { refreshSession } = useAuth();
-  
+
   return (
     <ResetPasswordScreen
       onDone={async () => {
@@ -295,7 +277,7 @@ const EmailConfirmPage: React.FC = () => {
       navigate('/app', { replace: true });
       return;
     }
-    
+
     // Динамический импорт только на веб - EmailConfirmScreen не попадет в iOS бандл
     setIsLoading(true);
     import('./components/EmailConfirmScreen')
@@ -312,7 +294,7 @@ const EmailConfirmPage: React.FC = () => {
   // Восстанавливаем правильный pathname для React роутинга (для совместимости с 404.html)
   useEffect(() => {
     if (isNativeIos || typeof window === 'undefined') return;
-    
+
     if (location.pathname !== '/auth/confirm' && location.pathname !== '/auth/confirm/') {
       try {
         const savedPath = sessionStorage.getItem('spa_redirect_path');
@@ -387,9 +369,9 @@ const PartnerPage: React.FC = () => {
             resolve();
           }, 5000);
         });
-        
+
         await Promise.race([signOutPromise, timeoutPromise]);
-        
+
         // Очищаем localStorage и Preferences на iOS
         if (typeof window !== 'undefined') {
           try {
@@ -407,7 +389,7 @@ const PartnerPage: React.FC = () => {
                 // ignore
               }
             });
-            
+
             // На iOS также очищаем из Preferences
             const isNativeIOS = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
             if (isNativeIOS) {
@@ -430,7 +412,7 @@ const PartnerPage: React.FC = () => {
         console.error('[SignOut] Error during sign out:', err);
         // Продолжаем выход даже при ошибке
       }
-      
+
       navigate('/partners', { replace: true });
     };
 
@@ -460,7 +442,7 @@ const PaidRedirectHandler: React.FC = () => {
 
   useEffect(() => {
     if (!session) return;
-    
+
     const paidParam = new URLSearchParams(location.search).get('paid');
     if (paidParam === '1') {
       // Убираем параметр из URL

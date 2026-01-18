@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
@@ -38,6 +38,45 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
       }
     }
   }, [location.search, navigate]);
+
+  // Scroll tracking for mobile button state
+  const [showStartButton, setShowStartButton] = useState(false);
+  const demoSectionRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (!isMobile || !containerRef.current || !demoSectionRef.current) return;
+
+      const container = containerRef.current;
+      const demoSection = demoSectionRef.current;
+      const demoRect = demoSection.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+
+      // If demo section is effectively visible/close to top, show start button
+      // Or if we are near the bottom of the container
+      const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
+      const isDemoVisible = demoRect.top < containerRect.bottom - 100; // Demo is entering view
+
+      if (isNearBottom || isDemoVisible) {
+        setShowStartButton(true);
+      } else {
+        setShowStartButton(false);
+      }
+    };
+
+    const container = containerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll);
+      // Check initial state
+      handleScroll();
+    }
+    return () => {
+      if (container) {
+        container.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, [isMobile]);
   const [priceValue, setPriceValue] = useState<string>('1490.00');
   const [priceCurrency, setPriceCurrency] = useState<string>('RUB');
   const [basePriceValue, setBasePriceValue] = useState<string>('1490.00');
@@ -111,17 +150,28 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   }, [isMobile, step]);
 
   const handlePrimary = () => {
-    // На мобильных устройствах показываем следующий шаг
-    if (isMobile && step === 0) {
-      setStep(1);
+    // Mobile logic: if not at bottom/start state, scroll down
+    if (isMobile && !showStartButton) {
+      demoSectionRef.current?.scrollIntoView({ behavior: 'smooth' });
       return;
     }
-    
-    // На больших экранах или после первого шага на мобильных - редиректим на страницу входа
-    navigate('/app', { replace: true });
+
+    // Normal "Start" logic
+    if (onNext) {
+      onNext();
+    } else {
+      navigate('/app', { replace: true });
+    }
   };
 
-  const ctaLabel = (isMobile && step === 0) ? 'Далее' : 'Начать';
+  const showHero = true; // Always show both on mobile now (vertical stack)
+  const showCard = true; // Always show both on mobile now
+
+  // Button labels/icons
+  const isScrollAction = isMobile && !showStartButton;
+
+  // Mobile specific: Arrow Down if scrolling, Arrow Right / Label if starting
+  const ctaLabel = isScrollAction ? '' : 'Начать';
   const secondaryHint = '';
 
   const handlePay = async () => {
@@ -131,14 +181,14 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     if (!trimmedEmail || !trimmedEmail.includes('@')) {
       return; // Email не введен или невалиден
     }
-    
+
     // Проверяем, существует ли пользователь с таким email
     setPaying(true);
     try {
       const { data, error } = await supabase.functions.invoke('check-account-status', {
         body: { email: trimmedEmail },
       });
-      
+
       // Если ошибка сети или сервера
       if (error) {
         console.error('[IntroScreen] check account error:', error);
@@ -147,7 +197,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         navigate(`/app?email=${encodeURIComponent(trimmedEmail)}&action=signup`, { replace: true });
         return;
       }
-      
+
       // Если пользователь не найден (ok: false или нет userId) - редиректим на регистрацию
       if (!data || !data.ok || !data.data?.userId) {
         setPaying(false);
@@ -155,7 +205,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
         navigate(`/app?email=${encodeURIComponent(trimmedEmail)}&action=signup`, { replace: true });
         return;
       }
-      
+
       // Если пользователь найден - создаем платеж
       setPaying(false);
       createPayment(trimmedEmail);
@@ -179,7 +229,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     // Promo codes only on web - iOS uses Apple Offer Codes via StoreKit
     const isNativeIos = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
     if (isNativeIos) return;
-    
+
     setPromoMessage(null);
     setPromoOk(null);
     const code = promoCode.trim();
@@ -253,8 +303,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   };
 
 
-  const showHero = !isMobile || step === 0;
-  const showCard = !isMobile || step === 1;
+
 
   const priceLabel = formatPrice(priceValue, priceCurrency);
   const listPriceLabel = formatPrice('15000.00', 'RUB');
@@ -325,21 +374,21 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
                   <input
                     value={promoCode}
                     onChange={(e) => onPromoInputChange(e.target.value)}
-                  disabled={paying || promoLoading}
-                  className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900 disabled:opacity-50"
-                  placeholder="Введите промокод"
-                  autoComplete="off"
-                  inputMode="text"
-                />
-                <button
-                  type="button"
-                  onClick={handleCheckPromo}
-                  disabled={promoLoading || paying || priceLoading}
-                  className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Проверить'}
-                </button>
-              </div>
+                    disabled={paying || promoLoading}
+                    className="w-full bg-transparent outline-none text-sm font-semibold text-slate-900 disabled:opacity-50"
+                    placeholder="Введите промокод"
+                    autoComplete="off"
+                    inputMode="text"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCheckPromo}
+                    disabled={promoLoading || paying || priceLoading}
+                    className="shrink-0 px-3 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 text-slate-900 text-xs font-extrabold transition disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {promoLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Проверить'}
+                  </button>
+                </div>
                 {promoMessage && (
                   <div className={`mt-2 text-xs font-bold ${promoOk ? 'text-emerald-700' : 'text-rose-700'}`}>
                     {promoMessage}
@@ -398,8 +447,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   return (
     <>
       {renderPriceModal()}
-      <div className="min-h-[100dvh] h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 relative overflow-hidden flex pt-[var(--app-safe-top)]">
-        <div className="absolute inset-0 pointer-events-none">
+      <div
+        ref={containerRef}
+        className="min-h-[100dvh] h-[100dvh] bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-900 relative overflow-hidden overflow-y-auto flex flex-col pt-[var(--app-safe-top)]"
+      >
+        <div className="absolute inset-0 pointer-events-none sticky top-0">
           <div
             className="absolute -top-24 -right-24 bg-brand-primary/10 rounded-full blur-3xl"
             style={{ width: 'min(420px, 70vw)', height: 'min(420px, 70vw)' }}
@@ -410,7 +462,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
           />
         </div>
 
-        <div className="w-full max-w-5xl mx-auto px-6 sm:px-10 lg:px-16 py-[clamp(16px,3vh,40px)] flex flex-col gap-6 sm:gap-10 relative z-10 flex-1 min-h-0">
+        <div className="w-full max-w-5xl mx-auto px-6 sm:px-10 lg:px-16 py-[clamp(16px,3vh,40px)] flex flex-col gap-6 sm:gap-10 relative z-10 flex-none">
           <div className="flex items-start justify-between gap-3">
             <div className="flex flex-col gap-2 sm:gap-3">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-gray-200 bg-white shadow-sm text-xs font-semibold text-brand-primary w-fit">
@@ -430,97 +482,165 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
           </div>
           {isMobile && (
             <div className="flex items-center gap-1 text-[11px] font-semibold text-gray-500 self-end">
-              <span className={`h-1.5 w-10 rounded-full ${step === 0 ? 'bg-brand-primary' : 'bg-gray-200'}`} />
-              <span className={`h-1.5 w-10 rounded-full ${step === 1 ? 'bg-brand-primary' : 'bg-gray-200'}`} />
+              {/* Optional: progress indicators or remove them since it's scrollable now */}
             </div>
           )}
 
-        {isMobile && showCard && !showHero && (
-          <div className="space-y-2 text-center">
-            <h1 className="text-3xl sm:text-4xl font-black leading-tight">
-              {copy.intro.cardTitle}
-            </h1>
-            <p className="text-lg text-gray-600">
-              {copy.intro.cardSubtitle}
-            </p>
-          </div>
-        )}
-
-        <div className={`grid gap-8 sm:gap-10 min-h-0 ${isMobile ? 'grid-cols-1 place-items-center' : 'lg:grid-cols-2 items-center'}`}>
-          {showHero && (
-            <div className="space-y-5">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight">
-                {copy.intro.title}
+          {isMobile && showCard && !showHero && (
+            <div className="space-y-2 text-center">
+              <h1 className="text-3xl sm:text-4xl font-black leading-tight">
+                {copy.intro.cardTitle}
               </h1>
               <p className="text-lg text-gray-600">
-                {copy.intro.subtitle}
+                {copy.intro.cardSubtitle}
               </p>
-
-              <div className="grid gap-4 text-sm text-gray-800">
-                {copy.intro.bullets.map((item, idx) => (
-                  <div key={idx} className="flex items-start gap-3">
-                    <div
-                      className={`mt-1 w-2.5 h-2.5 rounded-full ${
-                        idx === 0 ? 'bg-brand-primary' : idx === 1 ? 'bg-amber-500' : 'bg-emerald-500'
-                      }`}
-                    />
-                    <div>
-                      <div className="font-semibold">{item.title}</div>
-                      <div className="text-gray-600">{item.text}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
-          {showCard && (
-            <div className="w-full max-w-xl mx-auto lg:mx-0 flex flex-col gap-5 relative z-10 flex-1 min-h-0">
-              <div
-                className="absolute -top-12 -right-10 bg-brand-primary/10 rounded-full blur-3xl pointer-events-none"
-                style={{ width: 'min(200px, 38vw)', height: 'min(200px, 38vw)' }}
-              />
-              <div
-                className="absolute -bottom-12 -left-16 bg-brand-secondary/10 rounded-full blur-3xl pointer-events-none"
-                style={{ width: 'min(220px, 42vw)', height: 'min(220px, 42vw)' }}
-              />
+          <div className={`grid gap-8 sm:gap-10 ${isMobile ? 'flex flex-col gap-12 pb-24' : 'lg:grid-cols-2 items-center'}`}>
+            {showHero && (
+              <div className="space-y-5">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight whitespace-pre-line">
+                  {copy.intro.title}
+                </h1>
+                <p className="text-lg text-gray-600">
+                  {copy.intro.subtitle}
+                </p>
 
-              <div className="relative z-10 w-full">
-                <div className="h-[clamp(220px,40dvh,320px)] sm:h-[clamp(260px,38dvh,360px)]">
-                  <ChatDemo />
+                <div className="grid gap-4 text-sm text-gray-800">
+                  {copy.intro.bullets.map((item, idx) => (
+                    <div key={idx} className="flex items-start gap-3">
+                      <div
+                        className={`mt-1 w-2.5 h-2.5 rounded-full ${idx === 0 ? 'bg-brand-primary' : idx === 1 ? 'bg-amber-500' : 'bg-emerald-500'
+                          }`}
+                      />
+                      <div>
+                        <div className="font-semibold">{item.title}</div>
+                        <div className="text-gray-600">{item.text}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
+            )}
+
+            {showCard && (
+              <div ref={demoSectionRef} className="w-full max-w-xl mx-auto lg:mx-0 flex flex-col gap-5 relative z-10 flex-none sm:flex-1 min-h-0">
+                {isMobile && (
+                  <div className="space-y-2 text-center pt-8 border-t border-gray-100/50">
+                    <h1 className="text-3xl sm:text-4xl font-black leading-tight">
+                      {copy.intro.cardTitle}
+                    </h1>
+                    <p className="text-lg text-gray-600">
+                      {copy.intro.cardSubtitle}
+                    </p>
+                  </div>
+                )}
+
+                <div
+                  className="absolute -top-12 -right-10 bg-brand-primary/10 rounded-full blur-3xl pointer-events-none"
+                  style={{ width: 'min(200px, 38vw)', height: 'min(200px, 38vw)' }}
+                />
+                <div
+                  className="absolute -bottom-12 -left-16 bg-brand-secondary/10 rounded-full blur-3xl pointer-events-none"
+                  style={{ width: 'min(220px, 42vw)', height: 'min(220px, 42vw)' }}
+                />
+
+                <div className="relative z-10 w-full">
+                  <div className="h-[clamp(220px,40dvh,320px)] sm:h-[clamp(260px,38dvh,360px)]">
+                    <ChatDemo />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Download Options - Moved to bottom for both Desktop and Mobile */}
+          <div className="space-y-6 pt-12 border-t border-gray-100/50 mt-auto text-center">
+            <div className="space-y-3">
+              <h2 className="text-3xl sm:text-4xl font-black leading-tight text-slate-900">
+                Учитесь где удобно
+              </h2>
+              <p className="text-lg text-gray-600 max-w-lg mx-auto">
+                Занимайтесь в вебе или скачайте приложение, чтобы не терять прогресс
+              </p>
             </div>
+
+            <div className="flex justify-center">
+              <div className="grid grid-cols-2 gap-3 max-w-sm w-full">
+                {/* App Store */}
+                <a
+                  href="#"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl py-2.5 px-2 hover:opacity-90 transition shadow-sm"
+                >
+                  <svg viewBox="0 0 24 24" className="w-6 h-6 fill-current shrink-0">
+                    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.21-1.98 1.08-3.11-1.06.05-2.31.71-3.06 1.58-.65.75-1.21 1.98-1.06 3.05 1.18.09 2.37-.64 3.04-1.52" />
+                  </svg>
+                  <div className="text-left leading-none">
+                    <div className="text-[9px] font-medium opacity-80 mb-0.5">Download on the</div>
+                    <div className="text-xs font-bold">App Store</div>
+                  </div>
+                </a>
+
+                {/* Google Play */}
+                <a
+                  href="https://play.google.com/store/apps/details?id=com.vashi.englishv2"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-2 bg-slate-900 text-white rounded-xl py-2.5 px-2 hover:opacity-90 transition shadow-sm"
+                >
+                  <svg viewBox="0 0 24 24" className="w-6 h-6 shrink-0">
+                    <path fill="#00C0FF" d="M1 1.7v20.6L11.5 12 1 1.7" />
+                    <path fill="#FFC903" d="M14.5 15l-3-3 3-3 5.4 3c1.5.8 1.5 2.2 0 3l-5.4 3" />
+                    <path fill="#FE4258" d="M11.5 12 1 22.3c.5.5 1.4.5 2 0l11.5-7.3-3-3" />
+                    <path fill="#02D082" d="M11.5 12 1 1.7c.5-.5 1.4-.5 2 0l11.5 7.3-3 3" />
+                  </svg>
+                  <div className="text-left leading-none">
+                    <div className="text-[9px] font-medium opacity-80 mb-0.5">GET IT ON</div>
+                    <div className="text-xs font-bold">Google Play</div>
+                  </div>
+                </a>
+              </div>
+            </div>
+
+            <button
+              onClick={handlePrimary}
+              className="w-full py-2 text-sm font-bold text-brand-primary hover:text-brand-secondary transition underline decoration-2 decoration-brand-primary/20 underline-offset-4"
+            >
+              Продолжить на сайте
+            </button>
+          </div>
+
+          {/* Floating Action Button for Mobile */}
+          <div className={`fixed bottom-0 left-0 right-0 z-50 p-4 sm:p-0 sm:relative sm:flex sm:items-center sm:w-full sm:max-w-5xl sm:mx-auto sm:px-16 sm:pb-10 pointer-events-none`}>
+            <div className="flex items-center justify-end w-full pointer-events-auto">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handlePrimary();
+                }}
+                type="button"
+                className={`inline-flex items-center gap-2.5 sm:gap-3 rounded-full sm:rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-xl shadow-brand-primary/25 hover:opacity-90 active:scale-[0.97] active:opacity-80 active:shadow-sm transition-all duration-300
+                ${isScrollAction ? 'p-3' : 'px-6 py-3 sm:px-5 sm:py-3'} 
+              `}
+                aria-label={isScrollAction ? "Scroll down" : "Start"}
+              >
+                {ctaLabel && <span>{ctaLabel}</span>}
+                <span className={`rounded-full bg-white/15 border border-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner shadow-white/10 transition-transform duration-300 ${isScrollAction ? 'w-8 h-8 rotate-90' : 'w-6 h-6 sm:w-10 sm:h-10'}`}>
+                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {secondaryHint && (
+            <div className="text-xs text-gray-500 font-semibold text-right">{secondaryHint}</div>
           )}
         </div>
-
-        <div className="flex items-center">
-          <button
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              console.log('[IntroScreen] Button clicked', { isMobile, step });
-              handlePrimary();
-            }}
-            type="button"
-            className="ml-auto inline-flex items-center gap-2.5 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-md shadow-brand-primary/25 hover:opacity-90 active:scale-[0.97] active:opacity-80 active:shadow-sm transition-all duration-150 w-fit"
-            style={{
-              WebkitTapHighlightColor: 'rgba(0, 0, 0, 0.1)',
-              touchAction: 'manipulation',
-            }}
-          >
-            <span>{ctaLabel}</span>
-            <span className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/15 border border-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner shadow-white/10">
-              <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
-            </span>
-          </button>
-        </div>
-
-        {secondaryHint && (
-          <div className="text-xs text-gray-500 font-semibold text-right">{secondaryHint}</div>
-        )}
       </div>
-    </div>
     </>
   );
 };

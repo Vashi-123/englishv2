@@ -168,25 +168,25 @@ export const ChatDemo: React.FC = () => {
         setItems((prev) => [...prev, step.item]);
         setScriptIndex((p) => p + 1);
       }, 450);
-      
+
       // Автоматически показываем слова с задержкой (минимум 3 слова)
       // Устанавливаем таймеры сразу, не внутри setTimeout
       if (step.item.type === 'vocab') {
         // Сразу показываем первое слово
         setVocabVisibleCount(0);
-        
+
         // Через 500ms показываем второе слово
         const secondId = window.setTimeout(() => {
           setVocabVisibleCount(1);
         }, 500);
         vocabTimeoutIds.push(secondId);
-        
+
         // Через 1000ms показываем третье слово
         const thirdId = window.setTimeout(() => {
           setVocabVisibleCount(2);
         }, 1000);
         vocabTimeoutIds.push(thirdId);
-        
+
         // Затем показываем остальные слова с задержкой
         let count = 2;
         const showNextWord = () => {
@@ -269,10 +269,10 @@ export const ChatDemo: React.FC = () => {
                     words={demoWords}
                     vocabIndex={vocabVisibleCount}
                     currentAudioItem={null}
-                    onRegisterWordEl={() => {}}
-                    onNextWord={() => {}}
-                    onPlayWord={() => {}}
-                    onPlayExample={() => {}}
+                    onRegisterWordEl={() => { }}
+                    onNextWord={() => { }}
+                    onPlayWord={() => { }}
+                    onPlayExample={() => { }}
                   />
                 </div>
               );
@@ -323,7 +323,7 @@ export const ChatDemo: React.FC = () => {
                     isLoading={false}
                     initialPickedWordIndices={[0, 1, 2, 3]}
                     initialCompleted={true}
-                    onStateChange={() => {}}
+                    onStateChange={() => { }}
                   />
                 </div>
               );
@@ -333,7 +333,7 @@ export const ChatDemo: React.FC = () => {
               // Находим все сообщения диалога после ситуации (собираем динамически)
               const situationItemIndex = idx;
               const dialogueMessages: Array<{ role: 'model' | 'user'; text: string }> = [];
-              
+
               // Собираем сообщения, которые идут после ситуации
               for (let i = situationItemIndex + 1; i < items.length; i++) {
                 const it = items[i];
@@ -345,13 +345,13 @@ export const ChatDemo: React.FC = () => {
                   break;
                 }
               }
-              
+
               return (
                 <div key={`situation-${idx}`} className="animate-message">
                   <div className="w-full max-w-2xl mx-auto bg-white rounded-2xl border border-gray-200/60 shadow-lg shadow-slate-900/10 p-4 space-y-5">
                     <div className="text-[11px] font-extrabold uppercase tracking-widest text-brand-primary/80">Ситуация</div>
                     <div className="text-xl font-bold text-gray-900">Первый день</div>
-                    
+
                     <div className="space-y-4">
                       <div className="space-y-1.5">
                         <div className="text-[9px] font-extrabold uppercase tracking-widest text-brand-primary/80">Контекст</div>
@@ -373,7 +373,7 @@ export const ChatDemo: React.FC = () => {
                         <div className="h-px bg-gray-100 flex-1" />
                       </div>
                     </div>
-                    
+
                     {dialogueMessages.length > 0 ? (
                       <div className="mt-4 rounded-2xl border border-gray-100 bg-gray-50/60 p-3 space-y-3">
                         {dialogueMessages.map((msg, msgIdx) => (
@@ -385,11 +385,10 @@ export const ChatDemo: React.FC = () => {
                                 </div>
                               )}
                               <div
-                                className={`px-3 py-2 text-sm font-medium leading-relaxed rounded-xl whitespace-pre-wrap ${
-                                  msg.role === 'user'
+                                className={`px-3 py-2 text-sm font-medium leading-relaxed rounded-xl whitespace-pre-wrap ${msg.role === 'user'
                                     ? 'bg-brand-primary/10 text-brand-primary font-bold rounded-br-sm'
                                     : 'bg-white border border-gray-100 text-gray-900 rounded-bl-sm'
-                                }`}
+                                  }`}
                               >
                                 {msg.text}
                               </div>
@@ -420,8 +419,8 @@ export const ChatDemo: React.FC = () => {
                     ui={{ selected: 'B', correct: true, advanced: true }}
                     isLoading={false}
                     renderMarkdown={renderMarkdown}
-                    onPick={() => {}}
-                    onAdvance={() => {}}
+                    onPick={() => { }}
+                    onAdvance={() => { }}
                   />
                 </div>
               );
@@ -429,18 +428,18 @@ export const ChatDemo: React.FC = () => {
 
             const bubble = item as Extract<DemoItem, { type: 'bubble' }>;
             const isUser = bubble.role === 'user';
-            
+
             // Проверяем, не является ли это сообщением диалога в ситуации
             // (если перед этим есть ситуация и это сообщение идет после нее)
             const situationIndex = items.findIndex((it, i) => i < idx && it.type === 'situation');
-            const isSituationDialogue = situationIndex >= 0 && 
+            const isSituationDialogue = situationIndex >= 0 &&
               !items.slice(situationIndex + 1, idx).some(it => it.type === 'separator' || (it.type === 'bubble' && it.text.includes('🎉')));
-            
+
             // Если это сообщение диалога в ситуации, не показываем его отдельно (оно уже в блоке ситуации)
             if (isSituationDialogue) {
               return null;
             }
-            
+
             return (
               <div key={`bubble-${idx}`} className={`flex ${isUser ? 'justify-end' : 'justify-start'} animate-message`}>
                 <div
@@ -452,19 +451,18 @@ export const ChatDemo: React.FC = () => {
                     </div>
                   )}
                   <div
-                    className={`px-5 py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${
-                      isUser
+                    className={`px-5 py-4 text-[15px] font-medium leading-relaxed rounded-2xl whitespace-pre-wrap ${isUser
                         ? 'bg-brand-primary/10 text-brand-primary font-bold rounded-br-sm'
                         : 'bg-gray-50 text-gray-900 rounded-bl-none'
-                    }`}
+                      }`}
                   >
                     {renderMarkdown(bubble.text)}
                   </div>
                 </div>
               </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
