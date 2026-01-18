@@ -2973,7 +2973,7 @@ export function Step4DialogueScreen({
           </div>
         )}
         {overlayVisible && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center bg-white/85 backdrop-blur-sm">
+          <div className="absolute inset-0 z-[130] flex items-center justify-center bg-white/85 backdrop-blur-sm">
             <div className="flex flex-col items-center gap-3 rounded-2xl border border-black/5 bg-white  py-4 shadow-xl">
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-200 border-t-zinc-900" />
               <div className="text-sm font-medium text-zinc-800 px-4">
@@ -3085,7 +3085,7 @@ export function Step4DialogueScreen({
         )}
       </div>
 
-      {overlayVisible ? null : (
+      {!overlayVisible && (
         <TutorMiniChat
           open={tutorMiniOpen}
           onToggle={toggleTutorMiniChat}

@@ -536,6 +536,10 @@ const AppRouter: React.FC = () => {
 
 const App = () => {
   useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      document.body.classList.add('is-native');
+    }
+
     if (!Capacitor.isNativePlatform()) return;
     // Hide keyboard accessory bar to stop iOS auto-layout conflicts (Prev/Next/Done).
     try {

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Book, X, ChevronDown, Search } from 'lucide-react';
+import { Book, X, ChevronDown, Search, BookOpenText } from 'lucide-react';
 import { parseMarkdown } from '../step4Dialogue/markdown';
 
 interface GrammarCard {
@@ -123,7 +123,7 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
           <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
             <div className="flex items-center gap-4 mb-4">
               <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
-                <Book className="w-7 h-7 text-brand-primary" />
+                <BookOpenText className="w-7 h-7 text-brand-primary" />
               </div>
               <div className="flex-1 min-w-0">
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -189,8 +189,8 @@ export const GrammarModal: React.FC<GrammarModalProps> = ({
                         else cardRefs.current.delete(cardKey);
                       }}
                       className={`rounded-2xl border transition-all ${isActive
-                          ? 'border-gray-200/60 bg-white hover:border-brand-primary/30'
-                          : 'border-gray-200/60 bg-gray-50 opacity-60'
+                        ? 'border-gray-200/60 bg-white hover:border-brand-primary/30'
+                        : 'border-gray-200/60 bg-gray-50 opacity-60'
                         }`}
                     >
                       <button

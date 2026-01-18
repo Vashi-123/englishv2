@@ -41,9 +41,9 @@ export function TutorMiniChat({
   }, [open, messages.length, isAwaitingReply]);
 
   const counterText = useMemo(() => `${Math.min(questionsUsed, questionsLimit)}/${questionsLimit}`, [questionsLimit, questionsUsed]);
-  const buttonBottom = 'calc(var(--dialogue-inputbar-height, 88px) + 16px)';
-  const panelBottom = 'calc(var(--dialogue-inputbar-height, 88px) + 76px)';
-  const rightOffset = 'calc(var(--dialogue-layout-right-offset, 16px) + 16px)';
+  const buttonBottom = '120px';
+  const panelBottom = '180px';
+  const rightOffset = '20px';
 
   const overlayClassName = `fixed inset-0 z-[119] bg-black/10 transition-opacity duration-200 ease-out ${open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
     }`;
@@ -56,8 +56,12 @@ export function TutorMiniChat({
       <button
         type="button"
         onClick={onToggle}
-        style={{ bottom: buttonBottom, right: rightOffset }}
-        className="fixed z-[120] h-12 w-12 rounded-full bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 text-brand-primary shadow-lg shadow-slate-900/10 hover:from-brand-primary/15 hover:to-brand-primary/5 transition active:scale-95"
+        style={{
+          bottom: buttonBottom,
+          right: 'max(20px, calc(50vw - 28rem + 20px))',
+          zIndex: 9999,
+        }}
+        className="fixed h-12 w-12 rounded-full bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 text-brand-primary shadow-lg shadow-slate-900/10 hover:from-brand-primary/15 hover:to-brand-primary/5 transition active:scale-95 pointer-events-auto"
         aria-label={open ? 'Close tutor chat' : 'Open tutor chat'}
       >
         <Sparkles className="h-6 w-6 mx-auto" />
@@ -66,7 +70,7 @@ export function TutorMiniChat({
       <div className={overlayClassName} onClick={open ? onClose : undefined} aria-hidden="true" />
 
       <div
-        style={{ bottom: panelBottom, right: rightOffset }}
+        style={{ bottom: panelBottom, right: 'max(20px, calc(50vw - 28rem + 20px))', zIndex: 10000 }}
         className={panelClassName}
         onClick={(e) => e.stopPropagation()}
         aria-hidden={!open}

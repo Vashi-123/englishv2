@@ -2,9 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
-import { Sparkles, ArrowRight, Crown, Loader2, X } from 'lucide-react';
+import { Sparkles, ArrowRight, ArrowDown, Crown, Loader2, X } from 'lucide-react';
 import { useLanguage } from '../hooks/useLanguage';
 import { ChatDemo } from './ChatDemo';
+import { FeatureShowcase } from './FeatureShowcase';
 import {
   fetchBillingProduct,
   getCachedBillingProduct,
@@ -14,7 +15,7 @@ import {
 import { supabase } from '../services/supabaseClient';
 
 type IntroScreenProps = {
-  onNext: () => void;
+  onNext?: () => void;
 };
 
 export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
@@ -43,6 +44,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
   const [showStartButton, setShowStartButton] = useState(false);
   const demoSectionRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const downloadSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -157,6 +159,12 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
     }
 
     // Normal "Start" logic
+    // On Web (Landing), we want to scroll to download section instead of starting app
+    if (!Capacitor.isNativePlatform() && downloadSectionRef.current) {
+      downloadSectionRef.current.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+
     if (onNext) {
       onNext();
     } else {
@@ -497,7 +505,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
             </div>
           )}
 
-          <div className={`grid gap-8 sm:gap-10 ${isMobile ? 'flex flex-col gap-12 pb-24' : 'lg:grid-cols-2 items-center'}`}>
+          <div className={`grid gap-8 sm:gap-10 ${isMobile ? 'flex flex-col gap-12' : 'lg:grid-cols-2 items-center'}`}>
             {showHero && (
               <div className="space-y-5">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black leading-tight whitespace-pre-line">
@@ -555,14 +563,18 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
             )}
           </div>
 
+          {!Capacitor.isNativePlatform() && (
+            <FeatureShowcase />
+          )}
+
           {/* Download Options - Moved to bottom for both Desktop and Mobile */}
-          <div className="space-y-6 pt-12 border-t border-gray-100/50 mt-auto text-center">
+          <div ref={downloadSectionRef} className="space-y-6 pt-12 border-t border-gray-100/50 mt-auto text-center">
             <div className="space-y-3">
               <h2 className="text-3xl sm:text-4xl font-black leading-tight text-slate-900">
-                Учитесь где удобно
+                Учитесь, где вам удобно
               </h2>
               <p className="text-lg text-gray-600 max-w-lg mx-auto">
-                Занимайтесь в вебе или скачайте приложение, чтобы не терять прогресс
+                Занимайтесь на сайте или скачайте приложение
               </p>
             </div>
 
@@ -630,7 +642,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
               >
                 {ctaLabel && <span>{ctaLabel}</span>}
                 <span className={`rounded-full bg-white/15 border border-white/20 backdrop-blur-sm flex items-center justify-center shadow-inner shadow-white/10 transition-transform duration-300 ${isScrollAction ? 'w-8 h-8 rotate-90' : 'w-6 h-6 sm:w-10 sm:h-10'}`}>
-                  <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
+                  {!isScrollAction && !Capacitor.isNativePlatform() ? (
+                    <ArrowDown className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
+                  ) : (
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5 shrink-0 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
+                  )}
                 </span>
               </button>
             </div>

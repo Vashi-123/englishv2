@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { Mic, Send } from 'lucide-react';
 
+import { Capacitor } from '@capacitor/core';
+
 type InputMode = 'hidden' | 'text' | 'audio';
 
 type Props = {
@@ -16,6 +18,7 @@ type Props = {
   onToggleRecording: () => void;
   cta?: { label: string; onClick: () => void; disabled?: boolean } | null;
   hiddenTopContent?: React.ReactNode;
+  autoFocus?: boolean;
 };
 
 export function DialogueInputBar({
@@ -31,6 +34,7 @@ export function DialogueInputBar({
   onToggleRecording,
   cta,
   hiddenTopContent,
+  autoFocus,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +78,7 @@ export function DialogueInputBar({
               type="button"
               disabled={isLoading || isTranscribing || isDisabled}
               onClick={onToggleRecording}
-              className={`h-14 w-14 flex items-center justify-center rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${isDisabled
+              className={`${Capacitor.isNativePlatform() ? 'h-12 w-12' : 'h-12 w-12 md:h-14 md:w-14'} flex items-center justify-center rounded-full transition-all shadow-lg active:scale-90 active:opacity-80 duration-100 ${isDisabled
                 ? 'bg-gray-400 text-white cursor-not-allowed'
                 : isRecording
                   ? 'bg-red-500 text-white animate-pulse'
@@ -129,12 +133,14 @@ export function DialogueInputBar({
                 lang="en"
                 className="flex-1 bg-gray-100 border-none rounded-2xl px-6 py-3.5 focus:ring-2 focus:ring-brand-primary/20 outline-none text-black font-medium resize-none leading-6 max-h-40 overflow-y-auto text-base"
                 disabled={isDisabled}
+                autoFocus={autoFocus}
               />
               <button
                 type="button"
                 disabled={isLoading || isDisabled || !input.trim()}
                 onClick={onSend}
-                className="p-4 bg-brand-primary text-white rounded-full hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100"
+                className={`bg-brand-primary text-white rounded-full hover:opacity-90 transition-all active:scale-90 active:opacity-80 duration-100 ${Capacitor.isNativePlatform() ? 'p-3' : 'p-3 md:p-4'
+                  }`}
               >
                 <Send className="w-5 h-5" />
               </button>

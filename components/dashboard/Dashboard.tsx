@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { Sparkles, ChevronRight, Play, GraduationCap, BookOpen, Book } from 'lucide-react';
+import { Sparkles, ChevronRight, Play, GraduationCap, BookOpen, Book, Languages, BookOpenText } from 'lucide-react';
 import { ActivityType } from '../../types';
 import { DashboardHeader } from './DashboardHeader';
 import { CourseProgress } from './CourseProgress';
@@ -314,11 +314,11 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
                 <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-brand-primary/10 rounded-full blur-xl pointer-events-none"></div>
                 <div className="flex flex-col gap-2 relative z-10">
                   <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/20 flex items-center justify-center border border-brand-primary/20 shadow-md shrink-0 group-hover:scale-110 transition-transform duration-300">
-                    <BookOpen className="w-5 h-5 text-brand-primary" />
+                    <Languages className="w-5 h-5 text-brand-primary" />
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-slate-900 mb-0.5">
-                      Слова
+                      Изученные слова
                     </h3>
                     <p className="text-xs text-gray-600 font-medium">
                       {userWords.length > 0 ? `${userWords.length} слов` : 'Нет слов'}
@@ -335,7 +335,7 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
                 <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-brand-primary/10 rounded-full blur-xl pointer-events-none"></div>
                 <div className="flex flex-col gap-2 relative z-10">
                   <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-primary/10 to-brand-secondary/20 flex items-center justify-center border border-brand-primary/20 shadow-md shrink-0 group-hover:scale-110 transition-transform duration-300">
-                    <Book className="w-5 h-5 text-brand-primary" />
+                    <BookOpenText className="w-5 h-5 text-brand-primary" />
                   </div>
                   <div>
                     <h3 className="font-bold text-sm text-slate-900 mb-0.5">

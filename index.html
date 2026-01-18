@@ -208,10 +208,11 @@
       justify-content: center;
       gap: 8px;
       position: relative;
-      padding: 16px 32px;
-      min-height: 64px;
+      /* Mobile: smaller height */
+      padding: 12px 24px;
+      min-height: 52px;
       border-radius: 14px;
-      font-size: 1.15rem;
+      font-size: 1rem;
       font-weight: 600;
       color: #6366F1;
       background: #EEF2FF;
@@ -219,6 +220,14 @@
       will-change: transform;
       transform: translateY(-4px);
       transition: transform 600ms cubic-bezier(.3, .7, .4, 1);
+    }
+
+    @media (min-width: 640px) {
+      body:not(.is-native) .lesson-cta-front {
+        padding: 16px 32px;
+        min-height: 64px;
+        font-size: 1.15rem;
+      }
     }
 
     .lesson-cta-btn:hover {

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { BookOpen, X, Volume2 } from 'lucide-react';
+import { BookOpen, X, Volume2, Languages } from 'lucide-react';
 import { useWordsReview } from '../../hooks/useWordsReview';
 import { useTtsQueue } from '../step4Dialogue/useTtsQueue';
 
@@ -93,7 +93,7 @@ export const WordsModal: React.FC<WordsModalProps> = ({
           <div className="relative bg-white border-b border-gray-200 px-5 sm:px-6 lg:px-8 pb-5 pt-[var(--app-safe-top)]">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-3xl bg-gradient-to-br from-brand-primary/10 to-brand-primary/5 border border-brand-primary/20 flex items-center justify-center shadow-xl relative z-10">
-                <BookOpen className="w-7 h-7 text-brand-primary" />
+                <Languages className="w-7 h-7 text-brand-primary" />
               </div>
               <div className="flex-1 min-w-0">
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
