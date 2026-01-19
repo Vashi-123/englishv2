@@ -28,13 +28,21 @@ export function TutorMiniChat({
   onSend,
   isAwaitingReply,
 }: Props) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [open, messages.length, isAwaitingReply]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+  }, [input]);
 
   const buttonBottom = '120px';
   const panelBottom = '180px';
@@ -112,19 +120,22 @@ export function TutorMiniChat({
           <div ref={endRef} />
         </div>
 
-        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white">
-          <input
+        <div className="flex items-end gap-2 px-4 py-3 border-t border-gray-100 bg-white">
+          <textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={isAwaitingReply}
             placeholder={placeholder}
             lang="en"
-            className="flex-1 h-11 rounded-xl bg-gray-100 px-4 text-[16px] font-medium text-gray-900 outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:opacity-60"
+            rows={1}
+            className="flex-1 min-h-[44px] max-h-[120px] rounded-xl bg-gray-100 px-4 py-3 text-[16px] font-medium text-gray-900 outline-none focus:ring-2 focus:ring-brand-primary/20 disabled:opacity-60 resize-none"
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                return;
+                const text = input.trim();
+                if (!text || isAwaitingReply) return;
+                onSend(text);
               }
               if (e.key === 'Escape') onClose();
             }}
