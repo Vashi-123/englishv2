@@ -14,8 +14,6 @@ type Props = {
   setInput: (value: string) => void;
   onSend: (text: string) => void;
   isAwaitingReply: boolean;
-  questionsUsed: number;
-  questionsLimit: number;
 };
 
 export function TutorMiniChat({
@@ -29,8 +27,6 @@ export function TutorMiniChat({
   setInput,
   onSend,
   isAwaitingReply,
-  questionsUsed,
-  questionsLimit,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -40,7 +36,6 @@ export function TutorMiniChat({
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [open, messages.length, isAwaitingReply]);
 
-  const counterText = useMemo(() => `${Math.min(questionsUsed, questionsLimit)}/${questionsLimit}`, [questionsLimit, questionsUsed]);
   const buttonBottom = '120px';
   const panelBottom = '180px';
   const rightOffset = '20px';
@@ -48,7 +43,7 @@ export function TutorMiniChat({
   const overlayClassName = `fixed inset-0 z-[119] bg-black/10 transition-opacity duration-200 ease-out ${open ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
     }`;
 
-  const panelClassName = `fixed z-[120] w-[min(380px,calc(100vw-2rem))] max-h-[60vh] rounded-3xl border-2 border-brand-primary/35 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] overflow-hidden origin-bottom-right will-change-transform transition-[opacity,transform] duration-200 ease-out ${open ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' : 'opacity-0 translate-y-2 scale-[0.98] pointer-events-none'
+  const panelClassName = `fixed z-[120] w-[min(380px,calc(100vw-2rem))] max-h-[60vh] rounded-3xl border-2 border-brand-primary/35 bg-white shadow-[0_24px_80px_rgba(99,102,241,0.28)] overflow-hidden origin-bottom-right will-change-transform transition-[opacity,transform] duration-200 ease-out flex flex-col ${open ? 'opacity-100 translate-y-0 scale-100 pointer-events-auto' : 'opacity-0 translate-y-2 scale-[0.98] pointer-events-none'
     }`;
 
   return (
@@ -78,7 +73,6 @@ export function TutorMiniChat({
         <div className="flex items-center justify-between gap-3 px-4 py-3 bg-white border-b border-brand-primary/10">
           <div className="min-w-0">
             <div className="text-sm font-extrabold text-gray-900 truncate">{title}</div>
-            <div className="text-xs font-semibold text-gray-600">{counterText}</div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <button
@@ -92,7 +86,7 @@ export function TutorMiniChat({
           </div>
         </div>
 
-        <div className="px-4 py-3 space-y-2 overflow-y-auto max-h-[45vh] bg-white">
+        <div className="flex-1 min-h-0 px-4 py-3 space-y-2 overflow-y-auto bg-white">
           {messages.map((m, i) => (
             <div key={`${m.role}-${i}`} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               <div

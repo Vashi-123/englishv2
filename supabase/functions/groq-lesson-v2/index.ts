@@ -538,24 +538,6 @@ Lesson context (for you):\n\n${lessonContext}`;
 
       const userQuestion = String(lastUserMessageContent || "").trim();
 
-      const userQuestionsCount = history.filter((m) => m.role === "user").length + (userQuestion ? 1 : 0);
-      if (userQuestionsCount > 5) {
-        const limitReached =
-          userLang.toLowerCase().startsWith("ru")
-            ? "Мы уже разобрали 5 вопросов по этому уроку. Если хочешь — начнем следующий урок."
-            : "We've already covered 5 questions for this lesson. If you want, let's start the next lesson.";
-        await insertTutorMessage("model", limitReached);
-        return new Response(
-          JSON.stringify({
-            response: limitReached,
-            isCorrect: true,
-            feedback: "",
-            nextStep: currentStep ?? null,
-            translation: "",
-          }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
 
       // If the user just opened tutor mode (no question yet), return a greeting and persist it so it shows on re-entry.
       if (!userQuestion) {

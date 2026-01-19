@@ -633,8 +633,6 @@ export function Step4DialogueScreen({
     [resolvedLanguage]
   );
 
-  const tutorQuestionsLimit = 5;
-
   const resetTutorMiniChat = useCallback(() => {
     setTutorQuestionsUsed(0);
     setTutorHistory([{ role: 'model', text: tutorGreeting }]);
@@ -690,20 +688,6 @@ export function Step4DialogueScreen({
         return;
       }
 
-      // Limit removed - users can ask unlimited questions
-      // if (tutorQuestionsUsed >= tutorQuestionsLimit) {
-      //   setTutorThreadMessages((prev) => [
-      //     ...prev,
-      //     {
-      //       role: 'model',
-      //       text: resolvedLanguage.toLowerCase().startsWith('ru')
-      //         ? 'Лимит вопросов исчерпан (5). Нажми ↺, чтобы начать заново.'
-      //         : 'Question limit reached (5). Press ↺ to start over.',
-      //     },
-      //   ]);
-      //   return;
-      // }
-
       setTutorInput('');
       setTutorThreadMessages((prev) => [...prev, { role: 'user', text: userMsg }]);
       setIsAwaitingTutorReply(true);
@@ -741,7 +725,7 @@ export function Step4DialogueScreen({
         setIsAwaitingTutorReply(false);
       }
     },
-    [day, lesson, resolvedLanguage, resolvedLevel, tutorHistory, tutorQuestionsUsed]
+    [day, lesson, resolvedLanguage, resolvedLevel, tutorHistory]
   );
 
   const handleSend = useCallback(async () => {
@@ -3098,8 +3082,7 @@ export function Step4DialogueScreen({
           setInput={setTutorInput}
           onSend={sendTutorQuestion}
           isAwaitingReply={isAwaitingTutorReply}
-          questionsUsed={tutorQuestionsUsed}
-          questionsLimit={tutorQuestionsLimit}
+
         />
       )}
 
