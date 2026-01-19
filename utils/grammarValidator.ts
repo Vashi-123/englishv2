@@ -731,7 +731,18 @@ function validateSingleVariant(
     { pattern: /\bwho's\b/gi, expanded: 'who is', name: "who's", expandedVariants: ['who is'] },
     { pattern: /\bwhere's\b/gi, expanded: 'where is', name: "where's", expandedVariants: ['where is'] },
     { pattern: /\bhow's\b/gi, expanded: 'how is', name: "how's", expandedVariants: ['how is'] },
+    { pattern: /\bhow's\b/gi, expanded: 'how is', name: "how's", expandedVariants: ['how is'] },
     { pattern: /\blet's\b/gi, expanded: 'let us', name: "let's", expandedVariants: ['let us'] },
+    // Missing contractions added on request
+    { pattern: /\bhaven't\b/gi, expanded: 'have not', name: "haven't", expandedVariants: ['have not'] },
+    { pattern: /\bhasn't\b/gi, expanded: 'has not', name: "hasn't", expandedVariants: ['has not'] },
+    { pattern: /\bhadn't\b/gi, expanded: 'had not', name: "hadn't", expandedVariants: ['had not'] },
+    { pattern: /\bshouldn't\b/gi, expanded: 'should not', name: "shouldn't", expandedVariants: ['should not'] },
+    { pattern: /\bmustn't\b/gi, expanded: 'must not', name: "mustn't", expandedVariants: ['must not'] },
+    { pattern: /\bneedn't\b/gi, expanded: 'need not', name: "needn't", expandedVariants: ['need not'] },
+    { pattern: /\byou'd\b/gi, expanded: 'you had', name: "you'd", expandedVariants: ['you had', 'you would'] },
+    { pattern: /\bit'd\b/gi, expanded: 'it had', name: "it'd", expandedVariants: ['it had', 'it would'] },
+    { pattern: /\bain't\b/gi, expanded: 'am not', name: "ain't", expandedVariants: ['am not', 'is not', 'are not', 'has not', 'have not'] },
   ];
 
   // Собираем все сокращения, найденные в expected
