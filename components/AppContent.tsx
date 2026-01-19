@@ -10,16 +10,19 @@ import Step4Dialogue from './Step4Dialogue';
 import { PaywallScreen } from './PaywallScreen';
 import {
   clearLessonScriptCacheForLevel,
+  getLessonScriptCacheKey,
   hasLessonCompleteTag,
   loadChatMessages,
   loadLessonProgress,
   loadLessonProgressByLessonIds,
+  loadLessonScript,
   prefetchLessonInitData,
   prefetchLessonScript,
   resetUserProgress,
   syncAllLessonScripts,
   upsertLessonProgress,
 } from '../services/generationService';
+import { prefetchTtsForLessonScript } from '../services/ttsAssetService';
 import { FREE_LESSON_COUNT, primeBillingProductCache } from '../services/billingService';
 import { formatFirstLessonsRu } from '../services/ruPlural';
 import { getAllUserWords, applySrsReview, resetUserSrsCards } from '../services/srsService';
@@ -669,6 +672,65 @@ export const AppContent: React.FC<{
       cancelled = true;
     };
   }, [currentDayPlan, isInitializing, level, view]);
+
+  // Aggressive audio prefetch: preload audio for current lesson and next 2-3 lessons
+  // to eliminate playback delays. This runs in the background on the dashboard.
+  useEffect(() => {
+    if (isInitializing) return;
+    if (!currentDayPlan) return;
+    if (view !== ViewState.DASHBOARD) return;
+
+    const currentIndex = dayPlans.findIndex((p) => p.day === currentDayPlan.day && p.lesson === currentDayPlan.lesson);
+    if (currentIndex < 0) return;
+
+    const freeLimit = Number.isFinite(freeLessonCount) ? freeLessonCount : FREE_LESSON_COUNT;
+
+    // Include current lesson + next 2-3 lessons
+    const lessonsToPreload = [currentDayPlan, ...dayPlans.slice(currentIndex + 1, currentIndex + 4)]
+      .filter(Boolean)
+      .filter((plan) => {
+        const lessonNumber = plan.lesson ?? plan.day;
+        const locked = !isPremium && lessonNumber > freeLimit;
+        return !locked;
+      });
+
+    if (lessonsToPreload.length === 0) return;
+
+    let cancelled = false;
+
+    const prefetchAudioForLessons = async () => {
+      for (const plan of lessonsToPreload) {
+        if (cancelled) break;
+
+        try {
+          // Load lesson script (from cache or DB)
+          const script = await loadLessonScript(plan.day, plan.lesson, level);
+          if (cancelled || !script) continue;
+
+          // Prefetch audio for this lesson
+          const cacheKey = getLessonScriptCacheKey(plan.day, plan.lesson, level);
+          await prefetchTtsForLessonScript({
+            lessonCacheKey: cacheKey,
+            scriptJsonString: script,
+          });
+        } catch (error) {
+          // Ignore prefetch errors - this is best-effort
+          console.log('[Audio Prefetch] Error prefetching audio for lesson:', {
+            day: plan.day,
+            lesson: plan.lesson,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    };
+
+    // Run prefetch in background
+    void prefetchAudioForLessons();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDayPlan, dayPlans, freeLessonCount, isInitializing, isPremium, level, view]);
 
   // Функция проверки статуса урока
   const checkLessonCompletion = async (showLoading = false) => {

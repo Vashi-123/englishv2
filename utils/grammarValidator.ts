@@ -29,7 +29,7 @@ export function getExpectedAsString(expected: string | string[] | string[][]): s
   if (Array.isArray(expected)) {
     if (expected.length === 0) return '';
     const first = expected[0];
-    
+
     // Если это массив массивов (несколько вариантов)
     if (Array.isArray(first)) {
       // Возвращаем все варианты через " / "
@@ -37,7 +37,7 @@ export function getExpectedAsString(expected: string | string[] | string[][]): s
         .map(variant => variant.join(' ').replace(/\s+([.,!?;:])/g, '$1'))
         .join(' / ');
     }
-    
+
     // Если это массив строк (один вариант), просто соединяем
     return (expected as string[]).join(' ').replace(/\s+([.,!?;:])/g, '$1');
   }
@@ -69,8 +69,15 @@ function normalizeText(text: string): string {
   return String(text || '')
     .trim()
     .toLowerCase()
-    // Нормализация апострофов
-    .replace(/['`’‘]/g, "'")
+    // Нормализация апострофов (поддержка всех видов клавиатур: iPhone, Android, desktop)
+    // ' (U+0027) - обычный прямой апостроф
+    // ' (U+2019) - типографский правый апостроф (iPhone по умолчанию)
+    // ' (U+2018) - типографский левый апостроф  
+    // ` (U+0060) - обратный апостроф (backtick)
+    // ´ (U+00B4) - острый акцент
+    // ʼ (U+02BC) - модификатор буквы апостроф
+    // ʻ (U+02BB) - модификатор буквы обратный апостроф
+    .replace(/['`''´ʼʻ]/g, "'")
     // Нормализация неразрывных пробелов
     .replace(/\u00A0/g, ' ')
     // Удаление точек и запятых (не важно, где они находятся)
@@ -275,23 +282,23 @@ function checkPlurality(expectedWords: string[], answerWords: string[]): Array<{
   // Для каждого слова из expectedWords ищем соответствующее слово в answerWords
   for (const exp of expectedWords) {
     if (!exp) continue;
-    
+
     const expLower = exp.toLowerCase();
     let foundMatch = false;
     let foundWord: string | undefined = undefined;
-    
+
     // Ищем слово в answerWords
     for (let i = 0; i < answerWords.length; i++) {
       if (usedAnswerIndices.has(i)) continue; // Уже использовано
-      
+
       const ans = answerWords[i];
       if (!ans) continue;
-      
+
       const ansLower = ans.toLowerCase();
-      
+
       // Проверяем, совпадают ли слова (игнорируя окончания s/es)
       let wordsMatch = false;
-      
+
       if (expLower === ansLower) {
         // Точное совпадение
         wordsMatch = true;
@@ -304,13 +311,13 @@ function checkPlurality(expectedWords: string[], answerWords: string[]): Array<{
           wordsMatch = true;
         }
       }
-      
+
       if (wordsMatch) {
         // Слова совпадают, проверяем plurality
         foundMatch = true;
         foundWord = ans;
         usedAnswerIndices.add(i);
-        
+
         const isExpPlural =
           !exceptions.has(expLower) &&
           (expLower.endsWith('es') || (expLower.endsWith('s') && !expLower.endsWith('ss')));
@@ -321,11 +328,11 @@ function checkPlurality(expectedWords: string[], answerWords: string[]): Array<{
         if (isExpPlural !== isAnsPlural) {
           issues.push({ expected: exp, found: ans });
         }
-        
+
         break; // Нашли совпадение, переходим к следующему слову
       }
     }
-    
+
     // Если слово не найдено, это не ошибка plurality - это пропущенное слово
     // (оно будет обработано в missingWords)
   }
@@ -354,7 +361,7 @@ function containsLatin(text: string): boolean {
 function detectLanguage(text: string): 'ru' | 'en' | 'mixed' | null {
   const hasCyrillic = containsCyrillic(text);
   const hasLatin = containsLatin(text);
-  
+
   if (hasCyrillic && hasLatin) return 'mixed';
   if (hasCyrillic) return 'ru';
   if (hasLatin) return 'en';
@@ -380,14 +387,14 @@ function extractWords(text: string): string[] {
 function wordExistsInText(word: string, text: string): boolean {
   const normalizedWord = normalizeText(word);
   const normalizedText = normalizeText(text);
-  
+
   // Точное совпадение слова
   const words = normalizedText.split(/\s+/);
   if (words.includes(normalizedWord)) return true;
-  
+
   // Проверка фразы (например "I am" как два слова)
   if (normalizedText.includes(normalizedWord)) return true;
-  
+
   return false;
 }
 
@@ -448,16 +455,16 @@ function checkFlexibleWordExistence(
  */
 function ensureArrayOfVariants(input: any): string[][] {
   if (!input) return [];
-  
+
   // 1. Если это уже массив массивов — возвращаем как есть
   if (Array.isArray(input) && input.length > 0 && Array.isArray(input[0])) {
     return input as string[][];
   }
-  
+
   // 2. Если это плоский массив
   if (Array.isArray(input)) {
     if (input.length === 0) return [];
-    
+
     // Проверяем, нет ли внутри вложенных массивов (на случай, если input[0] был пуст, но input[1] - массив)
     const hasNestedArray = input.some(item => Array.isArray(item));
     if (hasNestedArray) {
@@ -474,11 +481,11 @@ function ensureArrayOfVariants(input: any): string[][] {
       // Сохраняем исходный регистр для requiredWords (важно для проверки I'M vs i'm)
       return input.map(s => String(s).trim().split(/\s+/).filter(Boolean));
     }
-    
+
     // Иначе это один вариант, разбитый по словам: ["Hello", "Tom"]
     return [input as string[]];
   }
-  
+
   // 3. Если это строка (одно предложение)
   if (typeof input === 'string') {
     // Если строка выглядит как результат принудительного String(array) — "word1,word2,word3"
@@ -487,7 +494,7 @@ function ensureArrayOfVariants(input: any): string[][] {
     }
     return [input.trim().split(/\s+/).filter(Boolean)];
   }
-  
+
   return [];
 }
 
@@ -537,7 +544,7 @@ export function validateGrammarDrill(
   // 3. Проверяем каждый вариант по отдельности
   const results: ValidationResult[] = expectedVariants.map((variant, index) => {
     const required = synchronizedRequired[index];
-    
+
     // Добавим лог для отладки
     console.log(`[GrammarValidator] Вариант #${index + 1}:`, {
       expected: variant.join(' '),
@@ -553,7 +560,7 @@ export function validateGrammarDrill(
     };
 
     const res = validateSingleVariant(answer, singleVariantDrill);
-    
+
     // Если вариант неверный, готовим для него индивидуальный фидбек
     if (!res.isCorrect) {
       const variantStr = variant.join(' ').replace(/\s+([.,!?;:])/g, '$1');
@@ -579,7 +586,7 @@ export function validateGrammarDrill(
   const bestError = results.sort((a, b) => {
     const scoreA = (a.missingWords?.length || 0) + (a.incorrectWords?.length || 0) + (a.numberMismatch ? 1 : 0);
     const scoreB = (b.missingWords?.length || 0) + (b.incorrectWords?.length || 0) + (b.numberMismatch ? 1 : 0);
-    
+
     if (scoreA !== scoreB) return scoreA - scoreB;
     return (a.extraWords?.length || 0) - (b.extraWords?.length || 0);
   })[0];
@@ -593,11 +600,11 @@ export function validateGrammarDrill(
  */
 function validateSingleVariant(
   answer: string,
-  drill: { 
-    question: string; 
-    task: string; 
-    expected: string[]; 
-    requiredWords?: string[] 
+  drill: {
+    question: string;
+    task: string;
+    expected: string[];
+    requiredWords?: string[]
   }
 ): ValidationResult {
   if (!answer || !answer.trim()) {
@@ -618,7 +625,7 @@ function validateSingleVariant(
   const expectedStringForLanguage = stripPlaceholdersFromText(getExpectedAsString(drill.expected));
   const expectedLanguage = detectLanguage(expectedStringForLanguage);
   const answerLanguage = detectLanguage(answer);
-  
+
   // Если expected содержит буквы (не только цифры/пунктуацию)
   if (expectedLanguage && answerLanguage) {
     // Проверяем совпадение языка
@@ -670,24 +677,24 @@ function validateSingleVariant(
   const normalizedExpectedWords = expectedWords.flatMap(w => normalizeText(w).split(/\s+/)).filter(Boolean);
   const expectedTokensWithPlaceholders = buildNormalizedExpectedTokensWithPlaceholders(expectedWordsRaw);
   const hasPlaceholders = expectedTokensWithPlaceholders.some(isPlaceholderToken);
-  
+
   // Нормализуем requiredWords для проверки
-  const normalizedRequiredWords = drill.requiredWords 
+  const normalizedRequiredWords = drill.requiredWords
     ? drill.requiredWords.map(rw => normalizeText(rw))
     : [];
-  
+
   const missingWords: string[] = [];
   const incorrectWords: Array<{ expected: string; found?: string }> = [];
   const duplicateWords: string[] = [];
   const extraWords: string[] = [];
   let numberMismatch: { expected: string; found: string } | undefined = undefined;
   let orderError = false;
-  
+
   // Проверка знака вопроса
   const expectedString = getExpectedAsString(drill.expected);
   const expectedHasQuestionMark = expectedString.trim().endsWith('?');
   const answerHasQuestionMark = answer.trim().endsWith('?');
-  
+
   if (expectedHasQuestionMark && !answerHasQuestionMark) {
     return {
       isCorrect: false,
@@ -698,7 +705,7 @@ function validateSingleVariant(
       wrongLanguage: false
     };
   }
-  
+
   if (!expectedHasQuestionMark && answerHasQuestionMark) {
     return {
       isCorrect: false,
@@ -756,7 +763,7 @@ function validateSingleVariant(
     { pattern: /\bhow's\b/gi, expanded: 'how is', name: "how's", expandedVariants: ['how is'] },
     { pattern: /\blet's\b/gi, expanded: 'let us', name: "let's", expandedVariants: ['let us'] },
   ];
-  
+
   // Собираем все сокращения, найденные в expected
   const expectedContractions: Array<{
     contraction: typeof contractions[0];
@@ -771,16 +778,16 @@ function validateSingleVariant(
     // Используем matchAll для поиска всех вхождений (с флагом 'i', чтобы найти в любом регистре)
     const expectedRegex = new RegExp(contraction.pattern.source, 'gi');
     const expectedMatches = Array.from(expectedString.matchAll(expectedRegex));
-    
+
     if (expectedMatches.length === 0) continue;
 
     const matches = expectedMatches.map(m => m[0]);
-    
+
     // Проверяем регистр в requiredWords вместо expected
     const requiredRegex = new RegExp(contraction.pattern.source, 'gi');
     const requiredMatches = Array.from(requiredWordsString.matchAll(requiredRegex));
     const isUppercase = requiredMatches.some(match => match[0] === match[0].toUpperCase());
-    
+
     expectedContractions.push({
       contraction,
       matches,
@@ -837,7 +844,7 @@ function validateSingleVariant(
       // Но перед ошибкой проверяем, не является ли это просто вопросом регистра для самого сокращения
       // (т.е. если написали "i'm" маленькими, это должно быть ок, если только мы не проверяем полную идентичность)
       const answerHasLowercaseContraction = answer.toLowerCase().includes(contraction.name.toLowerCase());
-      
+
       if (!answerHasLowercaseContraction) {
         return {
           isCorrect: false,
@@ -861,7 +868,7 @@ function validateSingleVariant(
         wrongLanguage: false
       };
     }
-    
+
     // Если сокращение со строчной буквы и есть развернутая форма - допустимо
     // Добавляем нормализованное значение сокращения в foundContractionsInAnswer, чтобы не считать его missing
     for (const match of expectedMatches) {
@@ -904,24 +911,24 @@ function validateSingleVariant(
       duplicateWords: []
     };
   }
-  
+
   // Проверка дублирования слов (по нормализованным токенам)
   const duplicateWordsFound = checkDuplicates(normalizedAnswerWords);
   if (duplicateWordsFound.length > 0) {
     duplicateWords.push(...duplicateWordsFound);
   }
-  
+
   // Проверка разрывов слов (лишние пробелы внутри слов)
   const wordBreakIssues = checkWordBreaks(expectedWords, normalizedAnswerWords);
   if (wordBreakIssues.length > 0) {
     incorrectWords.push(...wordBreakIssues);
   }
-  
+
   // Сначала проверяем requiredWords как фразы (например "I am")
   for (const requiredWord of normalizedRequiredWords) {
     // Проверяем, является ли requiredWord фразой (содержит пробел)
     const isPhrase = requiredWord.includes(' ');
-    
+
     let hasRequiredPhrase: boolean;
     if (isPhrase) {
       // Для фраз проверяем вхождение в normalizedAnswer
@@ -931,7 +938,7 @@ function validateSingleVariant(
       const answerTokens = normalizedAnswer.split(/\s+/);
       hasRequiredPhrase = answerTokens.includes(requiredWord);
     }
-    
+
     if (!hasRequiredPhrase) {
       // requiredWord не найден - это ошибка
       // Но не добавляем в incorrectWords, если это отдельное слово - оно будет добавлено в missingWords позже
@@ -940,15 +947,15 @@ function validateSingleVariant(
       // Если это фраза (содержит пробел), добавляем в incorrectWords
       // Если это отдельное слово, оно будет проверено позже и добавлено в missingWords
       if (isPhrase) {
-        incorrectWords.push({ 
-          expected: originalRequiredWord, 
-          found: undefined 
+        incorrectWords.push({
+          expected: originalRequiredWord,
+          found: undefined
         });
       }
       // Отдельные слова из requiredWords будут проверены в цикле проверки expectedWords
     }
   }
-  
+
   // Проверяем порядок слов только если все requiredWords найдены
   if (normalizedRequiredWords.length > 1 && incorrectWords.length === 0) {
     const answerTokens = normalizeText(answer).split(/\s+/);
@@ -969,7 +976,7 @@ function validateSingleVariant(
   // Проверка чисел
   const expectedNumbers = extractNumbers(expectedString);
   const answerNumbers = extractNumbers(answer);
-  
+
   // Проверяем числа из requiredWords (точное совпадение)
   if (drill.requiredWords) {
     for (const requiredWord of drill.requiredWords) {
@@ -987,7 +994,7 @@ function validateSingleVariant(
       }
     }
   }
-  
+
   // Проверяем числа из expected (если они не в requiredWords)
   for (const expNum of expectedNumbers) {
     // Проверяем, есть ли это число в requiredWords
@@ -995,7 +1002,7 @@ function validateSingleVariant(
       const requiredNumbers = extractNumbers(rw);
       return requiredNumbers.includes(expNum);
     });
-    
+
     // Если число не в requiredWords, проверяем его наличие в ответе
     if (!isInRequiredWords) {
       const foundInAnswer = answerNumbers.includes(expNum);
@@ -1024,7 +1031,7 @@ function validateSingleVariant(
   // Теперь проверяем наличие всех слов из expected
   for (const expectedWord of expectedWords) {
     const normalizedExpectedWord = normalizeText(expectedWord);
-    
+
     // Проверяем, является ли это слово частью requiredWords (фразы или отдельные слова)
     const isPartOfRequired = normalizedRequiredWords.some(nrw => {
       if (nrw.includes(' ')) {
@@ -1035,7 +1042,7 @@ function validateSingleVariant(
 
     // Проверяем, является ли это слово сокращением, которое уже найдено в развернутой форме
     const isFoundContraction = foundContractionsInAnswer.has(normalizedExpectedWord);
-    
+
     // Если слово является обязательным или частью обязательной фразы
     if (isPartOfRequired) {
       // Проверяем его точное наличие

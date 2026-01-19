@@ -34,7 +34,7 @@ export const lessonScriptStoragePrefix = 'englishv2:lessonScript:';
 // In-memory lesson ID cache to avoid repeated queries
 const lessonIdCache = new Map<string, string>();
 
-const getLessonScriptCacheKey = (day: number, lesson: number, level: string) => `${level}:${day}:${lesson}`;
+export const getLessonScriptCacheKey = (day: number, lesson: number, level: string) => `${level}:${day}:${lesson}`;
 const getLessonIdCacheKey = (day: number, lesson: number, level: string) => `${level}:${day}:${lesson}`;
 
 const readLessonScriptFromLocal = (cacheKey: string): string | null => {
@@ -124,11 +124,11 @@ const isLocalLessonScriptFresh = async (
       console.warn("[isLocalLessonScriptFresh] Error checking freshness, forcing refresh:", error);
       return false; // Force refresh on error
     }
-    
+
     const serverUpdatedAt = (data as any)?.updated_at;
     if (!serverUpdatedAt) {
-        console.warn("[isLocalLessonScriptFresh] No server updated_at found, forcing refresh");
-        return false; // Force refresh if no server data
+      console.warn("[isLocalLessonScriptFresh] No server updated_at found, forcing refresh");
+      return false; // Force refresh if no server data
     }
 
     const isFresh = new Date(serverUpdatedAt) <= new Date(params.localVersion);
@@ -482,7 +482,7 @@ export const sendDialogueMessageV2 = async (
 
     if (error) {
       console.error("groq-lesson-v2 send error:", error, { lessonId, userId });
-      return { 
+      return {
         text: "Техническая проблема или нет соединения. Попробуй отправить снова.",
         isCorrect: false,
         feedback: "Попробуй еще раз",
@@ -504,7 +504,7 @@ export const sendDialogueMessageV2 = async (
     };
   } catch (error) {
     console.error("sendDialogueMessageV2 exception:", error);
-    return { 
+    return {
       text: "Техническая проблема или нет соединения. Попробуй отправить снова.",
       isCorrect: false,
       feedback: "Попробуй еще раз",
@@ -713,9 +713,9 @@ export const loadLessonInitData = async (
     // Process progress - только статус завершения
     const progress = data.progress
       ? {
-          currentStepSnapshot: null,
-          completed: (data.progress as any).completed ?? false,
-        }
+        currentStepSnapshot: null,
+        completed: (data.progress as any).completed ?? false,
+      }
       : null;
 
     // Не загружаем сообщения - они не сохраняются
@@ -923,24 +923,24 @@ export const loadChatMessages = async (
       return [];
     }
 
-	    console.log("[loadChatMessages] Loaded", data.length, "messages");
-		    const mapped = data
-          .filter((msg) => !isTutorSnapshot((msg as any).current_step_snapshot))
-          .map(msg => ({
-		      id: msg.id,
-		      role: msg.role as 'user' | 'model',
-		      text: msg.text,
-		      translation: undefined,
-		      moduleId: undefined,
-		      messageOrder: msg.message_order || undefined,
-		      createdAt: (msg as any).created_at || undefined,
-		      currentStepSnapshot: msg.current_step_snapshot,
-		      local: { source: 'db' as const, saveStatus: 'saved' as const },
-		    }));
-	    if (cacheKey) {
-	      chatMessagesMemoryCache.set(cacheKey, mapped);
-	      writeChatMessagesToSession(cacheKey, mapped);
-	    }
+    console.log("[loadChatMessages] Loaded", data.length, "messages");
+    const mapped = data
+      .filter((msg) => !isTutorSnapshot((msg as any).current_step_snapshot))
+      .map(msg => ({
+        id: msg.id,
+        role: msg.role as 'user' | 'model',
+        text: msg.text,
+        translation: undefined,
+        moduleId: undefined,
+        messageOrder: msg.message_order || undefined,
+        createdAt: (msg as any).created_at || undefined,
+        currentStepSnapshot: msg.current_step_snapshot,
+        local: { source: 'db' as const, saveStatus: 'saved' as const },
+      }));
+    if (cacheKey) {
+      chatMessagesMemoryCache.set(cacheKey, mapped);
+      writeChatMessagesToSession(cacheKey, mapped);
+    }
     return mapped;
   } catch (error) {
     console.error("[loadChatMessages] Exception loading chat messages:", error);
@@ -1006,9 +1006,9 @@ export const loadLessonScript = async (
 
     // Some DB rows may contain a leading BOM/zero-width characters which break JSON.parse on the client.
     const cleaned = raw.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, "");
-    
+
     console.log(`[loadLessonScript] Loaded fresh script for day=${day} lesson=${lesson}, version=${updatedAt}`);
-    
+
     lessonScriptCache.set(cacheKey, cleaned);
     writeLessonScriptToSession(cacheKey, cleaned, updatedAt);
 
@@ -1057,7 +1057,7 @@ export const prefetchLessonInitData = async (day: number, lesson: number, level:
 export const syncAllLessonScripts = async (level: string = 'A1'): Promise<void> => {
   try {
     if (typeof window === 'undefined') return;
-    
+
     // 1. Get server metadata (lightweight)
     const { data: serverRows, error } = await supabase
       .from('lesson_scripts')
@@ -1068,19 +1068,19 @@ export const syncAllLessonScripts = async (level: string = 'A1'): Promise<void> 
 
     // 2. Check what we need to update
     const toFetchIds: string[] = [];
-    
-    for (const row of serverRows) {
-        const cacheKey = getLessonScriptCacheKey(row.day, row.lesson, level);
-        const storedVersion = window.localStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}:version`);
-        const storedScript = window.localStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}`);
 
-        // Update if:
-        // 1. Script is missing locally
-        // 2. Version is missing locally
-        // 3. Server version is newer than local version
-        if (!storedScript || !storedVersion || new Date(row.updated_at) > new Date(storedVersion)) {
-            toFetchIds.push(row.lesson_id);
-        }
+    for (const row of serverRows) {
+      const cacheKey = getLessonScriptCacheKey(row.day, row.lesson, level);
+      const storedVersion = window.localStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}:version`);
+      const storedScript = window.localStorage.getItem(`${lessonScriptStoragePrefix}${cacheKey}`);
+
+      // Update if:
+      // 1. Script is missing locally
+      // 2. Version is missing locally
+      // 3. Server version is newer than local version
+      if (!storedScript || !storedVersion || new Date(row.updated_at) > new Date(storedVersion)) {
+        toFetchIds.push(row.lesson_id);
+      }
     }
 
     if (toFetchIds.length === 0) {
@@ -1096,29 +1096,29 @@ export const syncAllLessonScripts = async (level: string = 'A1'): Promise<void> 
     const chunkSize = 20;
     for (let i = 0; i < toFetchIds.length; i += chunkSize) {
       const chunkIds = toFetchIds.slice(i, i + chunkSize);
-      
+
       const { data: newScripts, error: fetchError } = await supabase
-          .from('lesson_scripts')
-          .select('day, lesson, script, updated_at')
-          .in('lesson_id', chunkIds);
+        .from('lesson_scripts')
+        .select('day, lesson, script, updated_at')
+        .in('lesson_id', chunkIds);
 
       if (fetchError || !newScripts) continue;
 
       // 4. Save to LocalStorage (Persistent)
       for (const row of newScripts) {
-          const cacheKey = getLessonScriptCacheKey(row.day, row.lesson, level);
-          let scriptStr = typeof row.script === 'string' 
-            ? row.script 
-            : JSON.stringify(row.script);
-            
-          // Clean BOM
-          scriptStr = scriptStr.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, '');
-          
-          window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}`, scriptStr);
-          window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}:version`, row.updated_at);
-          
-          // Also update memory cache for immediate access
-          lessonScriptCache.set(cacheKey, scriptStr);
+        const cacheKey = getLessonScriptCacheKey(row.day, row.lesson, level);
+        let scriptStr = typeof row.script === 'string'
+          ? row.script
+          : JSON.stringify(row.script);
+
+        // Clean BOM
+        scriptStr = scriptStr.replace(/^[\uFEFF\u200B-\u200D\u2060]+/, '');
+
+        window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}`, scriptStr);
+        window.localStorage.setItem(`${lessonScriptStoragePrefix}${cacheKey}:version`, row.updated_at);
+
+        // Also update memory cache for immediate access
+        lessonScriptCache.set(cacheKey, scriptStr);
       }
     }
     console.log(`[Sync] Successfully updated ${toFetchIds.length} scripts.`);
@@ -1388,7 +1388,7 @@ export const subscribeChatProgress = async (
   void day;
   void lesson;
   void onProgress;
-  return () => {};
+  return () => { };
 };
 
 /**
@@ -1432,7 +1432,7 @@ export const resetLessonDialogue = async (day: number, lesson: number, level: st
         })
         .eq('user_id', userId)
         .eq('lesson_id', lessonId);
-      
+
       if (updateError) {
         console.error('[resetLessonDialogue] Error updating lesson_progress:', updateError);
       }

@@ -233,17 +233,17 @@ const AppPage: React.FC = () => {
         // Ждем обновления сессии и распространения контекста
         await new Promise(r => setTimeout(r, 200));
 
-        // После успешного входа остаемся на /app, где покажется AppContent
+        // После успешного входа проверяем, нужно ли навигировать
         const savedShowPaywall = sessionStorage.getItem('showPaywall');
         sessionStorage.removeItem('showPaywall');
+
+        // Навигируем только если есть параметры для передачи
         if (paidParam === '1') {
           navigate('/app?paid=1' + (savedShowPaywall === '1' ? '&showPaywall=1' : ''), { replace: true });
         } else if (savedShowPaywall === '1') {
           navigate('/app?showPaywall=1', { replace: true });
-        } else {
-          // Принудительно обновляем текущий маршрут
-          navigate('/app', { replace: true });
         }
+        // Не навигируем если уже на /app - обновление сессии вызовет ре-рендер
       }}
     />
   );
