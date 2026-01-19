@@ -32,9 +32,9 @@ const originalDebug = console.debug ? console.debug.bind(console) : originalLog;
 const originalWarn = console.warn.bind(console);
 
 if (!isDebugLogsEnabled()) {
-  console.log = () => {};
-  console.info = () => {};
-  console.debug = () => {};
+  console.log = () => { };
+  console.info = () => { };
+  console.debug = () => { };
 } else {
   console.log = (...args: unknown[]) => originalLog(...args);
   console.info = (...args: unknown[]) => originalInfo(...args);

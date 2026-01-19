@@ -66,7 +66,7 @@ export function getExpectedAsArray(expected: string | string[] | string[][]): st
  * Нормализует текст для сравнения
  */
 function normalizeText(text: string): string {
-  return String(text || '')
+  const result = String(text || '')
     .trim()
     .toLowerCase()
     // Нормализация апострофов (поддержка всех видов клавиатур: iPhone, Android, desktop)
@@ -77,7 +77,7 @@ function normalizeText(text: string): string {
     // ´ (U+00B4) - острый акцент
     // ʼ (U+02BC) - модификатор буквы апостроф
     // ʻ (U+02BB) - модификатор буквы обратный апостроф
-    .replace(/['`''´ʼʻ]/g, "'")
+    .replace(/['`\u2018\u2019\u00B4\u02BC\u02BB]/g, "'")
     // Нормализация неразрывных пробелов
     .replace(/\u00A0/g, ' ')
     // Удаление точек и запятых (не важно, где они находятся)
@@ -89,41 +89,9 @@ function normalizeText(text: string): string {
     .replace(/\s+/g, ' ')
     // Синонимы приветствий
     .replace(/\bhi\b/g, 'hello')
-    // Разворачивание сокращений (с апострофом)
-    .replace(/\bi'm\b/g, 'i am')
-    .replace(/\byou're\b/g, 'you are')
-    .replace(/\bhe's\b/g, 'he is')
-    .replace(/\bshe's\b/g, 'she is')
-    .replace(/\bit's\b/g, 'it is')
-    .replace(/\bwe're\b/g, 'we are')
-    .replace(/\bthey're\b/g, 'they are')
-    .replace(/\bdon't\b/g, 'do not')
-    .replace(/\bdoesn't\b/g, 'does not')
-    .replace(/\bdidn't\b/g, 'did not')
-    .replace(/\bisn't\b/g, 'is not')
-    .replace(/\baren't\b/g, 'are not')
-    .replace(/\bwasn't\b/g, 'was not')
-    .replace(/\bweren't\b/g, 'were not')
-    .replace(/\bcan't\b/g, 'cannot')
-    .replace(/\bcouldn't\b/g, 'could not')
-    .replace(/\bwon't\b/g, 'will not')
-    .replace(/\bwouldn't\b/g, 'would not')
-    .replace(/\bi've\b/g, 'i have')
-    .replace(/\byou've\b/g, 'you have')
-    .replace(/\bwe've\b/g, 'we have')
-    .replace(/\bthey've\b/g, 'they have')
-    .replace(/\bhe'd\b/g, 'he had')
-    .replace(/\bshe'd\b/g, 'she had')
-    .replace(/\bi'd\b/g, 'i had')
-    .replace(/\bwe'd\b/g, 'we had')
-    .replace(/\bthey'd\b/g, 'they had')
-    .replace(/\bi'll\b/g, 'i will')
-    .replace(/\byou'll\b/g, 'you will')
-    .replace(/\bhe'll\b/g, 'he will')
-    .replace(/\bshe'll\b/g, 'she will')
-    .replace(/\bwe'll\b/g, 'we will')
-    .replace(/\bthey'll\b/g, 'they will')
-    .replace(/\bit'll\b/g, 'it will')
+    // Синонимы приветствий
+    .replace(/\bhi\b/g, 'hello')
+    // Нормализация разделенных слов (например "i m" -> "i am")
     // Нормализация разделенных слов (например "i m" -> "i am")
     .replace(/\bi\s+m\b/g, 'i am')
     .replace(/\byou\s+are\b/g, 'you are')
@@ -144,6 +112,8 @@ function normalizeText(text: string): string {
     .replace(/\bwill\s+not\b/g, 'will not')
     .replace(/\bwould\s+not\b/g, 'would not')
     .trim();
+
+  return result;
 }
 
 function isPlaceholderToken(token: string): boolean {
@@ -520,7 +490,7 @@ export function validateGrammarDrill(
   }
 
   // Детальный лог входа для диагностики данных
-  console.log('[GrammarValidator] RAW INPUT:', {
+  console.log('[ValidationDebug] RAW INPUT:', {
     expected: drill.expected,
     required: drill.requiredWords,
     answer: answer
@@ -802,8 +772,22 @@ function validateSingleVariant(
   // Проверяем каждое найденное сокращение из expected
   for (const { contraction, matches: expectedMatches, isUppercase } of expectedContractions) {
     // Ищем все вхождения этого сокращения в answer
-    const answerRegex = new RegExp(contraction.pattern.source, 'g');
-    const answerMatches = Array.from(answer.matchAll(answerRegex));
+    // ВАЖНО: используем normalizedAnswer, так как answer может содержать нестандартные апострофы,
+    // а RegExp patterns рассчитаны на стандартный апостроф '
+    const answerRegex = new RegExp(contraction.pattern.source, 'gi'); // используем 'gi' для уверенности (хотя pattern уже может иметь флаги)
+    // normalizedAnswer уже в нижнем регистре, поэтому флаг 'i' не обязателен, но не помешает
+    // Однако normalizedText переводит все в lowerCase, а pattern может быть чувствителен к регистру?
+    // Нет, contraction patterns обычно \bWord\b, и мы хотим найти само сокращение.
+    // Но normalizedAnswer уже lowercased.
+    // Проблема: если pattern ожидает I'm (с большой I), а normalizedAnswer имеет i'm.
+    // Решение: используем normalizeText(answer) но без lowerCase? Нет, функция normalizeText делает lowerCase.
+    // Значит нам нужно искать в normalizedAnswer.
+
+    // Но стоп, normalizedAnswer = he's not old.
+    // Pattern = /\bhe's\b/gi.
+    // matchAll(normalizedAnswer, answerRegex) должно найти.
+
+    const answerMatches = Array.from(normalizedAnswer.matchAll(answerRegex));
     const answerHasContraction = answerMatches.length > 0;
 
     if (answerHasContraction) {
