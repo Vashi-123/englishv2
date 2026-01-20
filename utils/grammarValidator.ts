@@ -468,6 +468,74 @@ function ensureArrayOfVariants(input: any): string[][] {
   return [];
 }
 
+const CONTRACTIONS = [
+  { pattern: /\bI'm\b/gi, expanded: 'I am', name: "I'm" },
+  { pattern: /\byou're\b/gi, expanded: 'you are', name: "you're" },
+  { pattern: /\bhe's\b/gi, expanded: 'he is', name: "he's" },
+  { pattern: /\bshe's\b/gi, expanded: 'she is', name: "she's" },
+  { pattern: /\bit's\b/gi, expanded: 'it is', name: "it's" },
+  { pattern: /\bwe're\b/gi, expanded: 'we are', name: "we're" },
+  { pattern: /\bthey're\b/gi, expanded: 'they are', name: "they're" },
+  { pattern: /\bdon't\b/gi, expanded: 'do not', name: "don't" },
+  { pattern: /\bdoesn't\b/gi, expanded: 'does not', name: "doesn't" },
+  { pattern: /\bdidn't\b/gi, expanded: 'did not', name: "didn't" },
+  { pattern: /\bisn't\b/gi, expanded: 'is not', name: "isn't" },
+  { pattern: /\baren't\b/gi, expanded: 'are not', name: "aren't" },
+  { pattern: /\bwasn't\b/gi, expanded: 'was not', name: "wasn't" },
+  { pattern: /\bweren't\b/gi, expanded: 'were not', name: "weren't" },
+  { pattern: /\bcan't\b/gi, expanded: 'cannot', name: "can't" },
+  { pattern: /\bcouldn't\b/gi, expanded: 'could not', name: "couldn't" },
+  { pattern: /\bwon't\b/gi, expanded: 'will not', name: "won't" },
+  { pattern: /\bwouldn't\b/gi, expanded: 'would not', name: "wouldn't" },
+  { pattern: /\bI've\b/gi, expanded: 'I have', name: "I've", expandedVariants: ['I have'] },
+  { pattern: /\byou've\b/gi, expanded: 'you have', name: "you've", expandedVariants: ['you have'] },
+  { pattern: /\bwe've\b/gi, expanded: 'we have', name: "we've", expandedVariants: ['we have'] },
+  { pattern: /\bthey've\b/gi, expanded: 'they have', name: "they've", expandedVariants: ['they have'] },
+  { pattern: /\bhe'd\b/gi, expanded: 'he had', name: "he'd", expandedVariants: ['he had', 'he would'] },
+  { pattern: /\bshe'd\b/gi, expanded: 'she had', name: "she'd", expandedVariants: ['she had', 'she would'] },
+  { pattern: /\bI'd\b/gi, expanded: 'I had', name: "I'd", expandedVariants: ['I had', 'I would'] },
+  { pattern: /\bwe'd\b/gi, expanded: 'we had', name: "we'd", expandedVariants: ['we had', 'we would'] },
+  { pattern: /\bthey'd\b/gi, expanded: 'they had', name: "they'd", expandedVariants: ['they had', 'they would'] },
+  { pattern: /\bI'll\b/gi, expanded: 'I will', name: "I'll", expandedVariants: ['I will'] },
+  { pattern: /\byou'll\b/gi, expanded: 'you will', name: "you'll", expandedVariants: ['you will'] },
+  { pattern: /\bhe'll\b/gi, expanded: 'he will', name: "he'll", expandedVariants: ['he will'] },
+  { pattern: /\bshe'll\b/gi, expanded: 'she will', name: "she'll", expandedVariants: ['she will'] },
+  { pattern: /\bwe'll\b/gi, expanded: 'we will', name: "we'll", expandedVariants: ['we will'] },
+  { pattern: /\bthey'll\b/gi, expanded: 'they will', name: "they'll", expandedVariants: ['they will'] },
+  { pattern: /\bit'll\b/gi, expanded: 'it will', name: "it'll", expandedVariants: ['it will'] },
+  { pattern: /\bthat's\b/gi, expanded: 'that is', name: "that's", expandedVariants: ['that is'] },
+  { pattern: /\bthere's\b/gi, expanded: 'there is', name: "there's", expandedVariants: ['there is'] },
+  { pattern: /\bhere's\b/gi, expanded: 'here is', name: "here's", expandedVariants: ['here is'] },
+  { pattern: /\bwhat's\b/gi, expanded: 'what is', name: "what's", expandedVariants: ['what is'] },
+  { pattern: /\bwho's\b/gi, expanded: 'who is', name: "who's", expandedVariants: ['who is'] },
+  { pattern: /\bwhere's\b/gi, expanded: 'where is', name: "where's", expandedVariants: ['where is'] },
+  { pattern: /\bhow's\b/gi, expanded: 'how is', name: "how's", expandedVariants: ['how is'] },
+  { pattern: /\blet's\b/gi, expanded: 'let us', name: "let's", expandedVariants: ['let us'] },
+  { pattern: /\bhaven't\b/gi, expanded: 'have not', name: "haven't", expandedVariants: ['have not'] },
+  { pattern: /\bhasn't\b/gi, expanded: 'has not', name: "hasn't", expandedVariants: ['has not'] },
+  { pattern: /\bhadn't\b/gi, expanded: 'had not', name: "hadn't", expandedVariants: ['had not'] },
+  { pattern: /\bshouldn't\b/gi, expanded: 'should not', name: "shouldn't", expandedVariants: ['should not'] },
+  { pattern: /\bmustn't\b/gi, expanded: 'must not', name: "mustn't", expandedVariants: ['must not'] },
+  { pattern: /\bneedn't\b/gi, expanded: 'need not', name: "needn't", expandedVariants: ['need not'] },
+  { pattern: /\byou'd\b/gi, expanded: 'you had', name: "you'd", expandedVariants: ['you had', 'you would'] },
+  { pattern: /\bit'd\b/gi, expanded: 'it had', name: "it'd", expandedVariants: ['it had', 'it would'] },
+  { pattern: /\bain't\b/gi, expanded: 'am not', name: "ain't", expandedVariants: ['am not', 'is not', 'are not', 'has not', 'have not'] },
+];
+
+/**
+ * Разворачивает сокращения в тексте для симметричной проверки
+ * (например, "isn't" -> "is not")
+ */
+function expandContractions(text: string): string {
+  let result = text;
+  for (const c of CONTRACTIONS) {
+    // Заменяем сокращение на полную форму
+    // Используем RegExp с флагом 'gi', чтобы найти и заменить все вхождения
+    result = result.replace(new RegExp(c.pattern, 'gi'), c.expanded);
+  }
+  return result.toLowerCase();
+}
+
 /**
  * Проверяет грамматическое задание (поддерживает несколько вариантов ответа)
  */
@@ -644,6 +712,10 @@ function validateSingleVariant(
   // Получаем слова из ответа
   const normalizedAnswer = normalizeText(answer);
   const normalizedAnswerWords = normalizedAnswer.split(/\s+/).filter(Boolean);
+
+  // Создаем версию ответа с развернутыми сокращениями для симметричной проверки
+  const expandedAnswer = expandContractions(normalizedAnswer);
+
   const normalizedExpectedWords = expectedWords.flatMap(w => normalizeText(w).split(/\s+/)).filter(Boolean);
   const expectedTokensWithPlaceholders = buildNormalizedExpectedTokensWithPlaceholders(expectedWordsRaw);
   const hasPlaceholders = expectedTokensWithPlaceholders.some(isPlaceholderToken);
@@ -689,61 +761,8 @@ function validateSingleVariant(
 
   // Проверка апострофов в сокращениях
   // Если в expected есть сокращение с апострофом, проверяем, что в ответе оно тоже есть
-  const contractions = [
-    { pattern: /\bI'm\b/gi, expanded: 'I am', name: "I'm" },
-    { pattern: /\byou're\b/gi, expanded: 'you are', name: "you're" },
-    { pattern: /\bhe's\b/gi, expanded: 'he is', name: "he's" },
-    { pattern: /\bshe's\b/gi, expanded: 'she is', name: "she's" },
-    { pattern: /\bit's\b/gi, expanded: 'it is', name: "it's" },
-    { pattern: /\bwe're\b/gi, expanded: 'we are', name: "we're" },
-    { pattern: /\bthey're\b/gi, expanded: 'they are', name: "they're" },
-    { pattern: /\bdon't\b/gi, expanded: 'do not', name: "don't" },
-    { pattern: /\bdoesn't\b/gi, expanded: 'does not', name: "doesn't" },
-    { pattern: /\bdidn't\b/gi, expanded: 'did not', name: "didn't" },
-    { pattern: /\bisn't\b/gi, expanded: 'is not', name: "isn't" },
-    { pattern: /\baren't\b/gi, expanded: 'are not', name: "aren't" },
-    { pattern: /\bwasn't\b/gi, expanded: 'was not', name: "wasn't" },
-    { pattern: /\bweren't\b/gi, expanded: 'were not', name: "weren't" },
-    { pattern: /\bcan't\b/gi, expanded: 'cannot', name: "can't" },
-    { pattern: /\bcouldn't\b/gi, expanded: 'could not', name: "couldn't" },
-    { pattern: /\bwon't\b/gi, expanded: 'will not', name: "won't" },
-    { pattern: /\bwouldn't\b/gi, expanded: 'would not', name: "wouldn't" },
-    { pattern: /\bI've\b/gi, expanded: 'I have', name: "I've", expandedVariants: ['I have'] },
-    { pattern: /\byou've\b/gi, expanded: 'you have', name: "you've", expandedVariants: ['you have'] },
-    { pattern: /\bwe've\b/gi, expanded: 'we have', name: "we've", expandedVariants: ['we have'] },
-    { pattern: /\bthey've\b/gi, expanded: 'they have', name: "they've", expandedVariants: ['they have'] },
-    { pattern: /\bhe'd\b/gi, expanded: 'he had', name: "he'd", expandedVariants: ['he had', 'he would'] },
-    { pattern: /\bshe'd\b/gi, expanded: 'she had', name: "she'd", expandedVariants: ['she had', 'she would'] },
-    { pattern: /\bI'd\b/gi, expanded: 'I had', name: "I'd", expandedVariants: ['I had', 'I would'] },
-    { pattern: /\bwe'd\b/gi, expanded: 'we had', name: "we'd", expandedVariants: ['we had', 'we would'] },
-    { pattern: /\bthey'd\b/gi, expanded: 'they had', name: "they'd", expandedVariants: ['they had', 'they would'] },
-    { pattern: /\bI'll\b/gi, expanded: 'I will', name: "I'll", expandedVariants: ['I will'] },
-    { pattern: /\byou'll\b/gi, expanded: 'you will', name: "you'll", expandedVariants: ['you will'] },
-    { pattern: /\bhe'll\b/gi, expanded: 'he will', name: "he'll", expandedVariants: ['he will'] },
-    { pattern: /\bshe'll\b/gi, expanded: 'she will', name: "she'll", expandedVariants: ['she will'] },
-    { pattern: /\bwe'll\b/gi, expanded: 'we will', name: "we'll", expandedVariants: ['we will'] },
-    { pattern: /\bthey'll\b/gi, expanded: 'they will', name: "they'll", expandedVariants: ['they will'] },
-    { pattern: /\bit'll\b/gi, expanded: 'it will', name: "it'll", expandedVariants: ['it will'] },
-    { pattern: /\bthat's\b/gi, expanded: 'that is', name: "that's", expandedVariants: ['that is'] },
-    { pattern: /\bthere's\b/gi, expanded: 'there is', name: "there's", expandedVariants: ['there is'] },
-    { pattern: /\bhere's\b/gi, expanded: 'here is', name: "here's", expandedVariants: ['here is'] },
-    { pattern: /\bwhat's\b/gi, expanded: 'what is', name: "what's", expandedVariants: ['what is'] },
-    { pattern: /\bwho's\b/gi, expanded: 'who is', name: "who's", expandedVariants: ['who is'] },
-    { pattern: /\bwhere's\b/gi, expanded: 'where is', name: "where's", expandedVariants: ['where is'] },
-    { pattern: /\bhow's\b/gi, expanded: 'how is', name: "how's", expandedVariants: ['how is'] },
-    { pattern: /\bhow's\b/gi, expanded: 'how is', name: "how's", expandedVariants: ['how is'] },
-    { pattern: /\blet's\b/gi, expanded: 'let us', name: "let's", expandedVariants: ['let us'] },
-    // Missing contractions added on request
-    { pattern: /\bhaven't\b/gi, expanded: 'have not', name: "haven't", expandedVariants: ['have not'] },
-    { pattern: /\bhasn't\b/gi, expanded: 'has not', name: "hasn't", expandedVariants: ['has not'] },
-    { pattern: /\bhadn't\b/gi, expanded: 'had not', name: "hadn't", expandedVariants: ['had not'] },
-    { pattern: /\bshouldn't\b/gi, expanded: 'should not', name: "shouldn't", expandedVariants: ['should not'] },
-    { pattern: /\bmustn't\b/gi, expanded: 'must not', name: "mustn't", expandedVariants: ['must not'] },
-    { pattern: /\bneedn't\b/gi, expanded: 'need not', name: "needn't", expandedVariants: ['need not'] },
-    { pattern: /\byou'd\b/gi, expanded: 'you had', name: "you'd", expandedVariants: ['you had', 'you would'] },
-    { pattern: /\bit'd\b/gi, expanded: 'it had', name: "it'd", expandedVariants: ['it had', 'it would'] },
-    { pattern: /\bain't\b/gi, expanded: 'am not', name: "ain't", expandedVariants: ['am not', 'is not', 'are not', 'has not', 'have not'] },
-  ];
+  // 2. Используем общий список сокращений
+  const contractions = CONTRACTIONS;
 
   // Собираем все сокращения, найденные в expected
   const expectedContractions: Array<{
@@ -915,8 +934,20 @@ function validateSingleVariant(
 
   // Проверка разрывов слов (лишние пробелы внутри слов)
   const wordBreakIssues = checkWordBreaks(expectedWords, normalizedAnswerWords);
-  if (wordBreakIssues.length > 0) {
-    incorrectWords.push(...wordBreakIssues);
+
+  // Фильтруем ложные срабатывания для сокращений (например I в I'm определяется как разрыв слова)
+  const expandedTokensForBreakCheck = expandedAnswer.split(/\s+/);
+  const realWordBreakIssues = wordBreakIssues.filter(issue => {
+    const normalizedExp = normalizeText(issue.expected);
+    // Если слово есть в развернутом ответе как отдельный токен, то это не ошибка разрыва (это сокращение)
+    if (expandedTokensForBreakCheck.includes(normalizedExp)) {
+      return false;
+    }
+    return true;
+  });
+
+  if (realWordBreakIssues.length > 0) {
+    incorrectWords.push(...realWordBreakIssues);
   }
 
   // Сначала проверяем requiredWords как фразы (например "I am")
@@ -926,12 +957,15 @@ function validateSingleVariant(
 
     let hasRequiredPhrase: boolean;
     if (isPhrase) {
-      // Для фраз проверяем вхождение в normalizedAnswer
-      hasRequiredPhrase = normalizedAnswer.includes(requiredWord);
+      // Для фраз проверяем вхождение в normalizedAnswer или expandedAnswer
+      hasRequiredPhrase = normalizedAnswer.includes(requiredWord) || expandedAnswer.includes(requiredWord);
     } else {
       // Для отдельных слов проверяем как отдельный токен
       const answerTokens = normalizedAnswer.split(/\s+/);
-      hasRequiredPhrase = answerTokens.includes(requiredWord);
+      // Также проверяем в развернутой версии
+      const expandedTokens = expandedAnswer.split(/\s+/);
+
+      hasRequiredPhrase = answerTokens.includes(requiredWord) || expandedTokens.includes(requiredWord);
     }
 
     if (!hasRequiredPhrase) {
@@ -954,10 +988,23 @@ function validateSingleVariant(
   // Проверяем порядок слов только если все requiredWords найдены
   if (normalizedRequiredWords.length > 1 && incorrectWords.length === 0) {
     const answerTokens = normalizeText(answer).split(/\s+/);
-    const { isCorrect: isOrderCorrect, foundOrder } = checkWordOrder(
+    let { isCorrect: isOrderCorrect, foundOrder } = checkWordOrder(
       normalizedRequiredWords,
       answerTokens
     );
+
+    // Если проверка порядка провалилась на исходном ответе, пробуем на развернутом
+    if (!isOrderCorrect) {
+      const expandedTokens = expandedAnswer.split(/\s+/);
+      const orderCheckExpanded = checkWordOrder(
+        normalizedRequiredWords,
+        expandedTokens
+      );
+      if (orderCheckExpanded.isCorrect) {
+        isOrderCorrect = true;
+        foundOrder = orderCheckExpanded.foundOrder;
+      }
+    }
 
     if (!isOrderCorrect) {
       orderError = true;
@@ -1041,14 +1088,17 @@ function validateSingleVariant(
     // Если слово является обязательным или частью обязательной фразы
     if (isPartOfRequired) {
       // Проверяем его точное наличие
-      const exists = wordExistsInText(expectedWord, answer);
+      const exists = wordExistsInText(expectedWord, answer) || wordExistsInText(expectedWord, expandedAnswer);
       if (!exists) {
         missingWords.push(expectedWord);
       }
     } else if (!isFoundContraction) {
       // Для необязательных слов, которые не являются сокращениями, используем гибкую проверку
       const existsFlexibly = checkFlexibleWordExistence(expectedWord, normalizedAnswerWords);
-      if (!existsFlexibly) {
+      // Если гибкая проверка по токенам не прошла, пробуем проверить по развернутым токенам (на случай если пользователь использовал сокращение, а мы ожидаем полную форму)
+      const existsInExpanded = existsFlexibly || checkFlexibleWordExistence(expectedWord, expandedAnswer.split(/\s+/).filter(Boolean));
+
+      if (!existsInExpanded) {
         missingWords.push(expectedWord);
       }
     }
