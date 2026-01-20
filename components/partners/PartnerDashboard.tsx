@@ -2,12 +2,13 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { supabase } from '../../services/supabaseClient';
 import { getPartnerStats, PartnerStats, getAdminPromoCodes, AdminPromoCodesData } from '../../services/partnerService';
 import { AdminPromoCodesPanel } from './AdminPromoCodesPanel';
-import { 
-  TrendingUp, 
-  DollarSign, 
-  CreditCard, 
-  CheckCircle2, 
-  XCircle, 
+import { AdminAnalyticsPanel } from './AdminAnalyticsPanel';
+import {
+  TrendingUp,
+  DollarSign,
+  CreditCard,
+  CheckCircle2,
+  XCircle,
   Loader2,
   LogOut,
   RefreshCw,
@@ -55,7 +56,8 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   const [userIsAdmin, setUserIsAdmin] = useState<boolean>(false);
   const [adminData, setAdminData] = useState<AdminPromoCodesData | null>(null);
   const [selectedPromoCodes, setSelectedPromoCodes] = useState<Set<string>>(new Set());
-  
+  const [adminTab, setAdminTab] = useState<'promo_codes' | 'analytics'>('promo_codes');
+
   const retryTimerRef = useRef<number | null>(null);
   const retryAttemptRef = useRef<number>(0);
   const isMountedRef = useRef<boolean>(true);
@@ -133,20 +135,20 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
 
       const statsPromise = getPartnerStats(userEmail);
       const data = await Promise.race([statsPromise, timeoutPromise]);
-      
+
       if (!isMountedRef.current) return;
-      
+
       setStats(data);
       retryAttemptRef.current = 0;
       setError(null);
     } catch (err) {
       console.error('[PartnerDashboard] Error loading stats:', err);
-      
+
       if (!isMountedRef.current) return;
 
       // Проверяем, является ли ошибка ошибкой авторизации (не нужно ретраить)
       const isAuthError = err instanceof Error && (
-        err.message.includes('403') || 
+        err.message.includes('403') ||
         err.message.includes('401') ||
         err.message.includes('Access denied')
       );
@@ -165,7 +167,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
       if (attempt < 4 && typeof window !== 'undefined') {
         const delay = Math.min(4000, 500 * Math.pow(2, attempt));
         retryAttemptRef.current = attempt + 1;
-        
+
         retryTimerRef.current = window.setTimeout(() => {
           if (isMountedRef.current) {
             console.log(`[PartnerDashboard] Retry attempt ${retryAttemptRef.current} after ${delay}ms`);
@@ -186,11 +188,9 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
 
   useEffect(() => {
     isMountedRef.current = true;
-    let loadingState = true;
-    
+
     const cleanup = () => {
       isMountedRef.current = false;
-      loadingState = false;
       if (retryTimerRef.current != null && typeof window !== 'undefined') {
         window.clearTimeout(retryTimerRef.current);
       }
@@ -200,18 +200,6 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
     };
 
     loadStats();
-
-    // Принудительное завершение загрузки через 15 секунд на случай зависания
-    if (typeof window !== 'undefined') {
-      forceTimeoutRef.current = window.setTimeout(() => {
-        if (isMountedRef.current && loadingState) {
-          console.warn('[PartnerDashboard] Force stopping loading after 15s timeout');
-          loadingState = false;
-          setLoading(false);
-          setError('Загрузка данных заняла слишком много времени. Попробуйте обновить страницу.');
-        }
-      }, 15000);
-    }
 
     return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,7 +240,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
       // Скачиваем файл
       const response = await fetch(data.signedUrl);
       if (!response.ok) throw new Error('Не удалось загрузить чек');
-      
+
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -279,14 +267,14 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   // Получаем все месяцы включая текущий (даже если платежей нет)
   const getAllMonths = () => {
     if (!stats?.monthlyStats) return [];
-    
+
     const now = new Date();
     const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const currentMonthName = now.toLocaleDateString('ru-RU', { year: 'numeric', month: 'long' });
-    
+
     // Проверяем, есть ли текущий месяц в данных
     const hasCurrentMonth = stats.monthlyStats.some(month => month.monthKey === currentMonthKey);
-    
+
     if (!hasCurrentMonth) {
       // Добавляем текущий месяц с нулевыми значениями
       return [
@@ -301,7 +289,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
         }
       ];
     }
-    
+
     return stats.monthlyStats;
   };
 
@@ -310,7 +298,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
   // Для админа: фильтруем платежи по выбранным промокодам и пересчитываем статистику
   const filteredMonthlyStatsForAdmin = useMemo(() => {
     if (!userIsAdmin || !adminData || !adminData.payments) return null;
-    
+
     const allPromoCodes = adminData.promoCodes.map(pc => pc.code);
     if (selectedPromoCodes.size === 0 || selectedPromoCodes.size === allPromoCodes.length) {
       // Если выбраны все промокоды, используем исходные данные
@@ -334,7 +322,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
       if (!payment.created_at) return;
       const paymentDate = new Date(payment.created_at);
       const monthKey = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`;
-      
+
       if (!statsByMonth[monthKey]) {
         statsByMonth[monthKey] = {
           revenue: 0,
@@ -342,7 +330,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
           currency: payment.amount_currency || 'RUB',
         };
       }
-      
+
       const amount = payment.amount_value ? Number(payment.amount_value) : 0;
       if (Number.isFinite(amount) && amount > 0) {
         statsByMonth[monthKey].revenue += amount;
@@ -354,7 +342,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
     const payoutsByMonth: Record<string, { payouts: number; currency: string }> = {};
     (adminData.payouts || []).forEach(payout => {
       if (!payout.payment_date) return;
-      
+
       // Если выбраны все промокоды, показываем все выплаты
       if (selectedPromoCodes.size !== allPromoCodes.length) {
         if (payout.promo_codes && payout.promo_codes.length > 0) {
@@ -364,14 +352,14 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
           return;
         }
       }
-      
+
       const payoutDate = new Date(payout.payment_date);
       const monthKey = `${payoutDate.getFullYear()}-${String(payoutDate.getMonth() + 1).padStart(2, '0')}`;
-      
+
       if (!payoutsByMonth[monthKey]) {
         payoutsByMonth[monthKey] = { payouts: 0, currency: payout.amount_currency || 'RUB' };
       }
-      
+
       const amount = payout.amount_value ? Number(payout.amount_value) : 0;
       if (Number.isFinite(amount) && amount > 0) {
         payoutsByMonth[monthKey].payouts += amount;
@@ -385,7 +373,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
         const monthStats = statsByMonth[monthKey];
         const monthPayouts = payoutsByMonth[monthKey] || { payouts: 0, currency: monthStats.currency };
         const monthName = new Date(monthKey + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-        
+
         return {
           month: monthName,
           monthKey,
@@ -422,10 +410,10 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
     if (allMonths.length > 0 && selectedMonthIndex === null) {
       const now = new Date();
       const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      
+
       // Ищем текущий месяц в данных
       const currentMonthIndex = allMonths.findIndex(month => month.monthKey === currentMonthKey);
-      
+
       if (currentMonthIndex !== -1) {
         // Если текущий месяц найден, выбираем его
         setSelectedMonthIndex(currentMonthIndex);
@@ -481,13 +469,13 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
 
   // Получаем выбранный месяц
   const selectedMonth = selectedMonthIndex !== null && allMonths.length > 0
-    ? allMonths[selectedMonthIndex] 
+    ? allMonths[selectedMonthIndex]
     : null;
 
   // Навигация по месяцам
   const navigateMonth = (direction: 'prev' | 'next') => {
     if (allMonths.length === 0) return;
-    
+
     setSelectedMonthIndex(prev => {
       if (prev === null) return allMonths.length - 1;
       if (direction === 'prev' && prev > 0) return prev - 1;
@@ -504,7 +492,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
           <p className="text-sm font-semibold text-slate-900 mb-2">{label}</p>
           {payload.map((entry: any, index: number) => (
             <p key={index} className="text-xs" style={{ color: entry.color }}>
-              {entry.name}: {entry.dataKey === 'revenue' 
+              {entry.name}: {entry.dataKey === 'revenue'
                 ? formatCurrency(entry.value, stats?.totalRevenueCurrency || 'RUB')
                 : entry.value}
             </p>
@@ -615,74 +603,100 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
         {/* Admin Panel */}
         {userIsAdmin && (
           <div className="mb-6 sm:mb-8">
-            <AdminPromoCodesPanel 
-              userEmail={userEmail} 
-              onFilterChange={(selectedPromoCodes) => {
-                setSelectedPromoCodes(selectedPromoCodes);
-              }}
-            />
+            <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-6 w-fit">
+              <button
+                onClick={() => setAdminTab('promo_codes')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${adminTab === 'promo_codes'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-gray-600 hover:text-slate-900'
+                  }`}
+              >
+                Промокоды
+              </button>
+              <button
+                onClick={() => setAdminTab('analytics')}
+                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2 ${adminTab === 'analytics'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-gray-600 hover:text-slate-900'
+                  }`}
+              >
+                <BarChart3 className="w-4 h-4" />
+                Аналитика
+              </button>
+            </div>
+
+            {adminTab === 'promo_codes' ? (
+              <AdminPromoCodesPanel
+                userEmail={userEmail}
+                onFilterChange={(selectedPromoCodes) => {
+                  setSelectedPromoCodes(selectedPromoCodes);
+                }}
+              />
+            ) : (
+              <AdminAnalyticsPanel userEmail={userEmail} />
+            )}
           </div>
         )}
 
         {/* Summary Cards - скрываем для админа, т.к. у него уже есть полная статистика */}
         {!userIsAdmin && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6 mb-6 sm:mb-8">
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
-            <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-emerald-100/50 rounded-full blur-xl pointer-events-none"></div>
-            <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
-              <div className="p-2 sm:p-3 bg-emerald-100 rounded-xl">
-                <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
+              <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-emerald-100/50 rounded-full blur-xl pointer-events-none"></div>
+              <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
+                <div className="p-2 sm:p-3 bg-emerald-100 rounded-xl">
+                  <DollarSign className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-600" />
+                </div>
+              </div>
+              <div className="space-y-1 relative z-10">
+                <p className="text-xs sm:text-sm font-semibold text-gray-600">Общая выручка</p>
+                <p className="text-lg sm:text-2xl font-black text-slate-900 break-words">
+                  {formatCurrency(stats.totalRevenue, stats.totalRevenueCurrency)}
+                </p>
               </div>
             </div>
-            <div className="space-y-1 relative z-10">
-              <p className="text-xs sm:text-sm font-semibold text-gray-600">Общая выручка</p>
-              <p className="text-lg sm:text-2xl font-black text-slate-900 break-words">
-                {formatCurrency(stats.totalRevenue, stats.totalRevenueCurrency)}
-              </p>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
-            <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-purple-100/50 rounded-full blur-xl pointer-events-none"></div>
-            <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
-              <div className="p-2 sm:p-3 bg-purple-100 rounded-xl">
-                <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
+              <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-purple-100/50 rounded-full blur-xl pointer-events-none"></div>
+              <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
+                <div className="p-2 sm:p-3 bg-purple-100 rounded-xl">
+                  <CreditCard className="w-5 h-5 sm:w-6 sm:h-6 text-purple-600" />
+                </div>
+              </div>
+              <div className="space-y-1 relative z-10">
+                <p className="text-xs sm:text-sm font-semibold text-gray-600">Платежей</p>
+                <p className="text-lg sm:text-2xl font-black text-slate-900">{stats.totalPayments}</p>
               </div>
             </div>
-            <div className="space-y-1 relative z-10">
-              <p className="text-xs sm:text-sm font-semibold text-gray-600">Платежей</p>
-              <p className="text-lg sm:text-2xl font-black text-slate-900">{stats.totalPayments}</p>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
-            <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-orange-100/50 rounded-full blur-xl pointer-events-none"></div>
-            <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
-              <div className="p-2 sm:p-3 bg-orange-100 rounded-xl">
-                <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
+              <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-orange-100/50 rounded-full blur-xl pointer-events-none"></div>
+              <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
+                <div className="p-2 sm:p-3 bg-orange-100 rounded-xl">
+                  <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-orange-600" />
+                </div>
+              </div>
+              <div className="space-y-1 relative z-10">
+                <p className="text-xs sm:text-sm font-semibold text-gray-600">Выплачено</p>
+                <p className="text-lg sm:text-2xl font-black text-slate-900 break-words">
+                  {formatCurrency(stats.totalPayouts || 0, stats.totalPayoutsCurrency || stats.totalRevenueCurrency)}
+                </p>
               </div>
             </div>
-            <div className="space-y-1 relative z-10">
-              <p className="text-xs sm:text-sm font-semibold text-gray-600">Выплачено</p>
-              <p className="text-lg sm:text-2xl font-black text-slate-900 break-words">
-                {formatCurrency(stats.totalPayouts || 0, stats.totalPayoutsCurrency || stats.totalRevenueCurrency)}
-              </p>
-            </div>
-          </div>
 
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
-            <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-blue-100/50 rounded-full blur-xl pointer-events-none"></div>
-            <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
-              <div className="p-2 sm:p-3 bg-blue-100 rounded-xl">
-                <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+            <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-4 sm:p-6 shadow-sm relative overflow-hidden">
+              <div className="absolute top-[-20px] right-[-20px] w-20 h-20 bg-blue-100/50 rounded-full blur-xl pointer-events-none"></div>
+              <div className="flex items-center justify-between mb-3 sm:mb-4 relative z-10">
+                <div className="p-2 sm:p-3 bg-blue-100 rounded-xl">
+                  <Gift className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600" />
+                </div>
+              </div>
+              <div className="space-y-1 relative z-10">
+                <p className="text-xs sm:text-sm font-semibold text-gray-600">Промокодов</p>
+                <p className="text-lg sm:text-2xl font-black text-slate-900">{stats.promoCodes.length}</p>
               </div>
             </div>
-            <div className="space-y-1 relative z-10">
-              <p className="text-xs sm:text-sm font-semibold text-gray-600">Промокодов</p>
-              <p className="text-lg sm:text-2xl font-black text-slate-900">{stats.promoCodes.length}</p>
-            </div>
           </div>
-        </div>
         )}
 
         {/* Monthly Navigation & Details */}
@@ -704,7 +718,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
               >
                 <ChevronLeft className="w-5 h-5 text-gray-700" />
               </button>
-              
+
               <div className="flex-1 text-center px-4">
                 <h3 className="text-lg sm:text-xl font-black text-slate-900 mb-1">{selectedMonth.month}</h3>
                 <p className="text-xs text-gray-500">
@@ -759,7 +773,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
             {/* Payments for Selected Month */}
             <div className="border-t border-gray-200 pt-6">
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mb-4">Платежи за {selectedMonth.month}</h3>
-              
+
               {(() => {
                 const selectedMonthPayments = (stats.payments || []).filter(payment => {
                   if (!payment.created_at) return false;
@@ -887,7 +901,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
             {/* Payouts for Selected Month */}
             <div className="border-t border-gray-200 pt-6 mt-6">
               <h3 className="text-sm sm:text-base font-bold text-slate-900 mb-4">Выплаты за {selectedMonth.month}</h3>
-              
+
               {(() => {
                 const selectedMonthPayouts = (stats.payouts || []).filter(payout => {
                   if (!payout.payment_date) return false;
@@ -1029,73 +1043,73 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
               <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6 text-brand-primary" />
               <h2 className="text-base sm:text-lg font-black text-slate-900">График по всем месяцам</h2>
             </div>
-            
-            <div 
+
+            <div
               ref={chartContainerRef}
-              className="w-full" 
+              className="w-full"
               style={{ minHeight: '300px', height: '300px', position: 'relative' }}
             >
               {chartReady ? (
                 <ResponsiveContainer width="100%" height={300} minHeight={300}>
-                <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis 
-                    dataKey="month" 
-                    stroke="#6b7280"
-                    fontSize={12}
-                    tick={{ fill: '#6b7280' }}
-                  />
-                  <YAxis 
-                    yAxisId="left"
-                    stroke="#6b7280"
-                    fontSize={12}
-                    tick={{ fill: '#6b7280' }}
-                    tickFormatter={(value) => formatCurrency(value, userIsAdmin && adminData ? adminData.totalRevenueCurrency : stats.totalRevenueCurrency)}
-                  />
-                  <YAxis 
-                    yAxisId="right"
-                    orientation="right"
-                    stroke="#6b7280"
-                    fontSize={12}
-                    tick={{ fill: '#6b7280' }}
-                  />
-                  <Tooltip content={<CustomTooltip />} />
-                  <Legend 
-                    wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }}
-                    iconType="line"
-                  />
-                  <Line 
-                    yAxisId="left"
-                    type="monotone" 
-                    dataKey="revenue" 
-                    stroke="#10b981" 
-                    strokeWidth={3}
-                    name="Выручка"
-                    dot={{ fill: '#10b981', r: 4 }}
-                    activeDot={{ r: 6 }}
-                  />
-                  <Line 
-                    yAxisId="left"
-                    type="monotone" 
-                    dataKey="payouts" 
-                    stroke="#f97316" 
-                    strokeWidth={2}
-                    name="Выплачено"
-                    dot={{ fill: '#f97316', r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
-                  <Line 
-                    yAxisId="right"
-                    type="monotone" 
-                    dataKey="totalPayments" 
-                    stroke="#3b82f6" 
-                    strokeWidth={2}
-                    name="Платежей"
-                    dot={{ fill: '#3b82f6', r: 3 }}
-                    activeDot={{ r: 5 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+                  <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis
+                      dataKey="month"
+                      stroke="#6b7280"
+                      fontSize={12}
+                      tick={{ fill: '#6b7280' }}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      stroke="#6b7280"
+                      fontSize={12}
+                      tick={{ fill: '#6b7280' }}
+                      tickFormatter={(value) => formatCurrency(value, userIsAdmin && adminData ? adminData.totalRevenueCurrency : stats.totalRevenueCurrency)}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      stroke="#6b7280"
+                      fontSize={12}
+                      tick={{ fill: '#6b7280' }}
+                    />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Legend
+                      wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }}
+                      iconType="line"
+                    />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="revenue"
+                      stroke="#10b981"
+                      strokeWidth={3}
+                      name="Выручка"
+                      dot={{ fill: '#10b981', r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="payouts"
+                      stroke="#f97316"
+                      strokeWidth={2}
+                      name="Выплачено"
+                      dot={{ fill: '#f97316', r: 3 }}
+                      activeDot={{ r: 5 }}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="totalPayments"
+                      stroke="#3b82f6"
+                      strokeWidth={2}
+                      name="Платежей"
+                      dot={{ fill: '#3b82f6', r: 3 }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
               ) : (
                 <div className="w-full h-full flex items-center justify-center">
                   <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
@@ -1109,139 +1123,139 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
         {!userIsAdmin && (
           <>
             {stats.promoCodeStats.length > 0 ? (
-          <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
-              <h2 className="text-base sm:text-lg font-black text-slate-900">Статистика по промокодам</h2>
-            </div>
-            
-            {/* Desktop Table */}
-            <div className="hidden lg:block">
-              <table className="w-full table-auto">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Промокод</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Тип</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Статус</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Платежи</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Выручка</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Создан</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
+              <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+                <div className="px-4 sm:px-6 py-4 border-b border-gray-200">
+                  <h2 className="text-base sm:text-lg font-black text-slate-900">Статистика по промокодам</h2>
+                </div>
+
+                {/* Desktop Table */}
+                <div className="hidden lg:block">
+                  <table className="w-full table-auto">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Промокод</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Тип</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Статус</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Платежи</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Выручка</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Создан</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {stats.promoCodeStats.map((promoStat) => (
+                        <tr key={promoStat.code} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            <code className="text-xs font-mono font-bold text-slate-900 bg-gray-100 px-1.5 py-0.5 rounded">
+                              {promoStat.code}
+                            </code>
+                          </td>
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              {promoStat.kind === 'percent' && <Percent className="w-3 h-3 text-gray-400" />}
+                              {promoStat.kind === 'fixed' && <DollarSign className="w-3 h-3 text-gray-400" />}
+                              {promoStat.kind === 'free' && <Gift className="w-3 h-3 text-gray-400" />}
+                              <span className="text-xs text-gray-900">{getPromoKindLabel(promoStat.kind)}</span>
+                              {promoStat.value !== null && (
+                                <span className="text-xs text-gray-500">
+                                  {promoStat.kind === 'percent' ? `${promoStat.value}%` : formatCurrency(Number(promoStat.value), promoStat.currency)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            {promoStat.active ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Активен
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                                <XCircle className="w-3 h-3" />
+                                Неактивен
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-900">{promoStat.totalPayments}</td>
+                          <td className="px-2 py-2 whitespace-nowrap">
+                            <span className="text-xs font-bold text-slate-900">
+                              {formatCurrency(promoStat.revenue, promoStat.currency)}
+                            </span>
+                          </td>
+                          <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-600">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {formatDate(promoStat.created_at)}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile Cards */}
+                <div className="lg:hidden divide-y divide-gray-200">
                   {stats.promoCodeStats.map((promoStat) => (
-                    <tr key={promoStat.code} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-2 py-2 whitespace-nowrap">
-                        <code className="text-xs font-mono font-bold text-slate-900 bg-gray-100 px-1.5 py-0.5 rounded">
-                          {promoStat.code}
-                        </code>
-                      </td>
-                      <td className="px-2 py-2 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          {promoStat.kind === 'percent' && <Percent className="w-3 h-3 text-gray-400" />}
-                          {promoStat.kind === 'fixed' && <DollarSign className="w-3 h-3 text-gray-400" />}
-                          {promoStat.kind === 'free' && <Gift className="w-3 h-3 text-gray-400" />}
-                          <span className="text-xs text-gray-900">{getPromoKindLabel(promoStat.kind)}</span>
+                    <div key={promoStat.code} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors">
+                      <div className="space-y-4">
+                        {/* Header with code and status */}
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <code className="text-sm font-mono font-bold text-slate-900 bg-gray-100 px-2 py-1 rounded inline-block break-all">
+                              {promoStat.code}
+                            </code>
+                          </div>
+                          {promoStat.active ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shrink-0">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Активен
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 shrink-0">
+                              <XCircle className="w-3 h-3" />
+                              Неактивен
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Type and value */}
+                        <div className="flex items-center gap-2">
+                          {promoStat.kind === 'percent' && <Percent className="w-4 h-4 text-gray-400" />}
+                          {promoStat.kind === 'fixed' && <DollarSign className="w-4 h-4 text-gray-400" />}
+                          {promoStat.kind === 'free' && <Gift className="w-4 h-4 text-gray-400" />}
+                          <span className="text-sm font-semibold text-gray-900">{getPromoKindLabel(promoStat.kind)}</span>
                           {promoStat.value !== null && (
                             <span className="text-xs text-gray-500">
                               {promoStat.kind === 'percent' ? `${promoStat.value}%` : formatCurrency(Number(promoStat.value), promoStat.currency)}
                             </span>
                           )}
                         </div>
-                      </td>
-                      <td className="px-2 py-2 whitespace-nowrap">
-                        {promoStat.active ? (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Активен
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
-                            <XCircle className="w-3 h-3" />
-                            Неактивен
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-900">{promoStat.totalPayments}</td>
-                      <td className="px-2 py-2 whitespace-nowrap">
-                        <span className="text-xs font-bold text-slate-900">
-                          {formatCurrency(promoStat.revenue, promoStat.currency)}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 whitespace-nowrap text-xs text-gray-600">
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          {formatDate(promoStat.created_at)}
+
+                        {/* Stats grid */}
+                        <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
+                          <div>
+                            <p className="text-xs text-gray-600 mb-1">Платежей</p>
+                            <p className="text-base font-bold text-slate-900">{promoStat.totalPayments}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-600 mb-1">Выручка</p>
+                            <p className="text-lg font-black text-slate-900">
+                              {formatCurrency(promoStat.revenue, promoStat.currency)}
+                            </p>
+                          </div>
+                          <div className="col-span-2">
+                            <p className="text-xs text-gray-600 mb-1">Создан</p>
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-gray-400" />
+                              <p className="text-sm text-gray-900">{formatDate(promoStat.created_at)}</p>
+                            </div>
+                          </div>
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Mobile Cards */}
-            <div className="lg:hidden divide-y divide-gray-200">
-              {stats.promoCodeStats.map((promoStat) => (
-                <div key={promoStat.code} className="p-4 sm:p-6 hover:bg-gray-50 transition-colors">
-                  <div className="space-y-4">
-                    {/* Header with code and status */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <code className="text-sm font-mono font-bold text-slate-900 bg-gray-100 px-2 py-1 rounded inline-block break-all">
-                          {promoStat.code}
-                        </code>
-                      </div>
-                      {promoStat.active ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 shrink-0">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Активен
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 shrink-0">
-                          <XCircle className="w-3 h-3" />
-                          Неактивен
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Type and value */}
-                    <div className="flex items-center gap-2">
-                      {promoStat.kind === 'percent' && <Percent className="w-4 h-4 text-gray-400" />}
-                      {promoStat.kind === 'fixed' && <DollarSign className="w-4 h-4 text-gray-400" />}
-                      {promoStat.kind === 'free' && <Gift className="w-4 h-4 text-gray-400" />}
-                      <span className="text-sm font-semibold text-gray-900">{getPromoKindLabel(promoStat.kind)}</span>
-                      {promoStat.value !== null && (
-                        <span className="text-xs text-gray-500">
-                          {promoStat.kind === 'percent' ? `${promoStat.value}%` : formatCurrency(Number(promoStat.value), promoStat.currency)}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Stats grid */}
-                    <div className="grid grid-cols-2 gap-3 pt-2 border-t border-gray-100">
-                      <div>
-                        <p className="text-xs text-gray-600 mb-1">Платежей</p>
-                        <p className="text-base font-bold text-slate-900">{promoStat.totalPayments}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-gray-600 mb-1">Выручка</p>
-                        <p className="text-lg font-black text-slate-900">
-                          {formatCurrency(promoStat.revenue, promoStat.currency)}
-                        </p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-gray-600 mb-1">Создан</p>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3 text-gray-400" />
-                          <p className="text-sm text-gray-900">{formatDate(promoStat.created_at)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
-              ))}
-            </div>
-          </div>
+              </div>
             ) : (
               <div className="bg-white rounded-2xl sm:rounded-3xl border border-gray-200 p-8 sm:p-12 text-center">
                 <Gift className="w-12 h-12 sm:w-16 sm:h-16 text-gray-400 mx-auto mb-4" />
@@ -1268,7 +1282,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
                 </p>
               )}
             </div>
-            
+
             {stats.payouts.length > 0 ? (
               <>
                 {/* Desktop Table */}

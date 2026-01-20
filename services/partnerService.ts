@@ -167,14 +167,14 @@ export const getPartnerStats = async (email: string, retryCount = 0): Promise<Pa
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       const errorMessage = error.error || `HTTP ${response.status}`;
-      
+
       // Retry для временных ошибок сервера (5xx)
       if (retryCount < maxRetries && response.status >= 500 && response.status < 600) {
         const delay = 200 * Math.pow(1.5, retryCount);
         await new Promise(resolve => setTimeout(resolve, Math.min(1000, delay)));
         return getPartnerStats(email, retryCount + 1);
       }
-      
+
       throw new Error(errorMessage);
     }
 
@@ -191,12 +191,12 @@ export const getPartnerStats = async (email: string, retryCount = 0): Promise<Pa
       await new Promise(resolve => setTimeout(resolve, Math.min(1000, delay)));
       return getPartnerStats(email, retryCount + 1);
     }
-    
+
     // Если это AbortError от таймаута, выбрасываем понятную ошибку
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Запрос занял слишком много времени');
     }
-    
+
     throw error;
   }
 };
@@ -229,18 +229,18 @@ export const getAdminPromoCodes = async (email: string, retryCount = 0): Promise
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       const errorMessage = error.error || `HTTP ${response.status}`;
-      
+
       // Не ретраим на ошибки авторизации
       if (response.status === 403 || response.status === 401) {
         throw new Error(errorMessage);
       }
-      
+
       if (retryCount < maxRetries && response.status >= 500 && response.status < 600) {
         const delay = 200 * Math.pow(1.5, retryCount);
         await new Promise(resolve => setTimeout(resolve, Math.min(1000, delay)));
         return getAdminPromoCodes(email, retryCount + 1);
       }
-      
+
       throw new Error(errorMessage);
     }
 
@@ -256,11 +256,11 @@ export const getAdminPromoCodes = async (email: string, retryCount = 0): Promise
       await new Promise(resolve => setTimeout(resolve, Math.min(1000, delay)));
       return getAdminPromoCodes(email, retryCount + 1);
     }
-    
+
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Запрос занял слишком много времени');
     }
-    
+
     throw error;
   }
 };
