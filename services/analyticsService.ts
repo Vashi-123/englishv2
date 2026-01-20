@@ -75,3 +75,17 @@ export const getRetentionMetrics = async (): Promise<any[]> => {
     if (error) throw error;
     return data;
 };
+
+export interface LessonDistribution {
+    lesson_id: string;
+    day: number;
+    lesson: number;
+    title: string;
+    user_count: number;
+}
+
+export const getLessonDistribution = async (daysBack: number = 90): Promise<LessonDistribution[]> => {
+    const { data, error } = await supabase.rpc('get_lesson_distribution', { days_back: daysBack });
+    if (error) throw error;
+    return data;
+};

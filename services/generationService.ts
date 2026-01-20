@@ -1119,6 +1119,12 @@ export const syncAllLessonScripts = async (level: string = 'A1'): Promise<void> 
 
         // Also update memory cache for immediate access
         lessonScriptCache.set(cacheKey, scriptStr);
+
+        // Also trigger audio prefetch for the updated script content
+        void prefetchTtsForLessonScript({
+          lessonCacheKey: cacheKey,
+          scriptJsonString: scriptStr,
+        });
       }
     }
     console.log(`[Sync] Successfully updated ${toFetchIds.length} scripts.`);

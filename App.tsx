@@ -114,10 +114,13 @@ const LandingPage: React.FC = () => {
     return <LoadingScreen />;
   }
 
-  // Убрали автоматический редирект на /app для залогиненных юзеров,
-  // чтобы на главной всегда был лендинг (интро).
+  // Для нативных приложений: если пользователь залогинен, сразу редиректим в приложение
+  // Это предотвращает показ интро при перезапуске приложения
+  if (isNativePlatform && session?.user?.id) {
+    return <Navigate to="/app" replace />;
+  }
 
-  // Показываем интро (Landing Page)
+  // На вебе (или если не залогинен): показываем интро (Landing Page)
   return (
     <IntroScreen
       onNext={() => {
@@ -523,7 +526,7 @@ const AppRouter: React.FC = () => {
             {!isNativeIos && <Route path="/auth/confirm" element={<EmailConfirmPage />} />}
             <Route path="/check" element={<CheckStatusScreen />} />
             <Route path="/partners" element={<PartnerPage />} />
-            <Route path="/partners/" element={<PartnerPage />} />
+            <Route path="/partners/*" element={<PartnerPage />} />
 
             {/* 404 - редирект на главную */}
             <Route path="*" element={<Navigate to="/" replace />} />

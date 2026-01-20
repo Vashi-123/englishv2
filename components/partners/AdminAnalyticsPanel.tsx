@@ -4,6 +4,7 @@ import {
     getUserGrowthChart,
     getNewUsersChart,
     getEngagementChart,
+    getLessonDistribution,
     DashboardData,
     UserGrowthData
 } from '../../services/analyticsService';
@@ -42,6 +43,13 @@ interface AdminAnalyticsPanelProps {
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
 
+const SEGMENT_TRANSLATIONS: Record<string, string> = {
+    'Daily Learner': 'Ежедневные',
+    'Regular Learner': 'Регулярные',
+    'Occasional Learner': 'Эпизодические',
+    'Inactive': 'Неактивные',
+};
+
 export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEmail }) => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -49,7 +57,25 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
     const [growthData, setGrowthData] = useState<UserGrowthData[]>([]);
     const [newUsersData, setNewUsersData] = useState<any[]>([]);
     const [engagementData, setEngagementData] = useState<any[]>([]);
+    const [lessonDistData, setLessonDistData] = useState<any[]>([]);
     const [daysBack, setDaysBack] = useState(90);
+    const [hiddenSeries, setHiddenSeries] = useState<Set<string>>(new Set());
+
+    const toggleSeries = (e: any) => {
+        // Recharts legend payload contains dataKey
+        const dataKey = e.dataKey;
+        if (!dataKey) return;
+
+        setHiddenSeries(prev => {
+            const next = new Set(prev);
+            if (next.has(dataKey)) {
+                next.delete(dataKey);
+            } else {
+                next.add(dataKey);
+            }
+            return next;
+        });
+    };
 
     const loadData = async () => {
         setLoading(true);
@@ -60,15 +86,17 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
             setKpiData(kpis);
 
             // Загружаем данные для графиков параллельно
-            const [growth, newUsers, engagement] = await Promise.all([
+            const [growth, newUsers, engagement, lessonDist] = await Promise.all([
                 getUserGrowthChart(daysBack),
                 getNewUsersChart(30), // Последние 30 дней для детального view
-                getEngagementChart(daysBack)
+                getEngagementChart(daysBack),
+                getLessonDistribution(daysBack)
             ]);
 
             setGrowthData(growth);
             setNewUsersData(newUsers);
             setEngagementData(engagement);
+            setLessonDistData(lessonDist);
         } catch (err: any) {
             console.error('Error loading analytics:', err);
             setError(err.message || 'Ошибка загрузки аналитики');
@@ -109,7 +137,10 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
     }
 
     const { growth, engagement, segments } = kpiData!;
-    const safeSegments = segments || [];
+    const safeSegments = (segments || []).map(s => ({
+        ...s,
+        name: SEGMENT_TRANSLATIONS[s.segment] || s.segment
+    }));
 
     return (
         <div className="space-y-6">
@@ -181,6 +212,36 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
 
             {/* Charts Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* Lesson Distribution Chart */}
+                <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm col-span-1 lg:col-span-2">
+                    <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <Filter className="w-5 h-5 text-gray-500" />
+                        Прогресс пользователей по урокам
+                    </h3>
+                    <div className="h-[300px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={lessonDistData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                <XAxis
+                                    dataKey="title"
+                                    stroke="#9CA3AF"
+                                    fontSize={10}
+                                    interval={0}
+                                    angle={-45}
+                                    textAnchor="end"
+                                    height={60}
+                                />
+                                <YAxis stroke="#9CA3AF" fontSize={12} />
+                                <Tooltip
+                                    contentStyle={{ borderRadius: '12px', border: '1px solid #E5E7EB' }}
+                                    cursor={{ opacity: 0.1 }}
+                                />
+                                <Bar dataKey="user_count" name="Пользователей" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
 
                 {/* User Growth Chart */}
                 <div className="bg-white p-6 rounded-3xl border border-gray-200 shadow-sm">
@@ -264,6 +325,23 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
                         <Activity className="w-5 h-5 text-gray-500" />
                         Активность (DAU/WAU/MAU)
                     </h3>
+
+                    {/* Current Stats Header */}
+                    <div className="grid grid-cols-3 gap-4 mb-6">
+                        <div className="p-3 bg-indigo-50 rounded-xl border border-indigo-100">
+                            <p className="text-xs text-indigo-600 font-semibold mb-1">DAU (Сегодня)</p>
+                            <p className="text-xl font-bold text-indigo-900">{engagement?.dau?.toLocaleString() || 0}</p>
+                        </div>
+                        <div className="p-3 bg-amber-50 rounded-xl border border-amber-100">
+                            <p className="text-xs text-amber-600 font-semibold mb-1">MAU (30 дней)</p>
+                            <p className="text-xl font-bold text-amber-900">{engagement?.mau?.toLocaleString() || 0}</p>
+                        </div>
+                        <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                            <p className="text-xs text-emerald-600 font-semibold mb-1">WAU (7 дней)</p>
+                            <p className="text-xl font-bold text-emerald-900">{engagement?.wau?.toLocaleString() || 0}</p>
+                        </div>
+                    </div>
+
                     <div className="h-[300px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <LineChart data={engagementData}>
@@ -276,10 +354,49 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
                                 />
                                 <YAxis stroke="#9CA3AF" fontSize={12} />
                                 <Tooltip content={<CustomTooltip />} />
-                                <Legend />
-                                <Line type="monotone" dataKey="dau" name="DAU" stroke="#8884d8" strokeWidth={2} dot={false} />
-                                <Line type="monotone" dataKey="wau" name="WAU" stroke="#82ca9d" strokeWidth={2} dot={false} />
-                                <Line type="monotone" dataKey="mau" name="MAU" stroke="#ffc658" strokeWidth={2} dot={false} />
+                                <Legend
+                                    onClick={toggleSeries}
+                                    cursor="pointer"
+                                    formatter={(value, entry: any) => {
+                                        const { dataKey } = entry;
+                                        const isHidden = hiddenSeries.has(dataKey);
+                                        return (
+                                            <span style={{
+                                                color: isHidden ? '#9CA3AF' : undefined,
+                                                textDecoration: isHidden ? 'line-through' : 'none'
+                                            }}>
+                                                {value}
+                                            </span>
+                                        );
+                                    }}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="dau"
+                                    name="DAU"
+                                    stroke="#8884d8"
+                                    strokeWidth={2}
+                                    dot={false}
+                                    hide={hiddenSeries.has('dau')}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="mau"
+                                    name="MAU"
+                                    stroke="#ffc658"
+                                    strokeWidth={2}
+                                    dot={false}
+                                    hide={hiddenSeries.has('mau')}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="wau"
+                                    name="WAU"
+                                    stroke="#82ca9d"
+                                    strokeWidth={2}
+                                    dot={false}
+                                    hide={hiddenSeries.has('wau')}
+                                />
                             </LineChart>
                         </ResponsiveContainer>
                     </div>
@@ -303,6 +420,7 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
                                         outerRadius={80}
                                         paddingAngle={5}
                                         dataKey="user_count"
+                                        nameKey="name"
                                     >
                                         {safeSegments.map((entry, index) => (
                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
@@ -317,7 +435,9 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
                                 <div key={segment.segment} className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                                        <span className="text-sm font-medium text-gray-700">{segment.segment}</span>
+                                        <span className="text-sm font-medium text-gray-700">
+                                            {SEGMENT_TRANSLATIONS[segment.segment] || segment.segment}
+                                        </span>
                                     </div>
                                     <div className="text-right">
                                         <p className="text-sm font-bold text-gray-900">{segment.user_count}</p>
