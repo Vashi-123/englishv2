@@ -22,6 +22,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
   // 'request' - ввод email
   // 'code' - ввод кода и (после успеха) нового пароля
   const [resetStage, setResetStage] = useState<'request' | 'code'>('request');
+  // signupStage:
+  // 'init' - ввод email и пароля
+  // 'code' - ввод кода для подтверждения email
+  const [signupStage, setSignupStage] = useState<'init' | 'code'>('init');
   const [isPaymentRedirect, setIsPaymentRedirect] = useState(false);
   const [isCodeVerified, setIsCodeVerified] = useState(false);
   const [verifyingCode, setVerifyingCode] = useState(false);
@@ -99,7 +103,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     !loading &&
     ((mode === 'reset' && resetReady) ||
       (mode === 'login' && Boolean(email) && minPasswordOk) ||
-      (mode === 'signup' && Boolean(email) && minPasswordOk));
+      (mode === 'login' && Boolean(email) && minPasswordOk) ||
+      (mode === 'signup' && signupStage === 'init' && Boolean(email) && minPasswordOk));
 
   const isNative = Capacitor.isNativePlatform();
   const isIOS = Capacitor.getPlatform() === 'ios';
@@ -209,20 +214,32 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
     return 'Не удалось выполнить запрос';
   };
 
-  const verifyCode = async (code: string) => {
+  const verifyCode = async (code: string, type: 'signup' | 'reset' = 'reset') => {
     setVerifyingCode(true);
     setError(null);
     try {
-      // Используем изолированный клиент, чтобы не триггерить глобальную сессию
-      const { data, error: verifyError } = await tempClient.auth.verifyOtp({
-        email,
-        token: code,
-        type: 'email',
-      });
-      if (verifyError) throw verifyError;
-      // Сессия устанавливается только в tempClient
-      setIsCodeVerified(true);
-      // Не показываем сообщение, достаточно галочки и разблокировки полей
+      if (type === 'reset') {
+        // Используем изолированный клиент, чтобы не триггерить глобальную сессию
+        const { data, error: verifyError } = await tempClient.auth.verifyOtp({
+          email,
+          token: code,
+          type: 'email',
+        });
+        if (verifyError) throw verifyError;
+        // Сессия устанавливается только в tempClient
+        setIsCodeVerified(true);
+      } else {
+        // Для регистрации используем основной клиент, так как нам нужна сессия сразу
+        const { data, error: verifyError } = await supabase.auth.verifyOtp({
+          email,
+          token: code,
+          type: 'signup',
+        });
+        if (verifyError) throw verifyError;
+
+        // Успех!
+        if (onAuthSuccess) await onAuthSuccess();
+      }
     } catch (err: any) {
       setIsCodeVerified(false);
       setError('Неверный код или срок действия истек');
@@ -335,7 +352,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
           },
         });
         if (signUpError) throw signUpError;
-        setMessage('Мы отправили письмо для подтверждения email. Перейди по ссылке из письма.');
+
+        // Вместо сообщения, переходим к вводу кода
+        setSignupStage('code');
+        setOtp('');
+        setOtpDigits(Array(6).fill(''));
         return;
       }
 
@@ -709,7 +730,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                   )}
                 </label>
 
-                {(mode === 'login' || mode === 'signup') && (
+                {(mode === 'login' || (mode === 'signup' && signupStage === 'init')) && (
                   <label className="block space-y-2">
                     <div className="text-sm font-semibold text-slate-800">
                       {mode === 'signup' ? 'Придумай пароль' : copy.auth.passwordLabel}
@@ -741,6 +762,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                         setPassword2('');
                         setOtp('');
                         setResetStage('request');
+                        setSignupStage('init');
                         setIsCodeVerified(false);
                         setOtpDigits(Array(6).fill(''));
                         setError(null);
@@ -752,9 +774,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                   </div>
                 )}
 
-                {message && !isCodeVerified && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 text-center">{message}</div>}
+                {message && !isCodeVerified && mode === 'reset' && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2 text-center">{message}</div>}
 
-                {mode === 'reset' && resetStage === 'code' && (
+                {((mode === 'reset' && resetStage === 'code') || (mode === 'signup' && signupStage === 'code')) && (
                   <>
                     <label className="block space-y-2">
                       <div className="flex items-center justify-between">
@@ -774,7 +796,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                             inputMode="numeric"
                             autoComplete={idx === 0 ? 'one-time-code' : 'off'}
                             maxLength={6}
-                            disabled={isCodeVerified || verifyingCode}
+                            disabled={(mode === 'reset' && isCodeVerified) || verifyingCode}
                             value={digit}
                             onPaste={(e) => {
                               e.preventDefault();
@@ -792,7 +814,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                               setOtp(newOtp);
 
                               if (newOtp.length === 6) {
-                                verifyCode(newOtp);
+                                verifyCode(newOtp, mode === 'signup' ? 'signup' : 'reset');
                               }
 
                               // Фокус на последнюю заполненную ячейку
@@ -813,7 +835,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                                 setOtpDigits(next);
                                 const newOtp = next.join('');
                                 setOtp(newOtp);
-                                if (newOtp.length === 6) verifyCode(newOtp);
+                                if (newOtp.length === 6) verifyCode(newOtp, mode === 'signup' ? 'signup' : 'reset');
 
                                 // Фокус на следующую пустую
                                 const nextEmpty = next.findIndex(d => !d);
@@ -834,10 +856,10 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
 
                               // Если введен полный код, запускаем проверку
                               if (newOtp.length === 6) {
-                                verifyCode(newOtp);
+                                verifyCode(newOtp, mode === 'signup' ? 'signup' : 'reset');
                               } else {
-                                // Если код неполный, сбрасываем верификацию
-                                setIsCodeVerified(false);
+                                // Если код неполный, сбрасываем верификацию (только для ресета, для регистрации нет стейта verified)
+                                if (mode === 'reset') setIsCodeVerified(false);
                               }
 
                               if (nextDigit && e.currentTarget.nextElementSibling instanceof HTMLInputElement) {
@@ -855,7 +877,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                           />
                         ))}
 
-                        {isCodeVerified && (
+                        {mode === 'reset' && isCodeVerified && (
                           <div className="absolute -right-8 top-1/2 -translate-y-1/2 text-emerald-500 animate-in fade-in zoom-in duration-300">
                             <Check className="w-6 h-6" />
                           </div>
@@ -863,8 +885,8 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                       </div>
                     </label>
 
-                    {/* Password inputs - visible only when verified */}
-                    {isCodeVerified && (
+                    {/* Password inputs - visible only when verified (RESET ONLY) */}
+                    {mode === 'reset' && isCodeVerified && (
                       <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-300">
                         <label className="block space-y-2">
                           <div className="text-sm font-semibold text-slate-800">Новый пароль</div>
@@ -905,8 +927,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                 {error && <div className="text-sm text-rose-600 bg-rose-50 border border-rose-100 rounded-xl px-3 py-2">{error}</div>}
                 {message && !isCodeVerified && mode !== 'reset' && <div className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">{message}</div>}
 
-                {/* Hide button if in code stage but not verified */}
-                {!(mode === 'reset' && resetStage === 'code' && !isCodeVerified) && (
+                {/* Hide button if in code stage but not verified (RESET ONLY) */}
+                {/* For signup, we don't show the button in code stage because entering code triggers verify -> success */}
+                {!(mode === 'reset' && resetStage === 'code' && !isCodeVerified) && !(mode === 'signup' && signupStage === 'code') && (
                   <button
                     type="submit"
                     disabled={!canSubmit}
@@ -970,6 +993,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onAuthSuccess }) => {
                           setPassword('');
                           setPassword2('');
                           setResetStage('request');
+                          setSignupStage('init');
                           setIsCodeVerified(false);
                           setOtpDigits(Array(6).fill(''));
                           setError(null);
