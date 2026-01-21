@@ -28,7 +28,7 @@ export interface EngagementMetrics {
     mau: number;
     dau_mau_ratio: number;
     wau_mau_ratio: number;
-    stickiness_score: string;
+    dau_growth_rate: number;
 }
 
 export interface UserSegment {

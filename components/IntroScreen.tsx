@@ -801,7 +801,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
 
           {/* Floating Action Button for Mobile & Desktop */}
           <div className={`fixed bottom-4 left-0 right-0 z-50 p-4 sm:p-0 sm:flex sm:items-center sm:w-full sm:max-w-5xl sm:mx-auto sm:px-16 sm:pb-10 pointer-events-none`}>
-            <div className={`flex items-center justify-end w-full pointer-events-auto transition-all duration-300 transform ${(isNative && nativePageIndex === 4) || (!isNative && !isButtonHidden) ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'}`}>
+            <div className={`flex items-center ${isNative ? 'justify-center' : 'justify-end'} w-full pointer-events-auto transition-all duration-300 transform ${(isNative && nativePageIndex === 4) || (!isNative && !isButtonHidden) ? 'translate-y-0 opacity-100' : 'translate-y-20 opacity-0 pointer-events-none'}`}>
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -811,6 +811,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = ({ onNext }) => {
                 type="button"
                 className={`inline-flex items-center gap-2.5 rounded-full bg-gradient-to-br from-brand-primary to-brand-secondary text-white font-semibold shadow-xl shadow-brand-primary/25 hover:opacity-90 active:scale-[0.97] active:opacity-80 active:shadow-sm transition-all duration-300
                 ${isScrollAction ? 'p-3' : 'px-6 py-3'} 
+                ${isNative ? 'w-full max-w-[90%] justify-center' : ''}
               `}
                 aria-label={isScrollAction ? "Scroll down" : "Start"}
               >

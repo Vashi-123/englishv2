@@ -197,7 +197,8 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
                 <KPICard
                     title="DAU (Сегодня)"
                     value={engagement?.dau || 0}
-                    subValue={`Stickiness: ${engagement?.stickiness_score || 'N/A'}`}
+                    trend={engagement?.dau_growth_rate}
+                    trendLabel="vs month ago"
                     icon={<Activity className="w-5 h-5 text-purple-600" />}
                     color="bg-purple-50 text-purple-700"
                 />

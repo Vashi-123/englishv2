@@ -266,7 +266,7 @@ RETURNS TABLE (
   mau BIGINT,
   dau_mau_ratio NUMERIC,
   wau_mau_ratio NUMERIC,
-  stickiness_score TEXT
+  dau_growth_rate NUMERIC
 ) 
 SECURITY DEFINER
 SET search_path = public
@@ -278,25 +278,29 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  WITH metrics_cte AS (
+  WITH current_metrics AS (
     SELECT 
       COUNT(DISTINCT CASE WHEN updated_at >= CURRENT_DATE THEN user_id END) as _dau,
       COUNT(DISTINCT CASE WHEN updated_at >= CURRENT_DATE - INTERVAL '7 days' THEN user_id END) as _wau,
       COUNT(DISTINCT CASE WHEN updated_at >= CURRENT_DATE - INTERVAL '30 days' THEN user_id END) as _mau
     FROM lesson_progress
+  ),
+  prev_month_metrics AS (
+    SELECT 
+      COUNT(DISTINCT CASE WHEN updated_at >= CURRENT_DATE - INTERVAL '30 days' AND updated_at < CURRENT_DATE - INTERVAL '29 days' THEN user_id END) as _dau_prev
+    FROM lesson_progress
   )
   SELECT 
-    mc._dau::BIGINT as dau,
-    mc._wau::BIGINT as wau,
-    mc._mau::BIGINT as mau,
-    ROUND((mc._dau::FLOAT / NULLIF(mc._mau, 0) * 100)::numeric, 2) as dau_mau_ratio,
-    ROUND((mc._wau::FLOAT / NULLIF(mc._mau, 0) * 100)::numeric, 2) as wau_mau_ratio,
-    CASE 
-      WHEN (mc._dau::FLOAT / NULLIF(mc._mau, 0) * 100) > 20 THEN 'Excellent'
-      WHEN (mc._dau::FLOAT / NULLIF(mc._mau, 0) * 100) > 10 THEN 'Good'
-      ELSE 'Needs Improvement'
-    END as stickiness_score
-  FROM metrics_cte mc;
+    cm._dau::BIGINT as dau,
+    cm._wau::BIGINT as wau,
+    cm._mau::BIGINT as mau,
+    ROUND((cm._dau::FLOAT / NULLIF(cm._mau, 0) * 100)::numeric, 2) as dau_mau_ratio,
+    ROUND((cm._wau::FLOAT / NULLIF(cm._mau, 0) * 100)::numeric, 2) as wau_mau_ratio,
+    ROUND((
+        (cm._dau::FLOAT - COALESCE(pm._dau_prev, 0)::FLOAT) / 
+        NULLIF(COALESCE(pm._dau_prev, 0), 0) * 100
+    )::numeric, 1) as dau_growth_rate
+  FROM current_metrics cm, prev_month_metrics pm;
 END;
 $$ LANGUAGE plpgsql;
 
