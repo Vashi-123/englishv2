@@ -69,6 +69,20 @@ const ensureInitialized = async (): Promise<boolean> => {
   if (!isNativeIos()) return false;
   if (!nativeIap) return false;
   if (initialized) return true;
+
+  // Setup transaction listener
+  nativeIap.addListener("transactionUpdated", async (data: any) => {
+    console.log("[iapService] transactionUpdated event received:", data);
+    const purchase = data.purchase;
+    if (purchase) {
+      try {
+        await verifyAndFinishTransaction(purchase);
+      } catch (err) {
+        console.error("[iapService] transactionUpdated verification failed:", err);
+      }
+    }
+  });
+
   initialized = true;
   return true;
 };
@@ -116,55 +130,104 @@ export const fetchIosIapProductById = async (productId: string): Promise<IapProd
   }
 };
 
+// Helper: Verify with backend and THEN finish transaction
+const verifyAndFinishTransaction = async (purchase: any, payloadOverride?: IapPurchasePayload): Promise<IapCompleteResponse> => {
+  // Determine productId: verify logic needs it.
+  // Native now returns productId. If missing (legacy?), fallback to payload or default.
+  let productId = purchase.productId || payloadOverride?.productId;
+  if (!productId) {
+    productId = await getIosProductId();
+  }
+
+  const transactionId = purchase.transactionId || payloadOverride?.transactionId || crypto.randomUUID();
+  const receiptData = purchase.receiptData || payloadOverride?.receiptData || null;
+  const purchaseDateMs = purchase.purchaseDateMs ?? payloadOverride?.purchaseDateMs;
+  // Prefer offerCodeRefName from native transaction (StoreKit 2) over payload
+  const promoCode = purchase.offerCodeRefName || payloadOverride?.promoCode || null;
+
+  let priceValue = payloadOverride?.priceValue ?? null;
+  let priceCurrency = payloadOverride?.priceCurrency ?? null;
+
+  // If price is missing (e.g. background update), fetch it from StoreKit
+  if (priceValue === null && productId) {
+    console.log("[iapService] Price missing in payload, fetching from StoreKit...", productId);
+    try {
+      const product = await fetchIosIapProductById(productId);
+      if (product) {
+        if (product.price) priceValue = product.price;
+        if (product.currency) priceCurrency = product.currency;
+        console.log("[iapService] Fetched price:", priceValue, priceCurrency);
+      }
+    } catch (err) {
+      console.warn("[iapService] Failed to fetch product details for price:", err);
+    }
+  }
+
+  console.log("[iapService] Verifying transaction:", transactionId, "Product:", productId, "Promo:", promoCode);
+
+  const { data, error } = await supabase.functions.invoke("ios-iap-complete", {
+    body: {
+      productId,
+      product_key: BILLING_PRODUCT_KEY,
+      transactionId,
+      receiptData,
+      purchaseDateMs: Number.isFinite(purchaseDateMs) ? purchaseDateMs : undefined,
+      priceValue,
+      priceCurrency,
+      promoCode: promoCode || undefined,
+    },
+  });
+
+  if (error) throw error;
+
+  // Only finish if verification was successful
+  if (data && (data.ok || data.granted)) {
+    console.log("[iapService] Verification successful. Finishing transaction:", transactionId);
+    try {
+      await nativeIap.finishTransaction?.({ transactionId });
+    } catch (finishErr) {
+      console.warn("[iapService] Failed to finish transaction:", finishErr);
+      // Don't fail the whole process if finish fails, but warn.
+    }
+  }
+
+  return data as IapCompleteResponse;
+};
+
 export const purchaseIosIap = async (payload?: IapPurchasePayload): Promise<IapCompleteResponse> => {
   const ready = await ensureInitialized();
   if (!ready || !nativeIap) throw new Error("Покупки через App Store недоступны");
   const defaultProductId = await getIosProductId();
   const productId = payload?.productId || defaultProductId;
+
   console.log("[iapService] purchaseIosIap - productId selection:", {
     payloadProductId: payload?.productId,
     defaultProductId,
     selectedProductId: productId,
   });
-  
+
   try {
     const purchaseResult = await nativeIap.purchase?.({ productId });
     console.log("[iapService] purchaseIap result:", purchaseResult);
     const purchase = purchaseResult?.purchase;
     if (!purchase) throw new Error("Не удалось завершить покупку");
 
-  const transactionId = purchase.transactionId || payload?.transactionId || crypto.randomUUID();
-  const receiptData = purchase.receiptData || payload?.receiptData || null;
-  const purchaseDateMs = purchase.purchaseDateMs ?? payload?.purchaseDateMs;
-  const promoCode = purchase.offerCodeRefName || payload?.promoCode || null;
-
-    const { data, error } = await supabase.functions.invoke("ios-iap-complete", {
-      body: {
-        productId,
-        product_key: BILLING_PRODUCT_KEY,
-        transactionId,
-        receiptData,
-        purchaseDateMs: Number.isFinite(purchaseDateMs) ? purchaseDateMs : undefined,
-        priceValue: payload?.priceValue ?? null,
-        priceCurrency: payload?.priceCurrency ?? null,
-        promoCode: promoCode || undefined, // Apple Offer Code (will be extracted from receipt on server if not provided)
-      },
-    });
-    if (error) throw error;
-    return data as IapCompleteResponse;
+    // Use shared verification logic
+    return await verifyAndFinishTransaction(purchase, payload);
   } catch (err) {
     // КРИТИЧНО: Обрабатываем различные статусы транзакций
     const errorMessage = err instanceof Error ? err.message : String(err);
-    
+
     // Pending транзакции - ожидают оплаты
     if (errorMessage === "PENDING" || errorMessage.includes("PENDING")) {
       console.warn("[iapService] Purchase is pending - waiting for payment", { productId });
       return {
         ok: false,
         error: "Транзакция ожидает оплаты. Покупка будет завершена автоматически после поступления средств на ваш счет Apple ID.",
+        pending: true
       };
     }
-    
+
     // Отмена пользователем - не ошибка, а нормальное действие
     if (errorMessage === "CANCELLED" || errorMessage.includes("CANCELLED") || errorMessage.includes("cancelled")) {
       console.log("[iapService] Purchase was cancelled by user", { productId });
@@ -174,7 +237,7 @@ export const purchaseIosIap = async (payload?: IapPurchasePayload): Promise<IapC
         cancelled: true, // Флаг для UI, чтобы не показывать как ошибку
       };
     }
-    
+
     // Неизвестное состояние транзакции
     if (errorMessage.includes("Unknown purchase state")) {
       console.error("[iapService] Unknown purchase state", { productId, errorMessage });
@@ -183,7 +246,7 @@ export const purchaseIosIap = async (payload?: IapPurchasePayload): Promise<IapC
         error: "Неизвестное состояние транзакции. Попробуйте еще раз или обратитесь в поддержку.",
       };
     }
-    
+
     // Пробрасываем другие ошибки
     throw err;
   }
@@ -197,22 +260,14 @@ export const restoreIosPurchases = async (): Promise<IapCompleteResponse | null>
   try {
     const restored = await nativeIap.restorePurchases?.();
     const purchase = restored?.purchase;
-    
+
     // Если purchase === null, это означает что покупок нет (не ошибка)
-    // Swift код возвращает ["purchase": NSNull()] когда покупок нет
     if (!purchase || purchase === null) {
       return { ok: true, granted: false };
     }
-    
-    const productId = await getIosProductId();
-    return purchaseIosIap({
-      productId,
-      transactionId: purchase.transactionId,
-      receiptData: purchase.receiptData || null,
-      purchaseDateMs: purchase.purchaseDateMs,
-      priceValue: null,
-      priceCurrency: null,
-    });
+
+    // Use shared verification logic
+    return await verifyAndFinishTransaction(purchase);
   } catch (err) {
     console.error("[iapService] restore error", err);
     const errorMessage = err instanceof Error ? err.message : 'Не удалось восстановить покупки';

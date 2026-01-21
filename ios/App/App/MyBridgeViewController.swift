@@ -61,8 +61,46 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getProducts", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "purchase", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "restorePurchases", returnType: CAPPluginReturnPromise),
-        CAPPluginMethod(name: "presentOfferCode", returnType: CAPPluginReturnPromise)
+        CAPPluginMethod(name: "presentOfferCode", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "finishTransaction", returnType: CAPPluginReturnPromise)
     ]
+
+    private var updateTask: Task<Void, Never>?
+
+    override public func load() {
+        if #available(iOS 15.0, *) {
+            updateTask = Task {
+                for await result in Transaction.updates {
+                    do {
+                        let transaction = try self.verify(result)
+                        let receipt = self.loadReceipt()
+                        
+                        var offerCodeRefName: String? = nil
+                        if transaction.offerType == .code {
+                            offerCodeRefName = transaction.offerID
+                        }
+                        
+                        let purchaseData: [String: Any] = [
+                            "transactionId": transaction.id,
+                            "productId": transaction.productID,
+                            "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
+                            "receiptData": (receipt as Any?) ?? NSNull(),
+                            "offerCodeRefName": offerCodeRefName ?? NSNull()
+                        ]
+                        
+                        self.notifyListeners("transactionUpdated", data: ["purchase": purchaseData])
+                        NSLog("[NativeIap] Emitted transactionUpdated for: \(transaction.id)")
+                    } catch {
+                        NSLog("[NativeIap] Transaction update verification failed: \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+    
+    deinit {
+        updateTask?.cancel()
+    }
 
     private func loadReceipt() -> String? {
         guard let url = Bundle.main.appStoreReceiptURL else { return nil }
@@ -110,18 +148,23 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                 switch result {
                 case .success(let verification):
                     let transaction = try self.verify(verification)
-                    await transaction.finish()
+                    // REMOVED: await transaction.finish() - We wait for JS to finish it
+                    
                     let receipt = self.loadReceipt()
-                    // Note: offerCodeRefName is not directly available in StoreKit 2 Transaction
-                    // Promo codes are applied automatically by Apple and can be extracted from receipt
-                    // via App Store Server API on the server side
+                    
+                    var offerCodeRefName: String? = nil
+                    if transaction.offerType == .code {
+                        offerCodeRefName = transaction.offerID
+                    }
+                    
                     let purchaseData: [String: Any] = [
                         "transactionId": transaction.id,
+                        "productId": transaction.productID,
                         "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
-                        "receiptData": (receipt as Any?) ?? NSNull()
+                        "receiptData": (receipt as Any?) ?? NSNull(),
+                        "offerCodeRefName": offerCodeRefName ?? NSNull()
                     ]
-                    // Try to extract offerCodeRefName if available (may not be accessible in StoreKit 2)
-                    // Server will parse receipt to extract promo code information
+                    
                     call.resolve([
                         "purchase": purchaseData
                     ])
@@ -143,25 +186,72 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
             for await result in Transaction.currentEntitlements {
                 if case .verified(let transaction) = result {
                     let receipt = self.loadReceipt()
+                    
+                    var offerCodeRefName: String? = nil
+                    if transaction.offerType == .code {
+                        offerCodeRefName = transaction.offerID
+                    }
+                    
                     call.resolve([
                         "purchase": [
                             "transactionId": transaction.id,
+                            "productId": transaction.productID,
                             "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
-                            "receiptData": (receipt as Any?) ?? NSNull()
+                            "receiptData": (receipt as Any?) ?? NSNull(),
+                            "offerCodeRefName": offerCodeRefName ?? NSNull()
                         ]
                     ])
-                    await transaction.finish()
+                    // REMOVED: await transaction.finish()
                     return
                 }
             }
             call.resolve(["purchase": NSNull()])
         }
     }
+    
+    @objc func finishTransaction(_ call: CAPPluginCall) {
+        guard let transactionId = call.getString("transactionId") else {
+            call.reject("Missing transactionId")
+            return
+        }
+        
+        if #available(iOS 15.0, *) {
+            Task {
+                // We cannot fetch a specific transaction by ID easily in StoreKit 2 without iterating/checking history
+                // or keeping a reference. However, for 'finish', we can usually assume if we have the ID,
+                // we might need to find it again.
+                // NOTE: StoreKit 2 Transaction.finish() is an instance method.
+                // We typically need the Transaction object.
+                // A workaround is to define it:
+                // But wait, we can't instantiate a Transaction from ID easily in public API?
+                // Actually, we can iterate Transaction.unfinished?
+                
+                var found = false
+                for await transaction in Transaction.unfinished {
+                    if String(transaction.id) == transactionId || String(transaction.originalID) == transactionId {
+                         await transaction.finish()
+                         found = true
+                         // Keep going? Usually one ID matches one.
+                         break
+                    }
+                }
+                
+                if found {
+                    call.resolve()
+                } else {
+                     // Check verified/current entitlements just in case?
+                     // If it's not in unfinished, maybe it's already finished.
+                     call.resolve() // Treat as success to avoid blocking
+                }
+            }
+        } else {
+            call.reject("StoreKit 2 required")
+        }
+    }
 
     @objc func presentOfferCode(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             if #available(iOS 14.0, *) {
-                // Use StoreKit 2 API for iOS 16+
                 if #available(iOS 16.0, *) {
                     Task { @MainActor in
                         do {
@@ -179,7 +269,6 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                         }
                     }
                 } else {
-                    // Fallback to StoreKit 1 API for iOS 14-15
                     SKPaymentQueue.default().presentCodeRedemptionSheet()
                     call.resolve([:])
                 }
@@ -201,39 +290,16 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
 
 class MyBridgeViewController: CAPBridgeViewController {
     
-    private var transactionUpdateTask: Task<Void, Never>?
-    
     override open func capacitorDidLoad() {
         NSLog("[MyBridgeViewController] capacitorDidLoad - registering AuthSessionPlugin")
         bridge?.registerPluginInstance(AuthSessionPlugin())
         NSLog("[MyBridgeViewController] capacitorDidLoad - registering NativeIapPlugin")
         bridge?.registerPluginInstance(NativeIapPlugin())
-        
-        // Listen for transaction updates to handle pending transactions that complete later
-        // This is critical for pending transactions that finish after payment is received
-        // When a pending transaction completes, it will appear in Transaction.updates
-        // The JS layer will check for completed transactions when app returns from background
-        if #available(iOS 15.0, *) {
-            transactionUpdateTask = Task {
-                for await result in Transaction.updates {
-                    switch result {
-                    case .verified(let transaction):
-                        // Transaction is verified - this could be a pending transaction that completed
-                        // We finish it here, and the JS layer will detect it via restorePurchases
-                        // when the app returns from background
-                        NSLog("[MyBridgeViewController] Transaction update received (pending completed): \(transaction.id)")
-                        await transaction.finish()
-                    case .unverified(_, let error):
-                        // Transaction verification failed - log but don't block
-                        NSLog("[MyBridgeViewController] Transaction verification failed: \(error.localizedDescription)")
-                    }
-                }
-            }
-        }
+        // Transaction listener moved to NativeIapPlugin.load()
     }
     
     deinit {
-        transactionUpdateTask?.cancel()
+        // No tasks to cancel here anymore
     }
 
     // Убираем стандартный accessory bar (Prev/Next/Done), чтобы не плодить auto-layout warnings

@@ -69,6 +69,20 @@ const ensureInitialized = async (): Promise<boolean> => {
     if (!isNativeAndroid()) return false;
     if (!nativeIap) return false;
     if (initialized) return true;
+
+    // Setup transaction listener
+    nativeIap.addListener("transactionUpdated", async (data: any) => {
+        console.log("[androidIapService] transactionUpdated event received:", data);
+        const purchase = data.purchase;
+        if (purchase) {
+            try {
+                await verifyAndFinishTransaction(purchase);
+            } catch (err) {
+                console.error("[androidIapService] transactionUpdated verification failed:", err);
+            }
+        }
+    });
+
     initialized = true;
     return true;
 };
@@ -116,11 +130,71 @@ export const fetchAndroidIapProductById = async (productId: string): Promise<Iap
     }
 };
 
+// Helper: Verify with backend and THEN finish transaction
+// Defined as function to avoid hoisting issues (though calling const functions inside is fine if defined)
+async function verifyAndFinishTransaction(purchase: any, payloadOverride?: IapPurchasePayload): Promise<IapCompleteResponse> {
+    const productId = purchase.productId || payloadOverride?.productId;
+    const orderId = purchase.orderId || payloadOverride?.orderId;
+    const purchaseToken = purchase.purchaseToken || purchase.token || payloadOverride?.purchaseToken;
+    const purchaseDateMs = purchase.purchaseDateMs ?? payloadOverride?.purchaseDateMs;
+
+    let priceValue = payloadOverride?.priceValue ?? null;
+    let priceCurrency = payloadOverride?.priceCurrency ?? null;
+    let promoCode = payloadOverride?.promoCode ?? null;
+
+    // If price is missing (e.g. restore or background), try to fetch it
+    if (priceValue === null && productId) {
+        console.log("[androidIapService] Price missing, fetching from store...", productId);
+        try {
+            const product = await fetchAndroidIapProductById(productId);
+            if (product) {
+                if (product.price) priceValue = product.price;
+                if (product.currency) priceCurrency = product.currency;
+                console.log("[androidIapService] Fetched price:", priceValue, priceCurrency);
+            }
+        } catch (err) {
+            console.warn("[androidIapService] Failed to fetch product details for price:", err);
+        }
+    }
+
+    console.log("[androidIapService] Verifying transaction:", orderId);
+
+    const { data, error } = await supabase.functions.invoke("android-iap-complete", {
+        body: {
+            productId,
+            product_key: BILLING_PRODUCT_KEY,
+            orderId,
+            purchaseToken,
+            purchaseDateMs: Number.isFinite(purchaseDateMs) ? purchaseDateMs : undefined,
+            priceValue,
+            priceCurrency,
+            promoCode,
+        },
+    });
+
+    if (error) throw error;
+
+    // Only finish (acknowledge) if verification was successful
+    if (data && (data.ok || data.granted)) {
+        console.log("[androidIapService] Verification successful. Acknowledging transaction:", purchaseToken);
+        try {
+            // Backend might have acknowledged already if using service account, but native plugin expects ack?
+            // Sending ack from native side helps clear client cache/state.
+            await nativeIap.finishTransaction?.({ purchaseToken });
+        } catch (finishErr) {
+            console.warn("[androidIapService] Failed to finish transaction locally:", finishErr);
+        }
+    }
+
+    return data as IapCompleteResponse;
+}
+
 export const purchaseAndroidIap = async (payload?: IapPurchasePayload): Promise<IapCompleteResponse> => {
     const ready = await ensureInitialized();
     if (!ready || !nativeIap) throw new Error("Покупки через Google Play недоступны");
     const defaultProductId = await getAndroidProductId();
     const productId = payload?.productId || defaultProductId;
+
     console.log("[androidIapService] purchaseAndroidIap - productId selection:", {
         payloadProductId: payload?.productId,
         defaultProductId,
@@ -131,33 +205,21 @@ export const purchaseAndroidIap = async (payload?: IapPurchasePayload): Promise<
         const purchaseResult = await nativeIap.purchase?.({ productId });
         console.log("[androidIapService] purchase result:", purchaseResult);
         const purchase = purchaseResult?.purchase;
+
+        // Handle cancellation/pending returned directly from plugin reject
+        // But since we updated plugin to resolve/reject correctly:
+        // Wait, plugin "handlePurchaseUpdate" resolves if PURCHASED, rejects if PENDING/CANCELLED/ERROR.
+
         if (!purchase) throw new Error("Не удалось завершить покупку");
 
-        const orderId = purchase.orderId || payload?.orderId || crypto.randomUUID();
-        const purchaseToken = purchase.purchaseToken || payload?.purchaseToken || null;
-        const purchaseDateMs = purchase.purchaseDateMs ?? payload?.purchaseDateMs;
-
-        const { data, error } = await supabase.functions.invoke("android-iap-complete", {
-            body: {
-                productId,
-                product_key: BILLING_PRODUCT_KEY,
-                orderId,
-                purchaseToken,
-                purchaseDateMs: Number.isFinite(purchaseDateMs) ? purchaseDateMs : undefined,
-                priceValue: payload?.priceValue ?? null,
-                priceCurrency: payload?.priceCurrency ?? null,
-                promoCode: payload?.promoCode ?? null,
-            },
-        });
-        if (error) throw error;
-        return data as IapCompleteResponse;
+        // Use shared verification logic
+        return await verifyAndFinishTransaction(purchase, payload);
     } catch (err) {
         // Handle various transaction states
         const errorMessage = err instanceof Error ? err.message : String(err);
 
-        // Pending transactions - waiting for payment
         if (errorMessage === "PENDING" || errorMessage.includes("PENDING")) {
-            console.warn("[androidIapService] Purchase is pending - waiting for payment", { productId });
+            console.warn("[androidIapService] Purchase is pending", { productId });
             return {
                 ok: false,
                 error: "Транзакция ожидает оплаты. Покупка будет завершена автоматически после поступления средств.",
@@ -165,9 +227,8 @@ export const purchaseAndroidIap = async (payload?: IapPurchasePayload): Promise<
             };
         }
 
-        // User cancelled - not an error
         if (errorMessage === "CANCELLED" || errorMessage.includes("CANCELLED") || errorMessage.includes("cancelled")) {
-            console.log("[androidIapService] Purchase was cancelled by user", { productId });
+            console.log("[androidIapService] Purchase was cancelled by user");
             return {
                 ok: false,
                 error: "Покупка отменена",
@@ -175,16 +236,7 @@ export const purchaseAndroidIap = async (payload?: IapPurchasePayload): Promise<
             };
         }
 
-        // Unknown transaction state
-        if (errorMessage.includes("Unknown purchase state")) {
-            console.error("[androidIapService] Unknown purchase state", { productId, errorMessage });
-            return {
-                ok: false,
-                error: "Неизвестное состояние транзакции. Попробуйте еще раз или обратитесь в поддержку.",
-            };
-        }
-
-        // Re-throw other errors
+        console.error("[androidIapService] Purchase error:", errorMessage);
         throw err;
     }
 };
@@ -198,20 +250,12 @@ export const restoreAndroidPurchases = async (): Promise<IapCompleteResponse | n
         const restored = await nativeIap.restorePurchases?.();
         const purchase = restored?.purchase;
 
-        // If purchase === null, it means no purchases exist (not an error)
         if (!purchase || purchase === null) {
             return { ok: true, granted: false };
         }
 
-        const productId = await getAndroidProductId();
-        return purchaseAndroidIap({
-            productId,
-            orderId: purchase.orderId,
-            purchaseToken: purchase.purchaseToken || null,
-            purchaseDateMs: purchase.purchaseDateMs,
-            priceValue: null,
-            priceCurrency: null,
-        });
+        // Use shared verification logic - it will auto-fetch price
+        return await verifyAndFinishTransaction(purchase);
     } catch (err) {
         console.error("[androidIapService] restore error", err);
         const errorMessage = err instanceof Error ? err.message : 'Не удалось восстановить покупки';

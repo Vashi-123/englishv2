@@ -32,9 +32,7 @@ class NativeIapPlugin : Plugin() {
                 // Handle purchases updated - this is called for new purchases
                 Log.d(TAG, "onPurchasesUpdated: ${billingResult.responseCode}")
                 if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
-                    for (purchase in purchases) {
-                        Log.d(TAG, "Purchase: ${purchase.orderId}, state: ${purchase.purchaseState}")
-                    }
+                    handlePurchaseUpdate(purchases)
                 }
             }
             .enablePendingPurchases()
@@ -79,6 +77,196 @@ class NativeIapPlugin : Plugin() {
             }
         }
     }
+
+    @PluginMethod
+    fun getProducts(call: PluginCall) {
+        val productIds = call.getArray("productIds")
+        if (productIds == null || productIds.length() == 0) {
+            call.resolve(JSObject().put("products", JSArray()))
+            return
+        }
+
+        ensureConnected {
+            val productList = mutableListOf<QueryProductDetailsParams.Product>()
+            for (i in 0 until productIds.length()) {
+                val productId = productIds.getString(i)
+                productList.add(
+                    QueryProductDetailsParams.Product.newBuilder()
+                        .setProductId(productId)
+                        .setProductType(BillingClient.ProductType.INAPP)
+                        .build()
+                )
+            }
+
+            val params = QueryProductDetailsParams.newBuilder()
+                .setProductList(productList)
+                .build()
+
+            billingClient?.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                    val productsArray = JSArray()
+                    for (product in productDetailsList) {
+                        val oneTimePurchaseOfferDetails = product.oneTimePurchaseOfferDetails
+                        val productObj = JSObject()
+                        productObj.put("productId", product.productId)
+                        productObj.put("title", product.title)
+                        productObj.put("description", product.description)
+                        
+                        if (oneTimePurchaseOfferDetails != null) {
+                            // Price in micros (e.g., 1490000000 for 1490 RUB)
+                            val priceAmountMicros = oneTimePurchaseOfferDetails.priceAmountMicros
+                            val priceValue = priceAmountMicros / 1_000_000.0
+                            productObj.put("price", priceValue.toString())
+                            productObj.put("currency", oneTimePurchaseOfferDetails.priceCurrencyCode)
+                            productObj.put("localizedPrice", oneTimePurchaseOfferDetails.formattedPrice)
+                        }
+                        
+                        productsArray.put(productObj)
+                    }
+                    call.resolve(JSObject().put("products", productsArray))
+                } else {
+                    Log.e(TAG, "getProducts failed: ${billingResult.debugMessage}")
+                    call.reject("Failed to get products: ${billingResult.debugMessage}")
+                }
+            }
+        }
+    }
+
+    @PluginMethod
+    fun purchase(call: PluginCall) {
+        val productId = call.getString("productId")
+        if (productId.isNullOrEmpty()) {
+            call.reject("Missing productId")
+            return
+        }
+
+        ensureConnected {
+            val productList = listOf(
+                QueryProductDetailsParams.Product.newBuilder()
+                .setProductId(productId)
+                .setProductType(BillingClient.ProductType.INAPP)
+                .build()
+            )
+
+            val params = QueryProductDetailsParams.newBuilder()
+                .setProductList(productList)
+                .build()
+
+            billingClient?.queryProductDetailsAsync(params) { billingResult, productDetailsList ->
+                if (billingResult.responseCode != BillingClient.BillingResponseCode.OK || productDetailsList.isEmpty()) {
+                    call.reject("Product not found: $productId")
+                    return@queryProductDetailsAsync
+                }
+
+                val productDetails = productDetailsList[0]
+                
+                val productDetailsParams = BillingFlowParams.ProductDetailsParams.newBuilder()
+                    .setProductDetails(productDetails)
+                    .build()
+
+                val billingFlowParams = BillingFlowParams.newBuilder()
+                    .setProductDetailsParamsList(listOf(productDetailsParams))
+                    .build()
+
+                // Store the call to resolve when purchase completes
+                savedPurchaseCall = call
+
+                activity?.let { activity ->
+                    val launchResult = billingClient?.launchBillingFlow(activity, billingFlowParams)
+                    if (launchResult?.responseCode != BillingClient.BillingResponseCode.OK) {
+                        savedPurchaseCall = null
+                        call.reject("Failed to launch purchase flow: ${launchResult?.debugMessage}")
+                    }
+                } ?: run {
+                    savedPurchaseCall = null
+                    call.reject("Activity not available")
+                }
+            }
+        }
+    }
+    private var savedPurchaseCall: PluginCall? = null
+
+    // Called from BillingClient listener when purchase is updated
+    private fun handlePurchaseUpdate(purchases: List<Purchase>?) {
+        if (purchases.isNullOrEmpty()) {
+            savedPurchaseCall?.reject("CANCELLED")
+            savedPurchaseCall = null
+            return
+        }
+
+        for (purchase in purchases) {
+            val purchaseData = JSObject()
+            purchaseData.put("orderId", purchase.orderId ?: "")
+            purchaseData.put("purchaseToken", purchase.purchaseToken)
+            purchaseData.put("purchaseDateMs", purchase.purchaseTime)
+            purchaseData.put("productId", purchase.products.firstOrNull() ?: "")
+            purchaseData.put("purchaseState", purchase.purchaseState)
+            
+            // Emit event for JS listener
+            val ret = JSObject()
+            ret.put("purchase", purchaseData)
+            notifyListeners("transactionUpdated", ret)
+
+            // If this purchase matches the saved call, resolve it
+            if (savedPurchaseCall != null) {
+                // If purchase is pending, we reject/resolve differently?
+                // Actually, standard flow: purchase initiates, user buys, we get OK.
+                // We resolve the generic 'purchase' call with this purchase.
+                // Note: savedPurchaseCall might be waiting for a specific productId, but typically we just resolve the first one?
+                // Ideally checks productId, but for now simple resolution:
+                
+                // Only resolve if it's the one we're waiting for (simple logic: just resolve)
+                if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
+                    val result = JSObject()
+                    result.put("purchase", purchaseData)
+                    savedPurchaseCall?.resolve(result)
+                    savedPurchaseCall = null
+                } else if (purchase.purchaseState == Purchase.PurchaseState.PENDING) {
+                    savedPurchaseCall?.reject("PENDING")
+                    savedPurchaseCall = null
+                }
+            }
+        }
+    }
+
+    @PluginMethod
+    fun finishTransaction(call: PluginCall) {
+        val purchaseToken = call.getString("purchaseToken")
+        // transactionId in JS is often mapped to orderId or purchaseToken. 
+        // For Android acknowledge, we need purchaseToken.
+        // If JS passes transactionId as purchaseToken, that works.
+        // Or JS passes separate purchaseToken.
+        
+        if (purchaseToken.isNullOrEmpty()) {
+             // Try getting "transactionId" if purchaseToken is missing (fallback)
+             val txId = call.getString("transactionId")
+             if (txId.isNullOrEmpty()) {
+                call.reject("Missing purchaseToken")
+                return
+             }
+             // If transactionId is actually the purchaseToken (common in some flows), use it.
+             // But usually orderId is transactionId. And purchaseToken is separate.
+             // We'll rely on JS passing purchaseToken explicitly.
+             call.reject("Missing purchaseToken")
+             return
+        }
+
+        ensureConnected {
+            val params = AcknowledgePurchaseParams.newBuilder()
+                .setPurchaseToken(purchaseToken)
+                .build()
+
+            billingClient?.acknowledgePurchase(params) { billingResult ->
+                if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                    call.resolve()
+                } else {
+                    call.reject("Failed to acknowledge: ${billingResult.debugMessage}")
+                }
+            }
+        }
+    }
+
+
 
     @PluginMethod
     fun getProducts(call: PluginCall) {

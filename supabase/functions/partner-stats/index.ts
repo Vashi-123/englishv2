@@ -30,12 +30,12 @@ Deno.serve(async (req: Request) => {
   if (!email) return json(400, { ok: false, error: "email is required" });
 
   const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-  
+
   try {
     // Получаем все промокоды партнера
     const { data: promoCodes, error: promoError } = await client
       .from("promo_codes")
-      .select("code, kind, value, active, created_at")
+      .select("code, kind, value, active, created_at, commission_percent")
       .eq("email", email)
       .order("created_at", { ascending: false });
 
@@ -51,10 +51,10 @@ Deno.serve(async (req: Request) => {
     if (payoutsError) throw payoutsError;
 
     const payoutsList = Array.isArray(payouts) ? payouts : [];
-    
+
     // Получаем промокоды партнера для добавления к выплатам
     const partnerPromoCodes = promoCodes ? promoCodes.map((pc) => String(pc.code).trim().toUpperCase()) : [];
-    
+
     // Список выплат для таблицы
     const payoutsListFormatted = payoutsList.map((p) => ({
       id: p.id,
@@ -101,7 +101,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const promoCodeList = promoCodes.map((pc) => String(pc.code).trim().toUpperCase());
-    
+
     // Получаем все платежи по этим промокодам
     const { data: payments, error: paymentsError } = await client
       .from("payments")
@@ -112,13 +112,13 @@ Deno.serve(async (req: Request) => {
     if (paymentsError) throw paymentsError;
 
     const paymentsList = Array.isArray(payments) ? payments : [];
-    
+
     // Фильтруем успешные платежи (только их считаем)
     const successfulStatuses = ["succeeded", "paid", "success"];
-    const successfulPayments = paymentsList.filter((p) => 
+    const successfulPayments = paymentsList.filter((p) =>
       p.status && successfulStatuses.includes(String(p.status).toLowerCase())
     );
-    
+
     // Список успешных платежей для таблицы
     const successfulPaymentsList = successfulPayments.map((p) => ({
       id: p.id,
@@ -171,11 +171,11 @@ Deno.serve(async (req: Request) => {
       const paymentDate = new Date(payment.created_at);
       const monthStart = getMonthStart(paymentDate);
       const monthKey = getMonthKey(monthStart);
-      
+
       if (!monthlyStats[monthKey]) {
-        const monthName = monthStart.toLocaleDateString('ru-RU', { 
-          year: 'numeric', 
-          month: 'long' 
+        const monthName = monthStart.toLocaleDateString('ru-RU', {
+          year: 'numeric',
+          month: 'long'
         });
         monthlyStats[monthKey] = {
           month: monthName,
@@ -186,11 +186,11 @@ Deno.serve(async (req: Request) => {
           currency: payment.amount_currency || "RUB",
         };
       }
-      
+
       // Считаем только успешные платежи
-      const isSuccessful = payment.status && 
+      const isSuccessful = payment.status &&
         successfulStatuses.includes(String(payment.status).toLowerCase());
-      
+
       if (isSuccessful) {
         monthlyStats[monthKey].totalPayments++;
         const amount = payment.amount_value ? Number(payment.amount_value) : 0;
@@ -204,9 +204,9 @@ Deno.serve(async (req: Request) => {
     Object.keys(monthlyPayouts).forEach((monthKey) => {
       if (!monthlyStats[monthKey]) {
         const date = new Date(monthKey + '-01');
-        const monthName = date.toLocaleDateString('ru-RU', { 
-          year: 'numeric', 
-          month: 'long' 
+        const monthName = date.toLocaleDateString('ru-RU', {
+          year: 'numeric',
+          month: 'long'
         });
         monthlyStats[monthKey] = {
           month: monthName,
@@ -222,14 +222,14 @@ Deno.serve(async (req: Request) => {
     });
 
     // Сортируем месяцы по дате (от старых к новым)
-    const monthlyStatsArray = Object.values(monthlyStats).sort((a, b) => 
+    const monthlyStatsArray = Object.values(monthlyStats).sort((a, b) =>
       a.monthKey.localeCompare(b.monthKey)
     );
 
     // Подсчитываем общую статистику
     let totalRevenue = 0;
     let totalRevenueCurrency = "RUB";
-    
+
     successfulPayments.forEach((payment) => {
       const amount = payment.amount_value ? Number(payment.amount_value) : 0;
       if (Number.isFinite(amount) && amount > 0) {
@@ -242,24 +242,27 @@ Deno.serve(async (req: Request) => {
 
     // Статистика по каждому промокоду (только успешные платежи)
     const promoCodeStats = promoCodeList.map((code) => {
-      const codePayments = paymentsList.filter((p) => 
+      const codePayments = paymentsList.filter((p) =>
         p.promo_code && String(p.promo_code).trim().toUpperCase() === code
       );
-      const codeSuccessful = codePayments.filter((p) => 
+      const codeSuccessful = codePayments.filter((p) =>
         p.status && successfulStatuses.includes(String(p.status).toLowerCase())
       );
-      
+
+      const promoCode = promoCodes.find((pc) =>
+        String(pc.code).trim().toUpperCase() === code
+      );
+
       let codeRevenue = 0;
+      const commissionPercent = (promoCode as any)?.commission_percent ?? 100;
+
       codeSuccessful.forEach((payment) => {
         const amount = payment.amount_value ? Number(payment.amount_value) : 0;
         if (Number.isFinite(amount) && amount > 0) {
-          codeRevenue += amount;
+          const partnerShare = amount * (commissionPercent / 100);
+          codeRevenue += partnerShare;
         }
       });
-
-      const promoCode = promoCodes.find((pc) => 
-        String(pc.code).trim().toUpperCase() === code
-      );
 
       return {
         code,

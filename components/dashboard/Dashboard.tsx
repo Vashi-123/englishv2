@@ -104,7 +104,7 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
 
   // Dashboard content
   currentDayPlan,
-  lessonCompleted,
+  lessonCompleted: lessonCompletedProp,
   completedTasks,
   isCurrentDayCompleted,
   userWords,
@@ -117,6 +117,9 @@ export const Dashboard: React.FC<DashboardProps> = memo(({
   onOpenWordsModal,
   onOpenGrammarModal,
 }) => {
+  // Fix: Treat lesson as completed if the day is marked as completed to prevent blocked state
+  const lessonCompleted = lessonCompletedProp || isCurrentDayCompleted;
+
   const chatTask = { id: ActivityType.DIALOGUE };
   const chatCompleted = completedTasks.includes(ActivityType.DIALOGUE);
   const chatLocked = isCurrentDayCompleted && chatCompleted && !lessonCompleted;

@@ -308,7 +308,7 @@ async function verifyTransactionWithServerAPI(
         const txProductId = payloadJson.productId;
         const txTransactionId = payloadJson.transactionId;
         const txOriginalTransactionId = payloadJson.originalTransactionId;
-        const txOfferCodeRefName = payloadJson.offerCodeRefName;
+        const txOfferCodeRefName = payloadJson.offerIdentifier;
 
         // Check if transaction matches
         if (txTransactionId === transactionId || txOriginalTransactionId === transactionId) {
@@ -404,6 +404,7 @@ const verifyReceiptLegacy = async (
             valid: true,
             productId: matchingTransaction.product_id || productId,
             transactionId: matchingTransaction.transaction_id || matchingTransaction.original_transaction_id || transactionId,
+            offerCodeRefName: matchingTransaction.offer_code_ref_name || matchingTransaction.promotional_offer_id,
           };
         } else {
           // Receipt is valid but doesn't contain our transaction

@@ -21,7 +21,7 @@ const normalizeEmail = (email?: string) => (email ? String(email).trim().toLower
 const isAdmin = async (client: ReturnType<typeof createClient>, email: string): Promise<boolean> => {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) return false;
-  
+
   const { data, error } = await client.rpc("is_admin_user", { user_email: normalizedEmail });
   if (error) {
     console.error("[admin-promo-codes] Error checking admin status:", error);
@@ -42,18 +42,18 @@ Deno.serve(async (req: Request) => {
   if (!email) return json(400, { ok: false, error: "email is required" });
 
   const client = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-  
+
   // Проверяем, является ли пользователь админом
   const userIsAdmin = await isAdmin(client, email);
   if (!userIsAdmin) {
     return json(403, { ok: false, error: "Access denied. Admin access required." });
   }
-  
+
   try {
     // Получаем все промокоды из базы
     const { data: promoCodes, error: promoError } = await client
       .from("promo_codes")
-      .select("id, code, kind, value, active, expires_at, product_key, email, created_at, updated_at")
+      .select("id, code, kind, value, active, expires_at, product_key, email, created_at, updated_at, commission_percent")
       .order("created_at", { ascending: false });
 
     if (promoError) throw promoError;
@@ -62,7 +62,7 @@ Deno.serve(async (req: Request) => {
 
     // Получаем статистику по каждому промокоду (успешные платежи)
     const promoCodeList = promoCodesList.map((pc) => String(pc.code).trim().toUpperCase());
-    
+
     // Получаем все выплаты партнерам (нужно для общей статистики даже если нет промокодов)
     const { data: payouts, error: payoutsError } = await client
       .from("partner_payouts")
@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
     if (promoCodeList.length > 0) {
       const { data: payments, error: paymentsError } = await client
         .from("payments")
-        .select("id, status, amount_value, amount_currency, promo_code, created_at")
+        .select("id, code, kind, value, active, expires_at, product_key, email, created_at, updated_at, commission_percent")
         .in("promo_code", promoCodeList)
         .order("created_at", { ascending: false });
 
@@ -118,10 +118,10 @@ Deno.serve(async (req: Request) => {
 
     // Фильтруем успешные платежи
     const successfulStatuses = ["succeeded", "paid", "success"];
-    const successfulPayments = paymentsList.filter((p) => 
+    const successfulPayments = paymentsList.filter((p) =>
       p.status && successfulStatuses.includes(String(p.status).toLowerCase())
     );
-    
+
     // Группируем промокоды по email партнера
     const promoCodesByEmail: Record<string, string[]> = {};
     promoCodesList.forEach((pc) => {
@@ -138,10 +138,10 @@ Deno.serve(async (req: Request) => {
     payoutsList.forEach((payout) => {
       const email = normalizeEmail(payout.partner_email);
       if (!email) return;
-      
+
       const amount = payout.amount_value ? Number(payout.amount_value) : 0;
       if (!Number.isFinite(amount) || amount <= 0) return;
-      
+
       if (!payoutsByEmail[email]) {
         payoutsByEmail[email] = { total: 0, currency: String(payout.amount_currency || "RUB") };
       }
@@ -179,7 +179,7 @@ Deno.serve(async (req: Request) => {
     let totalRevenueCurrency = "RUB";
     let totalPayouts = 0;
     let totalPayoutsCurrency = "RUB";
-    
+
     successfulPayments.forEach((payment) => {
       const amount = payment.amount_value ? Number(payment.amount_value) : 0;
       if (Number.isFinite(amount) && amount > 0) {
@@ -215,11 +215,11 @@ Deno.serve(async (req: Request) => {
       const paymentDate = new Date(payment.created_at);
       const monthStart = getMonthStart(paymentDate);
       const monthKey = getMonthKey(monthStart);
-      
+
       if (!monthlyStats[monthKey]) {
-        const monthName = monthStart.toLocaleDateString('ru-RU', { 
-          year: 'numeric', 
-          month: 'long' 
+        const monthName = monthStart.toLocaleDateString('ru-RU', {
+          year: 'numeric',
+          month: 'long'
         });
         monthlyStats[monthKey] = {
           month: monthName,
@@ -230,10 +230,10 @@ Deno.serve(async (req: Request) => {
           currency: payment.amount_currency || "RUB",
         };
       }
-      
-      const isSuccessful = payment.status && 
+
+      const isSuccessful = payment.status &&
         successfulStatuses.includes(String(payment.status).toLowerCase());
-      
+
       if (isSuccessful) {
         monthlyStats[monthKey].totalPayments++;
         const amount = payment.amount_value ? Number(payment.amount_value) : 0;
@@ -247,9 +247,9 @@ Deno.serve(async (req: Request) => {
     Object.keys(monthlyPayouts).forEach((monthKey) => {
       if (!monthlyStats[monthKey]) {
         const date = new Date(monthKey + '-01');
-        const monthName = date.toLocaleDateString('ru-RU', { 
-          year: 'numeric', 
-          month: 'long' 
+        const monthName = date.toLocaleDateString('ru-RU', {
+          year: 'numeric',
+          month: 'long'
         });
         monthlyStats[monthKey] = {
           month: monthName,
@@ -265,26 +265,31 @@ Deno.serve(async (req: Request) => {
     });
 
     // Сортируем месяцы по дате (от старых к новым)
-    const monthlyStatsArray = Object.values(monthlyStats).sort((a, b) => 
+    const monthlyStatsArray = Object.values(monthlyStats).sort((a, b) =>
       a.monthKey.localeCompare(b.monthKey)
     );
 
     // Статистика по каждому промокоду
     const stats = promoCodesList.map((promoCode) => {
       const code = String(promoCode.code).trim().toUpperCase();
-      const codePayments = paymentsList.filter((p) => 
+      const codePayments = paymentsList.filter((p) =>
         p.promo_code && String(p.promo_code).trim().toUpperCase() === code
       );
-      const codeSuccessful = codePayments.filter((p) => 
+      const codeSuccessful = codePayments.filter((p) =>
         p.status && successfulStatuses.includes(String(p.status).toLowerCase())
       );
-      
-      let codeRevenue = 0;
+
+      let grossRevenue = 0;
+      let partnerRevenue = 0;
       let currency = "RUB";
+
+      const commissionPercent = (promoCode as any).commission_percent ?? 100;
+
       codeSuccessful.forEach((payment) => {
         const amount = payment.amount_value ? Number(payment.amount_value) : 0;
         if (Number.isFinite(amount) && amount > 0) {
-          codeRevenue += amount;
+          grossRevenue += amount;
+          partnerRevenue += amount * (commissionPercent / 100);
         }
         if (payment.amount_currency) {
           currency = String(payment.amount_currency);
@@ -314,7 +319,9 @@ Deno.serve(async (req: Request) => {
         created_at: promoCode.created_at ? String(promoCode.created_at) : null,
         updated_at: promoCode.updated_at ? String(promoCode.updated_at) : null,
         totalPayments: codeSuccessful.length,
-        revenue: codeRevenue,
+        grossRevenue,
+        revenue: partnerRevenue,
+        commission_percent: commissionPercent,
         currency,
         payouts: payoutAmount,
         payoutsCurrency: payoutCurrency,

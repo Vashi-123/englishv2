@@ -73,14 +73,14 @@ const applyPromoFromDb = async (params: {
   console.log("[billing-quote] Processing promo:", { kind, value, iosProductId, base: params.base });
 
   if (kind === "free") {
-    const result = { amountValue: "0.00", appliedPromo: clean, iosProductId };
+    const result = { amountValue: "0.00", appliedPromo: clean };
     console.log("[billing-quote] Free promo result:", result);
     return result;
   }
   if (kind === "fixed") {
     const fixed = Number(value);
     if (!Number.isFinite(fixed) || fixed < 0) throw new Error("Некорректный промокод");
-    const result = { amountValue: toAmountString(fixed), appliedPromo: clean, iosProductId };
+    const result = { amountValue: toAmountString(fixed), appliedPromo: clean };
     console.log("[billing-quote] Fixed promo result:", result);
     return result;
   }
@@ -88,7 +88,7 @@ const applyPromoFromDb = async (params: {
     const pct = Number(value);
     if (!Number.isFinite(pct) || pct <= 0 || pct >= 100) throw new Error("Некорректный промокод");
     const discounted = params.base * (1 - pct / 100);
-    const result = { amountValue: toAmountString(discounted), appliedPromo: clean, iosProductId };
+    const result = { amountValue: toAmountString(discounted), appliedPromo: clean };
     console.log("[billing-quote] Percent promo result:", result);
     return result;
   }
@@ -113,7 +113,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: product, error: productError } = await supabase
       .from("billing_products")
-      .select("key,title,price_value,price_currency,active")
+      .select("key,title,price_value,price_currency,active,ios_product_id")
       .eq("key", productKey)
       .maybeSingle();
     if (productError) throw productError;
@@ -127,22 +127,11 @@ Deno.serve(async (req: Request) => {
     console.log("[billing-quote] Promo applied result:", {
       amountValue: priced.amountValue,
       appliedPromo: priced.appliedPromo,
-      iosProductId: priced.iosProductId,
     });
 
-    // Get default ios_product_id from billing_products if promo doesn't have one
-    let iosProductId = priced.iosProductId;
-    if (!iosProductId) {
-      const { data: productData } = await supabase
-        .from("billing_products")
-        .select("ios_product_id")
-        .eq("key", productKey)
-        .maybeSingle();
-      iosProductId = productData?.ios_product_id ? String(productData.ios_product_id) : null;
-      console.log("[billing-quote] Using default ios_product_id from billing_products:", iosProductId);
-    } else {
-      console.log("[billing-quote] Using ios_product_id from promo code:", iosProductId);
-    }
+    // Always use default ios_product_id from billing_products
+    const iosProductId = product?.ios_product_id ? String(product.ios_product_id) : null;
+    console.log("[billing-quote] Using default ios_product_id from billing_products:", iosProductId);
 
     const response = {
       ok: true,

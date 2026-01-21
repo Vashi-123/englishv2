@@ -649,7 +649,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
                 </div>
               </div>
               <div className="space-y-1 relative z-10">
-                <p className="text-xs sm:text-sm font-semibold text-gray-600">Общая выручка</p>
+                <p className="text-xs sm:text-sm font-semibold text-gray-600">Ваш доход</p>
                 <p className="text-lg sm:text-2xl font-black text-slate-900 break-words">
                   {formatCurrency(stats.totalRevenue, stats.totalRevenueCurrency)}
                 </p>
@@ -742,7 +742,7 @@ export const PartnerDashboard: React.FC<PartnerDashboardProps> = ({ userEmail, o
               <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 sm:p-6 border border-emerald-200">
                 <div className="flex items-center gap-2 mb-2">
                   <DollarSign className="w-5 h-5 text-emerald-600" />
-                  <p className="text-xs sm:text-sm font-semibold text-emerald-700">Выручка</p>
+                  <p className="text-xs sm:text-sm font-semibold text-emerald-700">Ваш доход</p>
                 </div>
                 <p className="text-xl sm:text-2xl font-black text-emerald-700">
                   {formatCurrency(selectedMonth.revenue, selectedMonth.currency)}

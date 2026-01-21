@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { getAdminPromoCodes, AdminPromoCode, AdminPromoCodesData } from '../../services/partnerService';
-import { 
-  Gift, 
-  Percent, 
-  DollarSign, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  Gift,
+  Percent,
+  DollarSign,
+  CheckCircle2,
+  XCircle,
   Loader2,
   RefreshCw,
   Calendar,
@@ -129,7 +129,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
   // Пересчитываем месячную статистику на основе отфильтрованных платежей
   const filteredMonthlyStats = useMemo(() => {
     if (!filteredPayments.length) return [];
-    
+
     const statsByMonth: Record<string, {
       revenue: number;
       totalPayments: number;
@@ -140,7 +140,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
       if (!payment.created_at) return;
       const paymentDate = new Date(payment.created_at);
       const monthKey = `${paymentDate.getFullYear()}-${String(paymentDate.getMonth() + 1).padStart(2, '0')}`;
-      
+
       if (!statsByMonth[monthKey]) {
         statsByMonth[monthKey] = {
           revenue: 0,
@@ -148,7 +148,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
           currency: payment.amount_currency || 'RUB',
         };
       }
-      
+
       const amount = payment.amount_value ? Number(payment.amount_value) : 0;
       if (Number.isFinite(amount) && amount > 0) {
         statsByMonth[monthKey].revenue += amount;
@@ -160,7 +160,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
     const payoutsByMonth: Record<string, { payouts: number; currency: string }> = {};
     (data?.payouts || []).forEach(payout => {
       if (!payout.payment_date) return;
-      
+
       // Если выбраны все промокоды, показываем все выплаты
       if (selectedPromoCodes.size !== allPromoCodes.length) {
         // Если у выплаты есть промокоды, проверяем, есть ли пересечение с выбранными
@@ -172,14 +172,14 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
           return;
         }
       }
-      
+
       const payoutDate = new Date(payout.payment_date);
       const monthKey = `${payoutDate.getFullYear()}-${String(payoutDate.getMonth() + 1).padStart(2, '0')}`;
-      
+
       if (!payoutsByMonth[monthKey]) {
         payoutsByMonth[monthKey] = { payouts: 0, currency: payout.amount_currency || 'RUB' };
       }
-      
+
       const amount = payout.amount_value ? Number(payout.amount_value) : 0;
       if (Number.isFinite(amount) && amount > 0) {
         payoutsByMonth[monthKey].payouts += amount;
@@ -193,7 +193,7 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
         const monthStats = statsByMonth[monthKey];
         const monthPayouts = payoutsByMonth[monthKey] || { payouts: 0, currency: monthStats.currency };
         const monthName = new Date(monthKey + '-01').toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' });
-        
+
         return {
           month: monthName,
           monthKey,
@@ -337,7 +337,8 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Партнер</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Статус</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Платежи</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Выручка</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Продажи</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Доход партнера</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Выплачено</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Создан</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Истекает</th>
@@ -396,9 +397,19 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                         {promo.totalPayments}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
-                        <span className="text-xs font-bold text-slate-900">
-                          {formatCurrency(promo.revenue, promo.currency)}
+                        <span className="text-xs text-gray-600">
+                          {formatCurrency((promo as any).grossRevenue || promo.revenue, promo.currency)}
                         </span>
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span className="text-xs font-bold text-slate-900">
+                            {formatCurrency(promo.revenue, promo.currency)}
+                          </span>
+                          <span className="text-[10px] text-gray-500">
+                            Комиссия: {(promo as any).commission_percent ?? 100}%
+                          </span>
+                        </div>
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         <span className="text-xs font-bold text-orange-600">
@@ -485,10 +496,20 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                         <p className="text-base font-bold text-emerald-600">{promo.totalPayments}</p>
                       </div>
                       <div className="col-span-2">
-                        <p className="text-xs text-gray-600 mb-1">Выручка</p>
-                        <p className="text-lg font-black text-slate-900">
-                          {formatCurrency(promo.revenue, promo.currency)}
-                        </p>
+                        <div className="flex justify-between items-center mb-1">
+                          <p className="text-xs text-gray-600">Продажи / Доход</p>
+                          <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-600">
+                            {(promo as any).commission_percent ?? 100}%
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-lg font-black text-slate-900">
+                            {formatCurrency(promo.revenue, promo.currency)}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            из {formatCurrency((promo as any).grossRevenue || promo.revenue, promo.currency)}
+                          </p>
+                        </div>
                       </div>
                       <div className="col-span-2">
                         <p className="text-xs text-gray-600 mb-1">Выплачено</p>
@@ -531,17 +552,16 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => {
-                const newSelected = selectedPromoCodes.size === allPromoCodes.length 
+                const newSelected = selectedPromoCodes.size === allPromoCodes.length
                   ? new Set<string>()
                   : new Set(allPromoCodes);
                 setSelectedPromoCodes(newSelected);
                 onFilterChange?.(newSelected);
               }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
-                selectedPromoCodes.size === allPromoCodes.length
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${selectedPromoCodes.size === allPromoCodes.length
                   ? 'bg-brand-primary text-white border-brand-primary'
                   : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
-              }`}
+                }`}
             >
               {selectedPromoCodes.size === allPromoCodes.length ? 'Снять все' : 'Выбрать все'}
             </button>
@@ -560,11 +580,10 @@ export const AdminPromoCodesPanel: React.FC<AdminPromoCodesPanelProps> = ({ user
                     setSelectedPromoCodes(newSelected);
                     onFilterChange?.(newSelected);
                   }}
-                  className={`px-3 py-1.5 text-xs font-mono font-semibold rounded-lg border transition-colors ${
-                    isSelected
+                  className={`px-3 py-1.5 text-xs font-mono font-semibold rounded-lg border transition-colors ${isSelected
                       ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
                       : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   {code}
                 </button>

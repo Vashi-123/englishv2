@@ -58,7 +58,6 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
   const [iapSupported, setIapSupported] = useState(false);
   const [iapLoading, setIapLoading] = useState(false);
   const [iapPriceLabel, setIapPriceLabel] = useState<string | null>(null);
-  const [promoIosProductId, setPromoIosProductId] = useState<string | null>(null);
   const [defaultIosProductId, setDefaultIosProductId] = useState<string | null>(null);
   const [defaultAndroidProductId, setDefaultAndroidProductId] = useState<string | null>(null);
 
@@ -259,14 +258,11 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     setPromoOk(null);
     setPriceValue(basePriceValue);
     setPriceCurrency(basePriceCurrency);
-    setPromoIosProductId(null);
   };
 
   const handleCheckPromo = async () => {
-    setPromoMessage(null);
     setPromoOk(null);
     promoAppliedRef.current = false;
-    setPromoIosProductId(null);
     const code = promoCode.trim();
     if (!code) {
       setPromoMessage("Введите промокод");
@@ -292,44 +288,16 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
         amountValue: res.amountValue,
         isNativeIos,
       });
-      // On iOS, if promo code provides iosProductId, fetch the actual price from Apple StoreKit
-      if (isNativeIos && res.iosProductId) {
-        console.log("[PaywallScreen] Setting promoIosProductId:", res.iosProductId);
-        setPromoIosProductId(res.iosProductId);
-        try {
-          console.log("[PaywallScreen] Fetching iOS product from StoreKit:", res.iosProductId);
-          const iapProduct = await fetchIosIapProductById(res.iosProductId);
-          console.log("[PaywallScreen] iOS product from StoreKit:", iapProduct);
-          if (iapProduct) {
-            // Use price from Apple StoreKit, not from DB
-            if (iapProduct.price) {
-              console.log("[PaywallScreen] Setting price from Apple StoreKit:", iapProduct.price);
-              setPriceValue(String(iapProduct.price));
-            }
-            if (iapProduct.currency) {
-              setPriceCurrency(iapProduct.currency);
-            }
-            if (iapProduct.localizedPrice) {
-              setIapPriceLabel(iapProduct.localizedPrice);
-            }
-          } else {
-            console.warn("[PaywallScreen] iOS product not found in StoreKit, using DB price");
-            // Fallback to DB price if Apple product not found
-            setPriceValue(String(res.amountValue));
-            setPriceCurrency(String(res.amountCurrency || "RUB"));
-          }
-        } catch (err) {
-          console.error("[PaywallScreen] Error fetching iOS product price:", err);
-          // Fallback to DB price on error
-          setPriceValue(String(res.amountValue));
-          setPriceCurrency(String(res.amountCurrency || "RUB"));
-        }
-      } else {
-        console.log("[PaywallScreen] Web or no iosProductId, using DB price");
-        // Web or no iosProductId: use price from DB
-        setPriceValue(String(res.amountValue));
-        setPriceCurrency(String(res.amountCurrency || "RUB"));
-      }
+
+      console.log("[PaywallScreen] Using DB price for Web/display (iOS uses StoreKit)");
+      // For Web/Android or iOS display: use price from DB (which might be discounted)
+      // Note: On iOS standard purchase flow, the price displayed to user comes from StoreKit (handled by Effect above),
+      // UNLESS a promo code is applied here that changes the visual price.
+      // But since we removed product swapping, iOS will still pay the standard price unless Offer Code is used.
+      // However, for UI consistency if we want to show discounted price (e.g. for Android/Web), we set it here.
+      setPriceValue(String(res.amountValue));
+      setPriceCurrency(String(res.amountCurrency || "RUB"));
+
       setPromoMessage(res.promoApplied ? "Промокод применён" : "Промокод не применён");
       setPromoOk(Boolean(res.promoApplied));
       promoAppliedRef.current = Boolean(res.promoApplied);
@@ -392,10 +360,9 @@ export const PaywallScreen: React.FC<PaywallScreenProps> = ({
     if (iapPaying || paying) return;
     setIapPaying(true);
     try {
-      // Use iosProductId from promo code if available, otherwise use default
-      const iosProductId = promoIosProductId || defaultIosProductId;
+      // Use default iosProductId
+      const iosProductId = defaultIosProductId;
       console.log("[PaywallScreen] handlePayIos - productId selection:", {
-        promoIosProductId,
         defaultIosProductId,
         selectedIosProductId: iosProductId,
         priceValue,
