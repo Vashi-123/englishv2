@@ -227,12 +227,14 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                 // Actually, we can iterate Transaction.unfinished?
                 
                 var found = false
-                for await transaction in Transaction.unfinished {
-                    if String(transaction.id) == transactionId || String(transaction.originalID) == transactionId {
-                         await transaction.finish()
-                         found = true
-                         // Keep going? Usually one ID matches one.
-                         break
+                for await result in Transaction.unfinished {
+                    if case .verified(let transaction) = result {
+                        if String(transaction.id) == transactionId || String(transaction.originalID) == transactionId {
+                             await transaction.finish()
+                             found = true
+                             // Keep going? Usually one ID matches one.
+                             break
+                        }
                     }
                 }
                 
