@@ -145,8 +145,8 @@ const verifyAndFinishTransaction = async (purchase: any, payloadOverride?: IapPu
   // Prefer offerCodeRefName from native transaction (StoreKit 2) over payload
   const promoCode = purchase.offerCodeRefName || payloadOverride?.promoCode || null;
 
-  let priceValue = payloadOverride?.priceValue ?? null;
-  let priceCurrency = payloadOverride?.priceCurrency ?? null;
+  let priceValue = payloadOverride?.priceValue ?? purchase.price ?? null;
+  let priceCurrency = payloadOverride?.priceCurrency ?? purchase.currency ?? null;
 
   // If price is missing (e.g. background update), fetch it from StoreKit
   if (priceValue === null && productId) {
@@ -189,6 +189,9 @@ const verifyAndFinishTransaction = async (purchase: any, payloadOverride?: IapPu
       console.warn("[iapService] Failed to finish transaction:", finishErr);
       // Don't fail the whole process if finish fails, but warn.
     }
+
+    // Notify listeners about successful purchase (important for UI updates on background transactions)
+    notifyPurchaseListeners(data as IapCompleteResponse);
   }
 
   return data as IapCompleteResponse;
@@ -273,6 +276,29 @@ export const restoreIosPurchases = async (): Promise<IapCompleteResponse | null>
     const errorMessage = err instanceof Error ? err.message : 'Не удалось восстановить покупки';
     return { ok: false, error: errorMessage };
   }
+};
+
+export type PurchaseEventListener = (response: IapCompleteResponse) => void;
+const purchaseListeners: PurchaseEventListener[] = [];
+
+export const addPurchaseListener = (listener: PurchaseEventListener): () => void => {
+  purchaseListeners.push(listener);
+  return () => {
+    const index = purchaseListeners.indexOf(listener);
+    if (index > -1) {
+      purchaseListeners.splice(index, 1);
+    }
+  };
+};
+
+const notifyPurchaseListeners = (response: IapCompleteResponse) => {
+  purchaseListeners.forEach(listener => {
+    try {
+      listener(response);
+    } catch (err) {
+      console.error("[iapService] Error in purchase listener:", err);
+    }
+  });
 };
 
 export const presentOfferCode = async (): Promise<void> => {

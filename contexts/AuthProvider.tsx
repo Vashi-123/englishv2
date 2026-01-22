@@ -14,6 +14,7 @@ interface AuthContextType {
   needsPasswordReset: boolean;
   setShowIntro: (show: boolean) => void;
   refreshSession: () => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -34,7 +35,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  
+
   const [loadingSlow, setLoadingSlow] = useState(false);
   const [showIntro, setShowIntro] = useState(true);
   const [hasLoggedIn, setHasLoggedIn] = useState(false);
@@ -75,7 +76,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (error) {
         console.error('[Auth] getSession error:', error);
       }
-      
+
       const currentSession = (data && data.session) ? data.session : null;
       // Only overwrite with null if we truly have no session (sign-out is handled via onAuthStateChange).
       if (currentSession) {
@@ -93,7 +94,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setSession(null);
         }
       }
-      
+
       if (currentSession) {
         setHasLoggedIn(true);
         try {
@@ -125,7 +126,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-      if (!loading) {
+    if (!loading) {
       setLoadingSlow(false);
       return;
     }
@@ -172,7 +173,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const code = parsed.searchParams.get('code') ?? hashParams?.get('code') ?? null;
         const accessToken = parsed.searchParams.get('access_token') ?? hashParams?.get('access_token') ?? null;
         const refreshToken = parsed.searchParams.get('refresh_token') ?? hashParams?.get('refresh_token') ?? null;
-        
+
         const hasAuthParams =
           Boolean(code) ||
           Boolean(accessToken) ||
@@ -207,7 +208,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           if (!oauthWasInitiated) {
             return;
           }
-          
+
           lastHandledAuthCodeRef.current = code;
           const { data, error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) {
@@ -245,17 +246,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setLoading(false);
         return;
       }
-      
+
       // КРИТИЧНО: На iOS сначала ждем завершения синхронизации Preferences в supabaseClient
       if (isNative && Capacitor.getPlatform() === 'ios') {
         try {
           const { waitForPreferencesSync, restoreSessionFromPreferences, ensurePreferencesLoaded } = await import('../services/supabaseClient');
           // Ждем завершения синхронизации
           await waitForPreferencesSync();
-          
+
           // Принудительно загружаем сессию из Preferences в кеш
           await ensurePreferencesLoaded();
-          
+
           // Принудительно восстанавливаем сессию из Preferences в кеш и localStorage
           const restoreResult = await restoreSessionFromPreferences();
           if (restoreResult.restored && restoreResult.value) {
@@ -267,10 +268,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 // Сразу устанавливаем сессию из кеша и убираем экран загрузки,
                 // не дожидаясь сетевого ответа от Supabase.
                 console.log('[Auth] bootstrap: оптимистичная установка сессии');
-                
+
                 // Формируем объект сессии (приводим типы, если нужно)
                 const optimisticSession = sessionData as Session;
-                
+
                 setSession(optimisticSession);
                 setHasLoggedIn(true);
                 try {
@@ -278,7 +279,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 } catch {
                   // ignore
                 }
-                
+
                 // На больших экранах не скрываем интро
                 const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
                 if (!isLargeScreen) {
@@ -296,7 +297,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 }).then(({ data, error }) => {
                   if (error) {
                     console.error('[Auth] bootstrap: фоновая ошибка setSession:', error);
-                    
+
                     // Если токен невалиден (например, отозван или удален аккаунт), сбрасываем сессию
                     if (error.message?.includes('Invalid Refresh Token') || error.message?.includes('invalid_grant')) {
                       console.warn('[Auth] bootstrap: невалидный refresh token в фоне, сбрасываем сессию');
@@ -307,22 +308,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                   } else if (data?.session) {
                     console.log('[Auth] bootstrap: сессия успешно обновлена в фоне');
                     setSession(data.session);
-                    
+
                     // Обновляем кеш новыми данными
-                     if (isNative && Capacitor.getPlatform() === 'ios') {
-                       import('@capacitor/preferences').then(({ Preferences }) => {
-                         // Сохраняем все ключи Supabase
-                         for (let i = 0; i < window.localStorage.length; i++) {
-                            const key = window.localStorage.key(i);
-                            if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
-                              const value = window.localStorage.getItem(key);
-                              if (value) {
-                                Preferences.set({ key, value });
-                              }
+                    if (isNative && Capacitor.getPlatform() === 'ios') {
+                      import('@capacitor/preferences').then(({ Preferences }) => {
+                        // Сохраняем все ключи Supabase
+                        for (let i = 0; i < window.localStorage.length; i++) {
+                          const key = window.localStorage.key(i);
+                          if (key && key.startsWith('sb-') && key.endsWith('-auth-token')) {
+                            const value = window.localStorage.getItem(key);
+                            if (value) {
+                              Preferences.set({ key, value });
                             }
-                         }
-                       });
-                     }
+                          }
+                        }
+                      });
+                    }
                   }
                 });
 
@@ -333,7 +334,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               console.error('[Auth] bootstrap: ошибка парсинга или восстановления сессии:', err);
             }
           }
-          
+
           // Дополнительная синхронизация: проверяем все ключи localStorage и синхронизируем с Preferences
           const { Preferences } = await import('@capacitor/preferences');
           for (let i = 0; i < window.localStorage.length; i++) {
@@ -350,7 +351,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           console.error('[Auth] bootstrap: ошибка синхронизации Preferences:', err);
         }
       }
-      
+
       try {
         const url = new URL(window.location.href);
         const code = url.searchParams.get('code');
@@ -412,10 +413,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             try {
               const { waitForPreferencesSync, restoreSessionFromPreferences } = await import('../services/supabaseClient');
               await waitForPreferencesSync();
-              
+
               // КРИТИЧНО: При возврате из фона localStorage может быть очищен
               const restoreResult = await restoreSessionFromPreferences();
-              
+
               if (restoreResult.restored && restoreResult.value) {
                 // После восстановления из Preferences нужно принудительно восстановить сессию через setSession
                 try {
@@ -443,7 +444,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                   console.error('[Auth] appStateChange: ошибка парсинга или восстановления сессии:', err);
                 }
               }
-              
+
               // ОПТИМИЗАЦИЯ: Не ставим loading=true если сессия уже есть, чтобы не перерисовывать весь интерфейс
               if (!sessionRef.current) {
                 setLoading(true);
@@ -453,7 +454,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               console.error('[Auth] appStateChange: ошибка восстановления:', err);
             }
           }
-          
+
           // Обработка OAuth редиректа
           let inProgress = false;
           try {
@@ -512,11 +513,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           return;
         }
       }
-      
+
       if (event === 'PASSWORD_RECOVERY') {
         setNeedsPasswordReset(true);
       }
-      
+
       // КРИТИЧНО: На iOS игнорируем SIGNED_OUT, если это не явный выход пользователя
       if (event === 'SIGNED_OUT' && isNative && Capacitor.getPlatform() === 'ios' && !newSession && typeof window !== 'undefined') {
         try {
@@ -524,11 +525,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const projectRef = import.meta.env.VITE_SUPABASE_URL?.split('//')[1]?.split('.')[0] || '';
           const supabaseAuthKey = projectRef ? `sb-${projectRef}-auth-token` : null;
           const keys = [supabaseAuthKey, 'sb-auth-token'].filter(Boolean) as string[];
-          
+
           let foundInPreferences = false;
           let restoredValue: string | null = null;
           let restoredKey: string | null = null;
-          
+
           try {
             const { restoreSessionFromPreferences } = await import('../services/supabaseClient');
             const restoreResult = await restoreSessionFromPreferences();
@@ -560,7 +561,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               }
             }
           }
-          
+
           if (foundInPreferences && restoredValue && restoredKey) {
             // Восстанавливаем сессию через setSession
             try {
@@ -587,7 +588,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             } catch (err) {
               console.warn('[Auth] onAuthStateChange: ошибка парсинга сессии из Preferences:', err);
             }
-            
+
             // Если setSession не сработал, пытаемся через refreshSession
             setTimeout(async () => {
               try {
@@ -596,21 +597,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 // ignore
               }
             }, 100);
-            
+
             // Не устанавливаем сессию в null, так как она есть в Preferences
             setLoading(false);
             return;
           } else {
             // Если bootstrap еще не завершен, не устанавливаем сессию в null
             if (!bootstrapCompletedRef.current) {
-              return; 
+              return;
             }
           }
         } catch (err) {
           console.warn('[Auth] onAuthStateChange: ошибка проверки Preferences:', err);
         }
       }
-      
+
       setSession(newSession);
       if (newSession) {
         setHasLoggedIn(true);
@@ -619,13 +620,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } catch (err) {
           console.warn('[Auth] onAuthStateChange: ошибка установки has_logged_in:', err);
         }
-        
+
         // На больших экранах не скрываем интро
         const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
         if (!isLargeScreen) {
           setShowIntro(false);
         }
-        
+
         // КРИТИЧНО: На iOS сохраняем сессию в Preferences при каждом изменении
         if (isNative && Capacitor.getPlatform() === 'ios' && typeof window !== 'undefined') {
           try {
@@ -712,6 +713,71 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, [refreshSession]);
 
+  const signOut = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      // Таймаут для signOut - не ждем больше 5 секунд
+      const signOutPromise = supabase.auth.signOut();
+      const timeoutPromise = new Promise<void>((resolve) => {
+        setTimeout(() => {
+          console.warn('[Auth] signOut timeout after 5s, forcing local cleanup');
+          resolve();
+        }, 5000);
+      });
+
+      await Promise.race([signOutPromise, timeoutPromise]);
+    } catch (err) {
+      console.error('[Auth] Error during sign out:', err);
+    } finally {
+      // Принудительная очистка состояния независимо от результата запроса
+      setSession(null);
+      setHasLoggedIn(false);
+      try {
+        localStorage.removeItem('has_logged_in');
+
+        // Очищаем ключи Supabase из localStorage
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+          const key = window.localStorage.key(i);
+          if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => {
+          try {
+            window.localStorage.removeItem(key);
+          } catch {
+            // ignore
+          }
+        });
+
+        // На iOS также очищаем из Preferences
+        if (isNative && Capacitor.getPlatform() === 'ios') {
+          try {
+            const { Preferences } = await import('@capacitor/preferences');
+            for (const key of keysToRemove) {
+              Preferences.remove({ key }).catch(() => { });
+            }
+          } catch {
+            // ignore
+          }
+        }
+      } catch (err) {
+        console.error('[Auth] Error clearing local storage:', err);
+      }
+
+      // На больших экранах не скрываем интро
+      const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
+      if (!isLargeScreen) {
+        setShowIntro(true);
+      }
+
+      setLoading(false);
+    }
+  }, [isNative]);
+
+
   return (
     <AuthContext.Provider
       value={{
@@ -723,6 +789,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         needsPasswordReset,
         setShowIntro,
         refreshSession,
+        signOut,
       }}
     >
       {children}

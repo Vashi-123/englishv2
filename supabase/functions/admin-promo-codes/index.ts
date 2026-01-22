@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
     if (promoCodeList.length > 0) {
       const { data: payments, error: paymentsError } = await client
         .from("payments")
-        .select("id, code, kind, value, active, expires_at, product_key, email, created_at, updated_at, commission_percent")
+        .select("id, status, amount_value, amount_currency, promo_code, created_at")
         .in("promo_code", promoCodeList)
         .order("created_at", { ascending: false });
 

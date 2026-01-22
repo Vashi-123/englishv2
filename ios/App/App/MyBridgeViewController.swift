@@ -80,12 +80,19 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                             offerCodeRefName = transaction.offerID
                         }
                         
+                        var currencyCode: String? = nil
+                        if #available(iOS 16.0, *) {
+                            currencyCode = transaction.currency?.identifier
+                        }
+
                         let purchaseData: [String: Any] = [
                             "transactionId": transaction.id,
                             "productId": transaction.productID,
                             "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
                             "receiptData": (receipt as Any?) ?? NSNull(),
-                            "offerCodeRefName": offerCodeRefName ?? NSNull()
+                            "offerCodeRefName": offerCodeRefName ?? NSNull(),
+                            "price": (transaction.price ?? 0) as Decimal,
+                            "currency": currencyCode ?? NSNull()
                         ]
                         
                         self.notifyListeners("transactionUpdated", data: ["purchase": purchaseData])
@@ -157,12 +164,19 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                         offerCodeRefName = transaction.offerID
                     }
                     
+                    var currencyCode: String? = nil
+                    if #available(iOS 16.0, *) {
+                        currencyCode = transaction.currency?.identifier
+                    }
+
                     let purchaseData: [String: Any] = [
                         "transactionId": transaction.id,
                         "productId": transaction.productID,
                         "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
                         "receiptData": (receipt as Any?) ?? NSNull(),
-                        "offerCodeRefName": offerCodeRefName ?? NSNull()
+                        "offerCodeRefName": offerCodeRefName ?? NSNull(),
+                        "price": (transaction.price ?? 0) as Decimal,
+                        "currency": currencyCode ?? NSNull()
                     ]
                     
                     call.resolve([
@@ -192,13 +206,20 @@ public class NativeIapPlugin: CAPPlugin, CAPBridgedPlugin {
                         offerCodeRefName = transaction.offerID
                     }
                     
+                    var currencyCode: String? = nil
+                    if #available(iOS 16.0, *) {
+                        currencyCode = transaction.currency?.identifier
+                    }
+
                     call.resolve([
                         "purchase": [
                             "transactionId": transaction.id,
                             "productId": transaction.productID,
                             "purchaseDateMs": Int(transaction.purchaseDate.timeIntervalSince1970 * 1000),
                             "receiptData": (receipt as Any?) ?? NSNull(),
-                            "offerCodeRefName": offerCodeRefName ?? NSNull()
+                            "offerCodeRefName": offerCodeRefName ?? NSNull(),
+                            "price": (transaction.price ?? 0) as Decimal,
+                            "currency": currencyCode ?? NSNull()
                         ]
                     ])
                     // REMOVED: await transaction.finish()

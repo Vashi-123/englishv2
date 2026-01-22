@@ -155,65 +155,11 @@ const AppPage: React.FC = () => {
 
   // Если есть сессия - показываем приложение с уроками
   if (session?.user?.id) {
+    const { signOut } = useAuth();
+
+    // Используем signOut из контекста
     const handleSignOut = async () => {
-      try {
-        // Таймаут для signOut - не ждем больше 5 секунд
-        const signOutPromise = supabase.auth.signOut();
-        const timeoutPromise = new Promise<void>((resolve) => {
-          setTimeout(() => {
-            console.warn('[SignOut] Timeout after 5s, forcing sign out');
-            resolve();
-          }, 5000);
-        });
-
-        await Promise.race([signOutPromise, timeoutPromise]);
-
-        // Очищаем localStorage и Preferences на iOS
-        if (typeof window !== 'undefined') {
-          try {
-            // Очищаем ключи Supabase из localStorage
-            const keysToRemove: string[] = [];
-            for (let i = 0; i < window.localStorage.length; i++) {
-              const key = window.localStorage.key(i);
-              if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-                keysToRemove.push(key);
-              }
-            }
-            keysToRemove.forEach(key => {
-              try {
-                window.localStorage.removeItem(key);
-              } catch {
-                // ignore
-              }
-            });
-
-            // На iOS также очищаем из Preferences
-            const isNativeIOS = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
-            if (isNativeIOS) {
-              try {
-                const { Preferences } = await import('@capacitor/preferences');
-                for (const key of keysToRemove) {
-                  Preferences.remove({ key }).catch(() => {
-                    // ignore
-                  });
-                }
-              } catch {
-                // ignore - Preferences может быть недоступен
-              }
-            }
-          } catch {
-            // ignore
-          }
-        }
-      } catch (err) {
-        console.error('[SignOut] Error during sign out:', err);
-        // Продолжаем выход даже при ошибке
-      }
-
-      const isLargeScreen = typeof window !== 'undefined' && window.innerWidth >= 768;
-      if (!isLargeScreen) {
-        // Сброс showIntro будет обработан в AuthProvider
-      }
+      await signOut();
       navigate('/app', { replace: true });
     };
 
@@ -362,60 +308,10 @@ const PartnerPage: React.FC = () => {
 
   // Если есть сессия - показываем dashboard
   if (session?.user?.id && session?.user?.email) {
+    const { signOut } = useAuth();
+
     const handleSignOut = async () => {
-      try {
-        // Таймаут для signOut - не ждем больше 5 секунд
-        const signOutPromise = supabase.auth.signOut();
-        const timeoutPromise = new Promise<void>((resolve) => {
-          setTimeout(() => {
-            console.warn('[SignOut] Timeout after 5s, forcing sign out');
-            resolve();
-          }, 5000);
-        });
-
-        await Promise.race([signOutPromise, timeoutPromise]);
-
-        // Очищаем localStorage и Preferences на iOS
-        if (typeof window !== 'undefined') {
-          try {
-            const keysToRemove: string[] = [];
-            for (let i = 0; i < window.localStorage.length; i++) {
-              const key = window.localStorage.key(i);
-              if (key && (key.startsWith('sb-') && key.endsWith('-auth-token'))) {
-                keysToRemove.push(key);
-              }
-            }
-            keysToRemove.forEach(key => {
-              try {
-                window.localStorage.removeItem(key);
-              } catch {
-                // ignore
-              }
-            });
-
-            // На iOS также очищаем из Preferences
-            const isNativeIOS = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
-            if (isNativeIOS) {
-              try {
-                const { Preferences } = await import('@capacitor/preferences');
-                for (const key of keysToRemove) {
-                  Preferences.remove({ key }).catch(() => {
-                    // ignore
-                  });
-                }
-              } catch {
-                // ignore - Preferences может быть недоступен
-              }
-            }
-          } catch {
-            // ignore
-          }
-        }
-      } catch (err) {
-        console.error('[SignOut] Error during sign out:', err);
-        // Продолжаем выход даже при ошибке
-      }
-
+      await signOut();
       navigate('/partners', { replace: true });
     };
 

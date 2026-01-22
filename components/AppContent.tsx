@@ -490,36 +490,62 @@ export const AppContent: React.FC<{
   // Автоматическая обработка завершившихся pending транзакций при возврате приложения из фона
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== 'ios') return;
-    if (!userId) return;
 
-    const handleAppStateChange = async () => {
+    let cleanupListener: (() => void) | undefined;
+
+    const setupIosHandlers = async () => {
       try {
+        const { restoreIosPurchases, addPurchaseListener } = await import('../services/iapService');
+
+        // 1. Cold Start Check: Проверяем покупки сразу при старте
+        if (userId) {
+          restoreIosPurchases().then(result => {
+            if (result?.ok && result.granted) {
+              console.log('[AppContent] Cold start purchase found, refreshing entitlements');
+              void refreshEntitlements();
+            }
+          }).catch(err => {
+            console.log('[AppContent] Cold start restore check failed:', err);
+          });
+        }
+
+        // 2. Event Listener: Слушаем новые покупки (включая Offer Codes и фоновые транзакции)
+        cleanupListener = addPurchaseListener((response) => {
+          if (response.ok && response.granted) {
+            console.log('[AppContent] Purchase event received, refreshing entitlements');
+            void refreshEntitlements();
+          }
+        });
+
+        // 3. App State Change: При возврате из фона тоже проверяем
         const { App } = await import('@capacitor/app');
         const listener = await App.addListener('appStateChange', async ({ isActive }) => {
-          if (isActive) {
-            // При возврате приложения проверяем завершившиеся pending транзакции
+          if (isActive && userId) {
             try {
-              const { restoreIosPurchases } = await import('../services/iapService');
               const result = await restoreIosPurchases();
               if (result?.ok && result.granted) {
-                // Если найдена завершившаяся транзакция, обновляем entitlements
                 await refreshEntitlements();
               }
             } catch (err) {
-              // Игнорируем ошибки при автоматической проверке
               console.log('[AppContent] Auto-restore purchases check failed:', err);
             }
           }
         });
+
         return () => {
           listener.remove();
         };
       } catch (err) {
-        // Игнорируем ошибки
+        console.log('[AppContent] Error setting up iOS handlers:', err);
       }
     };
 
-    void handleAppStateChange();
+    const cleanupPromise = setupIosHandlers();
+
+    return () => {
+      if (cleanupListener) cleanupListener();
+      cleanupPromise.then(cleanup => cleanup && cleanup());
+    };
   }, [userId, refreshEntitlements]);
 
   // Persist dashboard state so a refresh doesn't feel like a cold start.
