@@ -7,6 +7,8 @@ import { useOnlineStatus } from './hooks/useOnlineStatus';
 import { useVersionCheck } from './hooks/useVersionCheck';
 import { UpdateModal } from './components/modals/UpdateModal';
 import { supabase } from './services/supabaseClient';
+import { VoiceChat } from './components/VoiceChat';
+import { VoiceConversation } from './components/VoiceConversation';
 
 // Lazy loading для больших компонентов с обработкой ошибок
 const lazyWithErrorHandling = <T extends React.ComponentType<any>>(
@@ -133,7 +135,7 @@ const LandingPage: React.FC = () => {
 
 // Компонент для страницы приложения (вход + уроки)
 const AppPage: React.FC = () => {
-  const { session, loading, refreshSession } = useAuth();
+  const { session, loading, refreshSession, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -155,8 +157,6 @@ const AppPage: React.FC = () => {
 
   // Если есть сессия - показываем приложение с уроками
   if (session?.user?.id) {
-    const { signOut } = useAuth();
-
     // Используем signOut из контекста
     const handleSignOut = async () => {
       await signOut();
@@ -277,7 +277,7 @@ const EmailConfirmPage: React.FC = () => {
 
 // Компонент для партнерского портала
 const PartnerPage: React.FC = () => {
-  const { session, loading, refreshSession } = useAuth();
+  const { session, loading, refreshSession, signOut } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const autologinAttemptedRef = useRef(false);
@@ -308,8 +308,6 @@ const PartnerPage: React.FC = () => {
 
   // Если есть сессия - показываем dashboard
   if (session?.user?.id && session?.user?.email) {
-    const { signOut } = useAuth();
-
     const handleSignOut = async () => {
       await signOut();
       navigate('/partners', { replace: true });
@@ -425,6 +423,8 @@ const AppRouter: React.FC = () => {
             <Route path="/partners/*" element={<PartnerPage />} />
 
             {/* 404 - редирект на главную */}
+            <Route path="/voice-chat" element={<div className="p-4 pt-20"><VoiceChat /></div>} />
+            <Route path="/voice-conversation" element={<div className="p-4 pt-20"><VoiceConversation /></div>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </Suspense>

@@ -15,6 +15,34 @@ const loggedFetchFailHashes = new Set<string>();
 let loggedCacheUnavailable = false;
 let loggedIdbUnavailable = false;
 
+// Bundled assets
+const bundledHashes = new Set<string>();
+let bundledManifestLoaded = false;
+
+function initBundledManifest() {
+  if (bundledManifestLoaded) return;
+  if (typeof window === 'undefined') return;
+  bundledManifestLoaded = true;
+  fetch('/bundled-tts/manifest.json')
+    .then((res) => {
+      if (res.ok) return res.json();
+      return [];
+    })
+    .then((list) => {
+      if (Array.isArray(list)) {
+        for (const h of list) bundledHashes.add(h);
+        // eslint-disable-next-line no-console
+        console.log('[TTS] Bundled manifest loaded:', { count: list.length });
+      }
+    })
+    .catch(() => {
+      // ignore
+    });
+}
+
+// Call immediately
+initBundledManifest();
+
 // Cache: hash -> url (string) | null (known-missing)
 const urlCache = new Map<string, string | null>();
 const sessionKey = (hash: string) => `tts:assetUrl:${hash}`;
@@ -317,6 +345,11 @@ async function getTtsAudioUrl(
 
   // Hash must match server enqueue/worker: sha256(`${lang}|${voice}|${text}`)
   const hash = await sha256Hex(`${lang}|${voice}|${text}`);
+
+  if (bundledHashes.has(hash)) {
+    return `/bundled-tts/${hash}.mp3`;
+  }
+
   if (!opts?.bypassCache && urlCache.has(hash)) {
     const cached = urlCache.get(hash) ?? null;
     if (cached) {
@@ -477,6 +510,13 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
   const cacheReq = cache ? cacheRequestForHash(hash) : null;
 
   // If already cached, use it (web/http(s)).
+  if (bundledHashes.has(hash)) {
+    // Construct local path
+    // For iOS/Android (Capacitor), this might need to be absolute or handled via public path.
+    // In standard web/vite, it's just from root.
+    return `/bundled-tts/${hash}.mp3`;
+  }
+
   if (cache && cacheReq) {
     try {
       const hit = await cache.match(cacheReq);
@@ -509,6 +549,7 @@ export async function getTtsAudioPlaybackUrl(params: { text: string; lang?: stri
   } else {
     // iOS (capacitor://) and other non-http(s): use IndexedDB.
     const hitBlob = await idbGetMp3(hash);
+
     if (hitBlob && hitBlob.size > 0) {
       const blob = ensureMp3BlobType(hitBlob);
       if (blob && blob.size > 0) {

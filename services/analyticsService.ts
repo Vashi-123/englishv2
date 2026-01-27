@@ -81,7 +81,8 @@ export interface LessonDistribution {
     day: number;
     lesson: number;
     title: string;
-    user_count: number;
+    total_users: number;
+    period_users: number;
 }
 
 export const getLessonDistribution = async (daysBack: number = 90): Promise<LessonDistribution[]> => {

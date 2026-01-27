@@ -47,10 +47,10 @@ export function DialogueMessages({
   grammarGate,
   persistGrammarGateOpened,
 
-	  showVocab,
-	  vocabWords,
-	  vocabIndex,
-	  setVocabIndex,
+  showVocab,
+  vocabWords,
+  vocabIndex,
+  setVocabIndex,
   vocabRefs,
   currentAudioItem,
   processAudioQueue,
@@ -72,7 +72,7 @@ export function DialogueMessages({
   setIsLoading,
 
   handleStudentAnswer,
-  
+
   lessonId,
   userId,
   language,
@@ -95,22 +95,22 @@ export function DialogueMessages({
   matchingMismatchAttempt,
 
   shouldShowVocabCheckButton,
-		  handleCheckVocabulary,
+  handleCheckVocabulary,
 
-			  isAwaitingModelReply,
-			  lessonCompletedPersisted,
-			  isRevisit,
-			  onNextLesson,
+  isAwaitingModelReply,
+  lessonCompletedPersisted,
+  isRevisit,
+  onNextLesson,
 
-        nextLessonNumber,
-        nextLessonIsPremium,
-        ankiGateActive,
-        ankiIntroText,
-        ankiQuizItems,
-        onAnkiAnswer,
-        onAnkiComplete,
-        startedSituations,
-				}: {
+  nextLessonNumber,
+  nextLessonIsPremium,
+  ankiGateActive,
+  ankiIntroText,
+  ankiQuizItems,
+  onAnkiAnswer,
+  onAnkiComplete,
+  startedSituations,
+}: {
   scrollContainerRef: MutableRefObject<HTMLDivElement | null>;
   messagesEndRef: MutableRefObject<HTMLDivElement | null>;
   messageRefs: MutableRefObject<Map<number, HTMLDivElement>>;
@@ -130,12 +130,12 @@ export function DialogueMessages({
   grammarGate: GrammarGateState;
   persistGrammarGateOpened: (keys: string[]) => void;
 
-	  showVocab: boolean;
-	  vocabWords: any[];
-	  vocabIndex: number;
-	  setVocabIndex: Dispatch<SetStateAction<number>>;
-	  vocabRefs: MutableRefObject<Map<number, HTMLDivElement>>;
-	  currentAudioItem: any;
+  showVocab: boolean;
+  vocabWords: any[];
+  vocabIndex: number;
+  setVocabIndex: Dispatch<SetStateAction<number>>;
+  vocabRefs: MutableRefObject<Map<number, HTMLDivElement>>;
+  currentAudioItem: any;
   processAudioQueue: (items: Array<{ text: string; lang: string; kind?: string }>, messageId?: string) => void;
   waitForAudioIdle?: (timeoutMs?: number) => Promise<void>;
   playVocabAudio: (items: Array<{ text: string; lang: string; kind?: string }>, messageId?: string) => void;
@@ -155,7 +155,7 @@ export function DialogueMessages({
 
   isLoading: boolean;
   setIsLoading: Dispatch<SetStateAction<boolean>>;
-  
+
   // For grammar drills validation
   lessonId?: string | null;
   userId?: string | null;
@@ -192,22 +192,23 @@ export function DialogueMessages({
   shouldShowVocabCheckButton: boolean;
   handleCheckVocabulary: () => void;
 
-			  isAwaitingModelReply: boolean;
-			  lessonCompletedPersisted: boolean;
-			  isRevisit?: boolean;
-			  onNextLesson?: () => void;
+  isAwaitingModelReply: boolean;
+  lessonCompletedPersisted: boolean;
+  isRevisit?: boolean;
+  onNextLesson?: () => void;
 
-        nextLessonNumber?: number;
-        nextLessonIsPremium?: boolean;
+  nextLessonNumber?: number;
+  nextLessonIsPremium?: boolean;
 
-	        ankiGateActive?: boolean;
-	        ankiIntroText?: string;
-        ankiQuizItems?: Array<{ id?: number; word: string; translation: string }>;
-        onAnkiAnswer?: (params: { id?: number; word: string; translation: string; isCorrect: boolean }) => void;
-        onAnkiComplete?: () => void;
-        startedSituations: Record<string, boolean>;
-			}) {
+  ankiGateActive?: boolean;
+  ankiIntroText?: string;
+  ankiQuizItems?: Array<{ id?: number; word: string; translation: string }>;
+  onAnkiAnswer?: (params: { id?: number; word: string; translation: string; isCorrect: boolean }) => void;
+  onAnkiComplete?: () => void;
+  startedSituations: Record<string, boolean>;
+}) {
   let findMistakeOrdinal = 0;
+  const [isNavigating, setIsNavigating] = useState(false);
   const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
   const suppressGlobalTypingIndicator =
     Boolean(isAwaitingModelReply) &&
@@ -251,19 +252,19 @@ export function DialogueMessages({
   // ОПТИМИЗАЦИЯ: Определение мобильного устройства и iOS для адаптивной оптимизации
   const isMobile = useIsMobile();
   const isIOSDevice = useIsIOS();
-  
+
   // ОПТИМИЗАЦИЯ iOS: Точная оценка высоты сообщения в зависимости от типа
   const estimateSize = useMemo(() => {
     return (index: number) => {
       const msg = visibleMessages[index];
       if (!msg) return 120;
-      
+
       // Учитываем тип сообщения для более точной оценки
       const text = msg.text || '';
       if (msg.role === 'model') {
         // Situation карточки самые большие
-        if (text.includes('"type":"situation"') || text.includes('"type": "situation"') || 
-            (text.includes('situation') && text.startsWith('{'))) {
+        if (text.includes('"type":"situation"') || text.includes('"type": "situation"') ||
+          (text.includes('situation') && text.startsWith('{'))) {
           return 400;
         }
         // Vocabulary карточки
@@ -287,7 +288,7 @@ export function DialogueMessages({
       return 120;
     };
   }, [visibleMessages]);
-  
+
   // Виртуализацию отключаем — возвращаем прежний рендер без абсолютного позиционирования,
   // чтобы исключить пустые экраны после переходов между задачами.
   const shouldVirtualize = false;
@@ -377,8 +378,8 @@ export function DialogueMessages({
             return Boolean(
               (parsedFromText &&
                 (/Напиши\s*A\s*или\s*B/i.test(raw) || /Выбери.*A.*B/i.test(raw) || /Найди\s+ошибк/i.test(raw))) ||
-                (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(raw) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(raw)) &&
-                  (/Найди\s+ошибк/i.test(raw) || /Выбери/i.test(raw))))
+              (((/(^|\n)\s*A\)?\s*(?:\n|$)/i.test(raw) && /(^|\n)\s*B\)?\s*(?:\n|$)/i.test(raw)) &&
+                (/Найди\s+ошибк/i.test(raw) || /Выбери/i.test(raw))))
             );
           })();
 
@@ -467,8 +468,8 @@ export function DialogueMessages({
 
           const situationCompletedCorrect = Boolean(
             isSituationCard &&
-              hasUserReplyInSituation &&
-              (situationResult === 'correct' || (situationResult == null && !hasFeedbackInSituation && advancedPastSituation))
+            hasUserReplyInSituation &&
+            (situationResult === 'correct' || (situationResult == null && !hasFeedbackInSituation && advancedPastSituation))
           );
 
           const findMistakeTaskIndexFallback = isFindMistakeMessage ? findMistakeOrdinal++ : undefined;
@@ -533,7 +534,7 @@ export function DialogueMessages({
 
           const isTaskCard = Boolean(isTaskPayload && !isSituationCard && !isVocabulary && !isSeparatorOnly);
           const isGrammar = parsed?.type === 'grammar';
-          
+
           // Проверяем, является ли это сообщение следующим после завершенного matching
           // Если matching был завершен и это сообщение идет после того места, где был matching,
           // то px-6 нужно применить только к сообщению, а не к обертке с matching
@@ -547,7 +548,7 @@ export function DialogueMessages({
             }
             return idx > matchingInsertIndexSafe;
           })();
-          
+
           const isFullCard = isSituationCard || isVocabulary || isTaskCard || Boolean(isSeparatorOnly || showSeparator);
           // Не применяем px-6 к внешнему контейнеру, если это сообщение после завершенного matching,
           // чтобы не затронуть matching карточку. px-6 будет применен только к самому сообщению в MessageRow.
@@ -615,14 +616,14 @@ export function DialogueMessages({
                   isSituationCard={isSituationCard}
                   situationGroupMessages={situationGroupMessages || null}
                   situationCompletedCorrect={situationCompletedCorrect}
-	                  showVocab={showVocab}
-	                  vocabWords={vocabWords}
-	                  vocabIndex={vocabIndex}
-	                  setVocabIndex={setVocabIndex}
-	                  currentAudioItem={currentAudioItem}
-	                  vocabRefs={vocabRefs}
-	                  processAudioQueue={processAudioQueue}
-	                  playVocabAudio={playVocabAudio}
+                  showVocab={showVocab}
+                  vocabWords={vocabWords}
+                  vocabIndex={vocabIndex}
+                  setVocabIndex={setVocabIndex}
+                  currentAudioItem={currentAudioItem}
+                  vocabRefs={vocabRefs}
+                  processAudioQueue={processAudioQueue}
+                  playVocabAudio={playVocabAudio}
                   lessonScript={lessonScript}
                   currentStep={currentStep}
                   isAwaitingModelReply={Boolean(isAwaitingModelReply)}
@@ -684,16 +685,16 @@ export function DialogueMessages({
           !suppressGlobalTypingIndicator &&
           messages.length > 0 &&
           messages[messages.length - 1]?.role === 'user' && (
-          <div className="px-6">
-            <div className="flex justify-start">
-              <div className="bg-gray-50 px-4 py-2 rounded-full flex space-x-1">
-                <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
-                <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce delay-100"></div>
-                <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce delay-200"></div>
+            <div className="px-6">
+              <div className="flex justify-start">
+                <div className="bg-gray-50 px-4 py-2 rounded-full flex space-x-1">
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce delay-100"></div>
+                  <div className="w-2 h-2 bg-gray-300 rounded-full animate-bounce delay-200"></div>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
         {lessonCompletedPersisted && !isLoading && (
           <>
@@ -707,8 +708,16 @@ export function DialogueMessages({
                 <div className="w-full max-w-[70%]">
                   <button
                     type="button"
-                    onClick={onNextLesson}
-                    className="w-full inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-[0_14px_34px_rgba(251,146,60,0.35)] ring-2 ring-amber-200/70 hover:shadow-[0_18px_40px_rgba(244,63,94,0.22)] hover:scale-[1.02] active:scale-[0.99] transition"
+                    onClick={() => {
+                      if (isNavigating || !onNextLesson) return;
+                      setIsNavigating(true);
+                      onNextLesson();
+                    }}
+                    disabled={isNavigating}
+                    className={`w-full inline-flex items-center justify-center px-7 py-3.5 rounded-2xl font-extrabold text-white bg-gradient-to-r from-amber-500 via-orange-500 to-rose-500 shadow-[0_14px_34px_rgba(251,146,60,0.35)] ring-2 ring-amber-200/70 transition ${isNavigating
+                      ? 'opacity-70 cursor-not-allowed transform-none'
+                      : 'hover:shadow-[0_18px_40px_rgba(244,63,94,0.22)] hover:scale-[1.02] active:scale-[0.99]'
+                      }`}
                   >
                     <span className="inline-flex items-center gap-2">
                       Следующий урок

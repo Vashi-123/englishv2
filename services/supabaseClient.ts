@@ -45,13 +45,14 @@ export const subscribeSupabaseConnectivity = (listener: (state: SupabaseConnecti
 };
 
 const memoryStorage = new Map<string, string>();
-const isNativeIOS = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'ios';
+const isNative = Capacitor.isNativePlatform();
+const isNativeIOS = Capacitor.getPlatform() === 'ios';
 
 // Storage для Supabase: используем Capacitor Preferences на iOS, localStorage на вебе
 // Примечание: safeStorage не используется напрямую, используется safeStorageSync для синхронного API Supabase
 const safeStorage = {
   getItem: async (key: string): Promise<string | null> => {
-    if (isNativeIOS) {
+    if (isNative) {
       try {
         const { Preferences } = await import('@capacitor/preferences');
         const { value } = await Preferences.get({ key });
@@ -69,7 +70,7 @@ const safeStorage = {
     }
   },
   setItem: async (key: string, value: string): Promise<void> => {
-    if (isNativeIOS) {
+    if (isNative) {
       try {
         const { Preferences } = await import('@capacitor/preferences');
         await Preferences.set({ key, value });
@@ -92,7 +93,7 @@ const safeStorage = {
     }
   },
   removeItem: async (key: string): Promise<void> => {
-    if (isNativeIOS) {
+    if (isNative) {
       try {
         const { Preferences } = await import('@capacitor/preferences');
         await Preferences.remove({ key });
@@ -139,25 +140,25 @@ if (isNativeIOS && typeof window !== 'undefined') {
   } catch {
     // ignore
   }
-  
+
   // АСИНХРОННО: синхронизируем с Preferences (может быть более актуальная версия)
   // Сохраняем промис, чтобы можно было дождаться завершения синхронизации
   preferencesSyncPromise = (async () => {
     try {
       // Динамический импорт Preferences только на iOS
       const { Preferences } = await import('@capacitor/preferences');
-      
+
       // Получаем project ref из URL для формирования правильного ключа
       const projectRef = supabaseUrl?.split('//')[1]?.split('.')[0] || '';
       const supabaseAuthKey = projectRef ? `sb-${projectRef}-auth-token` : null;
-      
+
       // Список возможных ключей Supabase
       const supabaseKeys = [
         supabaseAuthKey,
         'sb-auth-token',
         'supabase.auth.token',
       ].filter(Boolean) as string[];
-      
+
       // Загружаем все ключи Supabase из Preferences
       for (const key of supabaseKeys) {
         try {
@@ -175,7 +176,7 @@ if (isNativeIOS && typeof window !== 'undefined') {
           // ignore
         }
       }
-      
+
       // Также проверяем localStorage на наличие других ключей Supabase
       // и синхронизируем их с Preferences
       try {
@@ -222,15 +223,15 @@ export const waitForPreferencesSync = () => preferencesSyncPromise || Promise.re
 // КРИТИЧНО: Функция для принудительной загрузки сессии из Preferences в кеш
 // Вызывается при инициализации, чтобы гарантировать, что сессия доступна синхронно
 export const ensurePreferencesLoaded = async (): Promise<void> => {
-  if (!isNativeIOS || typeof window === 'undefined') {
+  if (!isNative || typeof window === 'undefined') {
     return;
   }
-  
+
   // Если preferencesSyncPromise еще не завершен, ждем его
   if (preferencesSyncPromise) {
     await preferencesSyncPromise;
   }
-  
+
   // Дополнительно: если кеш все еще пуст для ключей сессии, пытаемся загрузить из Preferences
   const projectRef = supabaseUrl?.split('//')[1]?.split('.')[0] || '';
   const supabaseAuthKey = projectRef ? `sb-${projectRef}-auth-token` : null;
@@ -239,7 +240,7 @@ export const ensurePreferencesLoaded = async (): Promise<void> => {
     'sb-auth-token',
     'supabase.auth.token',
   ].filter(Boolean) as string[];
-  
+
   let hasSessionInCache = false;
   for (const key of supabaseKeys) {
     if (syncStorageCache.has(key)) {
@@ -247,7 +248,7 @@ export const ensurePreferencesLoaded = async (): Promise<void> => {
       break;
     }
   }
-  
+
   // Если сессии нет в кеше, но есть в Preferences - загружаем
   if (!hasSessionInCache) {
     try {
@@ -278,34 +279,34 @@ export const ensurePreferencesLoaded = async (): Promise<void> => {
 // Функция для восстановления сессии из Preferences в кеш и localStorage
 // КРИТИЧНО: Вызывается ДО getSession(), чтобы сессия была доступна синхронно
 export const restoreSessionFromPreferences = async (): Promise<{ restored: boolean; key: string | null; value: string | null }> => {
-  if (!isNativeIOS || typeof window === 'undefined') {
+  if (!isNative || typeof window === 'undefined') {
     return { restored: false, key: null, value: null };
   }
 
   try {
     const { Preferences } = await import('@capacitor/preferences');
-    
+
     // Получаем project ref из URL для формирования правильного ключа
     const projectRef = supabaseUrl?.split('//')[1]?.split('.')[0] || '';
     const supabaseAuthKey = projectRef ? `sb-${projectRef}-auth-token` : null;
-    
+
     // Список возможных ключей Supabase (в порядке приоритета)
     const supabaseKeys = [
       supabaseAuthKey,
       'sb-auth-token',
       'supabase.auth.token',
     ].filter(Boolean) as string[];
-    
+
     // Ищем сессию в Preferences
     for (const key of supabaseKeys) {
       try {
         const { value } = await Preferences.get({ key });
         if (value) {
           console.log('[Supabase] restoreSessionFromPreferences: найдена сессия в Preferences, ключ:', key);
-          
+
           // Восстанавливаем в кеш (синхронный доступ)
           syncStorageCache.set(key, value);
-          
+
           // Восстанавливаем в localStorage (для совместимости)
           try {
             window.localStorage.setItem(key, value);
@@ -313,14 +314,14 @@ export const restoreSessionFromPreferences = async (): Promise<{ restored: boole
           } catch (err) {
             console.warn('[Supabase] restoreSessionFromPreferences: ошибка восстановления в localStorage:', err);
           }
-          
+
           return { restored: true, key, value };
         }
       } catch (err) {
         console.warn('[Supabase] restoreSessionFromPreferences: ошибка чтения ключа', key, err);
       }
     }
-    
+
     // Также проверяем localStorage на наличие других ключей Supabase
     // и пытаемся загрузить их из Preferences
     try {
@@ -331,7 +332,7 @@ export const restoreSessionFromPreferences = async (): Promise<{ restored: boole
             const { value } = await Preferences.get({ key });
             if (value) {
               console.log('[Supabase] restoreSessionFromPreferences: найдена сессия в Preferences (дополнительный ключ), ключ:', key);
-              
+
               // Восстанавливаем в кеш и localStorage
               syncStorageCache.set(key, value);
               try {
@@ -339,7 +340,7 @@ export const restoreSessionFromPreferences = async (): Promise<{ restored: boole
               } catch {
                 // ignore
               }
-              
+
               return { restored: true, key, value };
             }
           } catch {
@@ -350,7 +351,7 @@ export const restoreSessionFromPreferences = async (): Promise<{ restored: boole
     } catch {
       // ignore
     }
-    
+
     console.log('[Supabase] restoreSessionFromPreferences: сессия не найдена в Preferences');
     return { restored: false, key: null, value: null };
   } catch (err) {
@@ -364,7 +365,7 @@ let preferencesLoadAttempted = false;
 
 const safeStorageSync = {
   getItem: (key: string): string | null => {
-    if (isNativeIOS) {
+    if (isNative) {
       // Сначала проверяем кеш
       if (syncStorageCache.has(key)) {
         return syncStorageCache.get(key) ?? null;
@@ -379,7 +380,7 @@ const safeStorageSync = {
       } catch {
         // ignore
       }
-      
+
       // КРИТИЧНО: Если кеш и localStorage пусты, и это ключ сессии, 
       // и Preferences еще не загружались синхронно - пытаемся загрузить из Preferences
       // Это важно для случая, когда localStorage очищен после полного закрытия приложения
@@ -396,7 +397,7 @@ const safeStorageSync = {
           // ignore
         }
       }
-      
+
       // В конце memory storage
       return memoryStorage.get(key) ?? null;
     } else {
@@ -408,7 +409,7 @@ const safeStorageSync = {
     }
   },
   setItem: (key: string, value: string): void => {
-    if (isNativeIOS) {
+    if (isNative) {
       // Обновляем кеш и localStorage синхронно
       syncStorageCache.set(key, value);
       try {
@@ -446,7 +447,7 @@ const safeStorageSync = {
     }
   },
   removeItem: (key: string): void => {
-    if (isNativeIOS) {
+    if (isNative) {
       syncStorageCache.delete(key);
       try {
         window.localStorage.removeItem(key);
@@ -478,16 +479,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       const maxAttempts = 2; // Уменьшили с 3 до 2
       const isNetworkishError = (resp: Response) => resp.status === 0;
       const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-      
+
       // NOTE: iOS/iPadOS WebView can take a long time to spin up networking on cold start.
       // A too-aggressive timeout breaks OAuth PKCE exchange (Apple/Google) and looks like "infinite spinner".
       // Reduced to 10s (from 20s) to improve perceived performance on cold start.
-      const firstAttemptTimeoutMs = isNativeIOS ? 10000 : 8000;
+      const firstAttemptTimeoutMs = isNative ? 10000 : 8000;
 
       try {
         let response: Response | null = null;
         let lastError: Error | null = null;
-        
+
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           try {
             // For the first request on cold start, apply a soft timeout via AbortController,
@@ -532,19 +533,19 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
             } else {
               response = await fetch(input, init);
             }
-            
+
             // Если запрос успешен - сразу возвращаем, не делаем retry
             if (response.ok) {
               notifyConnectivity({ status: "ok", lastError: null });
               return response;
             }
-            
+
             // Если это не сетевая ошибка (статус не 0) - не делаем retry
             if (!isNetworkishError(response)) {
               notifyConnectivity({ status: "ok", lastError: null });
               return response;
             }
-            
+
             // Если это последняя попытка - возвращаем ответ как есть
             if (attempt === maxAttempts - 1) {
               break;
@@ -556,12 +557,12 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
               throw lastError;
             }
           }
-          
+
           // Делаем retry только для сетевых ошибок, с меньшей задержкой
           const backoffMs = 200 * Math.pow(1.5, attempt);
           await delay(Math.min(1000, backoffMs));
         }
-        
+
         if (!response) {
           throw lastError || new Error('No response from fetch');
         }
@@ -581,13 +582,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       } catch (err) {
         // Не логируем как ошибку, если это ожидаемое поведение (offline, CORS, timeout)
         const errorMessage = err instanceof Error ? err.message : String(err);
-        const isExpectedError = 
-          errorMessage.includes('Load failed') || 
+        const isExpectedError =
+          errorMessage.includes('Load failed') ||
           errorMessage.includes('Failed to fetch') ||
           errorMessage.includes('Request timeout') ||
           errorMessage.includes('AbortError') ||
           errorMessage.includes('The operation was aborted');
-        
+
         if (!isExpectedError) {
           console.error('[Supabase] fetch failed:', String(input), err);
         }
@@ -603,7 +604,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     flowType: 'pkce', // PKCE flow для безопасности OAuth
     persistSession: true, // Сохраняем сессию между перезапусками
     autoRefreshToken: true, // Автоматически обновляем токен при истечении
-    detectSessionInUrl: true, // Автоматически обнаруживает сессию в URL (работает для веба, для нативных приложений deep links обрабатываются вручную через appUrlOpen)
+    detectSessionInUrl: !isNative, // Автоматически обнаруживает сессию в URL только для Web. Для native deep links обрабатываются вручную
     storage: safeStorageSync, // Используем синхронную версию для совместимости с Supabase API
   },
 });

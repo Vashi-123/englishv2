@@ -123,7 +123,7 @@ export const useDashboardData = (
     } catch (e) {
       const err = e instanceof Error ? e : new Error(String(e));
       setError(err);
-      console.error('[useDashboardData] Error loading dashboard data:', err);
+      console.error('[useDashboardData] Error loading dashboard data:', JSON.stringify(err, null, 2), err);
     } finally {
       setLoading(false);
     }

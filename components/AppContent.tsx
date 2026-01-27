@@ -1331,6 +1331,7 @@ export const AppContent: React.FC<{
       }
     }
 
+    setInitialLessonProgress(null);
     setSelectedDayId(nextPlan.day);
 
     setExerciseStartMode('next');

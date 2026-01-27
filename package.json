@@ -1,7 +1,7 @@
 {
   "name": "copy-of-lingosprint-ai-(ru)",
   "private": true,
-  "version": "1.0.10",
+  "version": "1.0.11",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "apple:client-secret": "node scripts/apple-client-secret.mjs",
     "tts:enqueue": "node scripts/tts.mjs enqueue",
     "tts:work": "node scripts/tts.mjs work",
-    "tts:run": "node scripts/tts.mjs run"
+    "tts:run": "node scripts/tts.mjs run",
+    "bundle:audio": "node scripts/download_bundled_audio.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.1",

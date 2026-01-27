@@ -96,7 +96,14 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
             setGrowthData(growth);
             setNewUsersData(newUsers);
             setEngagementData(engagement);
-            setLessonDistData(lessonDist);
+
+            // Calculate other_users for stacked bar chart
+            const processedLessonDist = lessonDist.map((item: any) => ({
+                ...item,
+                period_users: item.period_users || 0,
+                other_users: Math.max(0, (item.total_users || 0) - (item.period_users || 0))
+            }));
+            setLessonDistData(processedLessonDist);
         } catch (err: any) {
             console.error('Error loading analytics:', err);
             setError(err.message || 'Ошибка загрузки аналитики');
@@ -238,7 +245,9 @@ export const AdminAnalyticsPanel: React.FC<AdminAnalyticsPanelProps> = ({ userEm
                                     contentStyle={{ borderRadius: '12px', border: '1px solid #E5E7EB' }}
                                     cursor={{ opacity: 0.1 }}
                                 />
-                                <Bar dataKey="user_count" name="Пользователей" fill="#6366f1" radius={[4, 4, 0, 0]} />
+                                <Legend />
+                                <Bar dataKey="other_users" name="До выбранного периода" stackId="a" fill="#8b5cf6" />
+                                <Bar dataKey="period_users" name="За выбранный период" stackId="a" fill="#f97316" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>

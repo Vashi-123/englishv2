@@ -3,7 +3,7 @@ import { supabase } from "./supabaseClient";
 import { fetchBillingProduct, getCachedBillingProduct, BILLING_PRODUCT_KEY } from "./billingService";
 
 // Fallback product ID if not found in database
-const DEFAULT_IOS_PRODUCT_ID = "englishv2.premium.a1";
+const DEFAULT_IOS_PRODUCT_ID = "02";
 
 // Get iOS product ID from database
 const getIosProductId = async (): Promise<string> => {
